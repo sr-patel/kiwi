@@ -1,0 +1,343 @@
+/* Modern Audio Player Styles */
+
+/* Volume Slider */
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-track {
+  background: linear-gradient(to right, #6b7280, #9ca3af);
+  height: 8px;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+  transition: all 0.2s ease;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.6);
+}
+
+.volume-slider::-webkit-slider-thumb:active {
+  transform: scale(0.95);
+}
+
+.volume-slider::-moz-range-track {
+  background: linear-gradient(to right, #6b7280, #9ca3af);
+  height: 8px;
+  border-radius: 4px;
+  border: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.volume-slider::-moz-range-thumb {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+  transition: all 0.2s ease;
+}
+
+.volume-slider::-moz-range-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.6);
+}
+
+.volume-slider::-moz-range-thumb:active {
+  transform: scale(0.95);
+}
+
+/* Progress Bar Animation */
+@keyframes progressPulse {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Visualizer Animation */
+@keyframes visualizerGlow {
+  0%, 100% {
+    filter: brightness(1) saturate(1);
+  }
+  50% {
+    filter: brightness(1.2) saturate(1.3);
+  }
+}
+
+/* Button Hover Effects */
+@keyframes buttonGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0);
+  }
+}
+
+/* Loading Animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slide In Animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Audio Player Container Animations */
+.audio-player-container {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.audio-player-content {
+  animation: slideIn 0.4s ease-out 0.1s both;
+}
+
+/* Track Info Animations */
+.track-info {
+  animation: fadeIn 0.5s ease-out 0.2s both;
+}
+
+/* Controls Animations */
+.controls-container {
+  animation: fadeIn 0.6s ease-out 0.3s both;
+}
+
+/* Playlist Animations */
+.playlist-container {
+  animation: slideIn 0.4s ease-out;
+}
+
+/* Hover Effects for Interactive Elements */
+.interactive-element {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.interactive-element:hover {
+  transform: translateY(-2px);
+}
+
+/* Glass Morphism Effect */
+.glass-effect {
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Gradient Text Effect */
+.gradient-text {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Pulse Animation for Active States */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
+/* Shimmer Effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  background-size: 200px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .audio-player-container {
+    margin: 1rem;
+    border-radius: 1.5rem;
+  }
+  
+  .controls-container {
+    gap: 0.75rem;
+  }
+  
+  .controls-container button {
+    padding: 0.75rem;
+  }
+  
+  .controls-container .play-button {
+    padding: 1rem;
+  }
+  
+  .track-info h3 {
+    font-size: 1.25rem;
+  }
+  
+  .album-art {
+    width: 8rem;
+    height: 8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .audio-player-container {
+    margin: 0.5rem;
+    padding: 1rem;
+  }
+  
+  .controls-container {
+    gap: 0.5rem;
+  }
+  
+  .controls-container button {
+    padding: 0.5rem;
+  }
+  
+  .controls-container .play-button {
+    padding: 0.75rem;
+  }
+  
+  .track-info h3 {
+    font-size: 1.125rem;
+  }
+  
+  .album-art {
+    width: 6rem;
+    height: 6rem;
+  }
+  
+  .playlist-container {
+    max-height: 12rem;
+  }
+}
+
+/* Dark Mode Enhancements */
+@media (prefers-color-scheme: dark) {
+  .glass-effect {
+    background: rgba(3, 7, 18, 0.9);
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .volume-slider::-webkit-slider-thumb {
+    border: 3px solid #ffffff;
+  }
+  
+  .volume-slider::-moz-range-thumb {
+    border: 3px solid #ffffff;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus Styles for Accessibility */
+.audio-player-container button:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+.volume-slider:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* Custom Scrollbar for Playlist */
+.playlist-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.playlist-container::-webkit-scrollbar-track {
+  background: rgba(55, 65, 81, 0.3);
+  border-radius: 3px;
+}
+
+.playlist-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  border-radius: 3px;
+}
+
+.playlist-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #7c3aed, #db2777);
+}
+
+/* Line Clamp Utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Truncate Utility */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+} 

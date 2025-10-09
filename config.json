@@ -1,0 +1,16 @@
+{
+  "libraryPath": "C:\\Users\\sohan\\Documents\\Code\\parrot\\exampleLibrary.library",
+  "requestPageSize": 50,
+  "defaultTheme": "dark",
+  "defaultAccentColor": "kiwi",
+  "enableCache": true,
+  "cacheValidityHours": 24,
+  "enablePodcastMode": false,
+  "enableColorIntegration": true,
+  "useFolderThumbnails": true,
+  "autoplayGifsInGrid": false,
+  "hideControlsWithInfoBox": false,
+  "infoBoxSize": 100,
+  "sidebarWidth": 256,
+  "defaultSidebarOpen": false
+}
