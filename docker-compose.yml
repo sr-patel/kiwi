@@ -11,9 +11,9 @@ services:
       - "3001:3001"
     volumes:
       # Mount your photo libraries
-      - /mnt/Newmoon/Media/Photos/lib/homework.library:/app/data/libraries:rw
+      - /mnt/tank/photo-libraries:/app/data/libraries:ro
       # Mount config file
-      - /mnt/Newmoon/Media/Kiwi/config.json:/app/config.json:ro
+      - ./config.json:/app/config.json:ro
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -33,7 +33,7 @@ services:
     container_name: kiwi-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "3000:80"
     depends_on:
       backend:
         condition: service_healthy
