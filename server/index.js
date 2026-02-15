@@ -396,7 +396,8 @@ function validatePathComponent(component) {
   }
   // Allow alphanumeric characters and common separators, prevent path traversal
   // This blocks slashes, backslashes, and ".."
-  return /^[a-zA-Z0-9._-]+$/.test(component) && !component.includes('..');
+  // Updated to allow "+" characters in filenames
+  return /^[a-zA-Z0-9._\-+]+$/.test(component) && !component.includes('..');
 }
 
 // Input validation helper
