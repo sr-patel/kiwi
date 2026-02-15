@@ -75,6 +75,17 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Validates and normalizes the sort direction.
+   * @param {string} direction - The sort direction (ASC or DESC)
+   * @returns {string} - 'ASC' or 'DESC'
+   */
+  _validateDirection(direction) {
+    if (!direction) return 'DESC';
+    const upper = String(direction).toUpperCase();
+    return (upper === 'ASC' || upper === 'DESC') ? upper : 'DESC';
+  }
+
+  /**
    * Generates an ORDER BY SQL clause based on the provided sort parameters.
    * This centralizes sorting logic and ensures consistent behavior (like natural sorting for names).
    */
@@ -378,7 +389,8 @@ class PhotoLibraryDatabase {
     }
 
     const orderByClause = this.getOrderByClause(orderBy);
-    query += ` ORDER BY ${orderByClause} ${orderDirection}`;
+    const validatedDirection = this._validateDirection(orderDirection);
+    query += ` ORDER BY ${orderByClause} ${validatedDirection}`;
 
     if (limit) {
       query += ' LIMIT ? OFFSET ?';
@@ -580,6 +592,7 @@ class PhotoLibraryDatabase {
 
     // Handle sorting using the central helper
     const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
+    const validatedDirection = this._validateDirection(orderDirection);
     
     console.log('🔍 Order by debug:', { orderBy, orderByClause });
     const folderFilterSql = folderId ? ' AND EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.photo_id = p.id AND pf.folder_id = ?)' : '';
@@ -606,7 +619,7 @@ class PhotoLibraryDatabase {
           ${type ? 'AND p.type = ?' : ''}
           ${folderFilterSql}
           ${tagContextSql}
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${validatedDirection}
           LIMIT ? OFFSET ?
         `;
         const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
@@ -633,7 +646,7 @@ class PhotoLibraryDatabase {
           ${type ? 'AND p.type = ?' : ''}
           ${folderFilterSql}
           ${tagContextSql}
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${validatedDirection}
           LIMIT ? OFFSET ?
         `;
         const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
@@ -663,7 +676,7 @@ class PhotoLibraryDatabase {
           ${type ? 'AND p.type = ?' : ''}
           ${folderFilterSql}
           ${tagContextSql}
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${validatedDirection}
           LIMIT ? OFFSET ?
         `;
         params = [tagParts[0].toLowerCase()];
@@ -688,7 +701,7 @@ class PhotoLibraryDatabase {
           ${type ? 'AND p.type = ?' : ''}
           ${folderFilterSql}
           ${tagContextSql}
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${validatedDirection}
           LIMIT ? OFFSET ?
         `;
         const tagTerms = tagParts.map(tag => tag.toLowerCase());
@@ -715,7 +728,7 @@ class PhotoLibraryDatabase {
         ${type ? 'AND p.type = ?' : ''}
         ${folderFilterSql}
         ${tagContextSql}
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
       const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
@@ -1276,20 +1289,21 @@ class PhotoLibraryDatabase {
     
     // Build the ORDER BY clause based on sort parameters
     const orderByClause = this.getOrderByClause(orderBy);
+    const validatedDirection = this._validateDirection(orderDirection);
     
     if (folderId) {
       query = `
         SELECT p.* FROM photos p
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ?
-        ORDER BY p.${orderByClause} ${orderDirection}
+        ORDER BY p.${orderByClause} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
       params = [folderId, limit, offset];
     } else {
       query = `
         SELECT * FROM photos
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
       params = [limit, offset];
@@ -1347,6 +1361,7 @@ class PhotoLibraryDatabase {
     
     // Build the ORDER BY clause based on sort parameters
     const orderByClause = this.getOrderByClause(orderBy);
+    const validatedDirection = this._validateDirection(orderDirection);
     
     if (folderId) {
       // Handle special sorting cases
@@ -1356,14 +1371,14 @@ class PhotoLibraryDatabase {
         SELECT p.* FROM photos p
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ?
-        ORDER BY ${orderByWithAlias} ${orderDirection}
+        ORDER BY ${orderByWithAlias} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
       params = [folderId, limit, offset];
     } else {
       query = `
         SELECT * FROM photos
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
       params = [limit, offset];
@@ -1387,7 +1402,7 @@ class PhotoLibraryDatabase {
           LEFT JOIN tags t ON p.id = t.photo_id
           WHERE pf.folder_id = ?
           GROUP BY p.id
-          ORDER BY ${orderByWithAlias} ${orderDirection}
+          ORDER BY ${orderByWithAlias} ${validatedDirection}
           LIMIT ? OFFSET ?
         `;
         optimizedParams = [folderId, limit, offset];
@@ -1401,7 +1416,7 @@ class PhotoLibraryDatabase {
           LEFT JOIN photo_folders pf ON p.id = pf.photo_id
           LEFT JOIN tags t ON p.id = t.photo_id
           GROUP BY p.id
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${validatedDirection}
           LIMIT ? OFFSET ?
         `;
         optimizedParams = [limit, offset];
@@ -1725,6 +1740,7 @@ class PhotoLibraryDatabase {
     try {
       // Handle special sort fields
       const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
+      const validatedDirection = this._validateDirection(orderDirection);
 
       // Use JOIN to get photos with tags and apply sorting properly
       const query = `
@@ -1732,7 +1748,7 @@ class PhotoLibraryDatabase {
         FROM photos p
         INNER JOIN tags t ON p.id = t.photo_id
         WHERE t.tag = ?
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
       const photos = this.db.prepare(query).all(tag, limit, offset);
