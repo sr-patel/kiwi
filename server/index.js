@@ -179,8 +179,7 @@ async function generateDatabase() {
     const batch = photoDirs.slice(i, i + batchSize);
     console.log(`📦 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(photoDirs.length / batchSize)} (${batch.length} items)`);
     
-    const batchPhotos = [];
-    for (const entry of batch) {
+    const batchPromises = batch.map(async (entry) => {
       try {
         const fileId = entry.name.replace('.info', '');
         const photoDir = path.join(imagesDir, entry.name);
@@ -191,19 +190,34 @@ async function generateDatabase() {
           const data = await fs.readFile(metadataPath, 'utf8');
           metadata = JSON.parse(data);
         } catch (_) {
-          continue; // skip files without metadata
+          return null; // skip files without metadata
         }
         
         if (metadata) {
-          batchPhotos.push(metadata);
+          const relationships = [];
           if (metadata.folders && Array.isArray(metadata.folders)) {
             for (const folderId of metadata.folders) {
-              photoFolderRelationships.push({ photoId: fileId, folderId });
+              relationships.push({ photoId: fileId, folderId });
             }
           }
+          return { metadata, relationships };
         }
       } catch (error) {
         console.warn(`⚠️  Failed to process ${entry.name}:`, error.message);
+        return null;
+      }
+      return null;
+    });
+
+    const results = await Promise.all(batchPromises);
+    const batchPhotos = [];
+
+    for (const res of results) {
+      if (res) {
+        batchPhotos.push(res.metadata);
+        if (res.relationships && res.relationships.length > 0) {
+          photoFolderRelationships.push(...res.relationships);
+        }
       }
     }
     
@@ -350,12 +364,13 @@ app.get('/api/test/files/:photoId', requireLibrary, async (req, res) => {
   try {
     const { photoId } = req.params;
 
-    // Validate photo ID
+    // Validate photo ID to prevent path traversal
     if (!validatePhotoId(photoId)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
 
-    const photoDir = path.join(LIBRARY_PATH, `images/${photoId}.info`);
+    const safePhotoId = path.basename(photoId);
+    const photoDir = path.join(LIBRARY_PATH, 'images', `${safePhotoId}.info`);
     
     // Check if directory exists
     const dirExists = await fs.access(photoDir).then(() => true).catch(() => false);
@@ -384,13 +399,28 @@ app.get('/api/test/files/:photoId', requireLibrary, async (req, res) => {
   }
 });
 
-// Input validation helper
-function validatePhotoId(photoId) {
-  if (!photoId || typeof photoId !== 'string') {
+/**
+ * Validate path components to prevent path traversal.
+ * @param {string} component
+ * @returns {boolean}
+ */
+function validatePathComponent(component) {
+  if (!component || typeof component !== 'string') {
     return false;
   }
-  // Allow alphanumeric characters and common separators
-  return /^[a-zA-Z0-9._-]+$/.test(photoId);
+  // Allow alphanumeric characters and common separators, prevent path traversal
+  // This blocks slashes, backslashes, and ".."
+  // Updated to allow "+" characters in filenames
+  return /^[a-zA-Z0-9._\-+]+$/.test(component) && !component.includes('..');
+}
+
+// Input validation helper
+function validatePhotoId(photoId) {
+  return validatePathComponent(photoId);
+}
+
+function validateFileNameComponent(component) {
+  return validatePathComponent(component);
 }
 
 function validateFolderId(folderId) {
@@ -664,7 +694,8 @@ app.get('/api/photos/:id', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
-    const photoDir = path.join(LIBRARY_PATH, `images/${id}.info`);
+    const safeId = path.basename(id);
+    const photoDir = path.join(LIBRARY_PATH, 'images', `${safeId}.info`);
     const metadataPath = path.join(photoDir, 'metadata.json');
     
     try {
@@ -716,7 +747,8 @@ app.get('/api/photos/:id/metadata', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
-    const photoDir = path.join(LIBRARY_PATH, `images/${id}.info`);
+    const safeId = path.basename(id);
+    const photoDir = path.join(LIBRARY_PATH, 'images', `${safeId}.info`);
     const metadataPath = path.join(photoDir, 'metadata.json');
     
     try {
@@ -776,6 +808,7 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
+
     const { ext, name } = req.query;
     
     console.log('File request debug:', { id, ext, name });
@@ -784,8 +817,16 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
       console.log('Missing parameters:', { ext, name });
       return res.status(400).json({ error: 'Missing ext or name parameter' });
     }
+
+    // Validate parameters to prevent path traversal
+    if (!validateFileNameComponent(name) || !validateFileNameComponent(ext)) {
+      return res.status(400).json({ error: 'Invalid file name or extension' });
+    }
     
-    const filePath = path.join(LIBRARY_PATH, `images/${id}.info/${name}.${ext}`);
+    const safeId = path.basename(id);
+    const safeName = path.basename(name);
+    const safeExt = path.basename(ext);
+    const filePath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}.${safeExt}`);
     console.log('Constructed file path:', filePath);
     
     // Check if file exists
@@ -856,13 +897,21 @@ app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
+
     const { name } = req.query;
     
     if (!name) {
       return res.status(400).json({ error: 'Missing name parameter' });
     }
+
+    // Validate parameters to prevent path traversal
+    if (!validateFileNameComponent(name)) {
+      return res.status(400).json({ error: 'Invalid thumbnail name' });
+    }
     
-    const thumbnailPath = path.join(LIBRARY_PATH, `images/${id}.info/${name}_thumbnail.png`);
+    const safeId = path.basename(id);
+    const safeName = path.basename(name);
+    const thumbnailPath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}_thumbnail.png`);
     
     // Check if thumbnail exists
     try {
@@ -1056,22 +1105,12 @@ app.get('/api/tags', requireLibrary, async (req, res) => {
   }
 });
 
-// Get photo counts for all tags (single query instead of N+1)
+// Get photo counts for all tags (optimized single query)
 app.get('/api/tags/counts', requireLibrary, async (req, res) => {
   try {
     const database = getDb();
-    // Try batch method first; fall back to N+1 if not available
-    if (typeof database.getTagCounts === 'function') {
-      const tagCounts = await database.getTagCounts();
-      res.json(tagCounts);
-    } else {
-      const rows = await database.getAllTags();
-      const tagCounts = {};
-      for (const row of rows) {
-        tagCounts[row.tag] = await database.getPhotoCountForTag(row.tag);
-      }
-      res.json(tagCounts);
-    }
+    const tagCounts = await database.getTagCounts();
+    res.json(tagCounts);
   } catch (error) {
     console.error('❌ Error getting tag counts:', error);
     res.status(500).json({ error: 'Failed to get tag counts' });
