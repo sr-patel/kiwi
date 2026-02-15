@@ -1752,6 +1752,23 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Get photo counts for all tags
+   */
+  async getTagCounts() {
+    try {
+      const rows = this.db.prepare('SELECT tag, COUNT(*) as count FROM tags GROUP BY tag').all();
+      const result = {};
+      for (const row of rows) {
+        result[row.tag] = row.count;
+      }
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to get tag counts:', error.message);
+      return {};
+    }
+  }
+
+  /**
    * Get all unique tags
    */
   async getAllTags() {
