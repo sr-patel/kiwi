@@ -1287,20 +1287,22 @@ class PhotoLibraryDatabase {
     const startTime = Date.now();
     let query, params;
     
-    // Build the ORDER BY clause based on sort parameters
-    const orderByClause = this.getOrderByClause(orderBy);
     const validatedDirection = this._validateDirection(orderDirection);
     
     if (folderId) {
+      // Use alias 'p' for joined query
+      const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
       query = `
         SELECT p.* FROM photos p
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ?
-        ORDER BY p.${orderByClause} ${validatedDirection}
+        ORDER BY ${orderByClause} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
       params = [folderId, limit, offset];
     } else {
+      // No alias needed for simple query
+      const orderByClause = this.getOrderByClause(orderBy);
       query = `
         SELECT * FROM photos
         ORDER BY ${orderByClause} ${validatedDirection}
