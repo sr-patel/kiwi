@@ -76,6 +76,7 @@ export const useAppStore = create<AppStore>()(
       infoBoxSize: 100, // Percentage size of info box (50-150%)
       hideControlsWithInfoBox: false, // Hide top controls when info box is hidden
       autoplayGifsInGrid: false,
+      transitionEffect: 'slide',
 
       // Visualizer Settings
       visualizerSettings: {
@@ -102,6 +103,7 @@ export const useAppStore = create<AppStore>()(
       setRequestPageSize: (size: number) => set({ requestPageSize: Math.max(10, Math.min(500, Math.floor(size))) }),
       setInfoBoxSize: (size: number) => set({ infoBoxSize: Math.max(50, Math.min(150, Math.floor(size))) }),
       setHideControlsWithInfoBox: (value: boolean) => set({ hideControlsWithInfoBox: value }),
+      setTransitionEffect: (effect) => set({ transitionEffect: effect }),
       setSettingsOpen: (open: boolean) => set({ settingsOpen: open }),
       
       setCurrentFolder: (folderId: string | null) => {
@@ -469,6 +471,7 @@ export const useAppStore = create<AppStore>()(
         requestPageSize: state.requestPageSize,
         infoBoxSize: state.infoBoxSize,
         hideControlsWithInfoBox: state.hideControlsWithInfoBox,
+        transitionEffect: state.transitionEffect,
         audioPlayer: {
           volume: state.audioPlayer.volume,
           isMuted: state.audioPlayer.isMuted,
