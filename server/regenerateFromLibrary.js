@@ -123,8 +123,7 @@ async function generateDatabaseFromLibrary() {
       console.log(`📦 Batch ${batchNumber}/${totalBatches} (${progress}%) - ${batch.length} items`);
       console.log(`   ⏱️  Elapsed: ${formatDuration(elapsed)}`);
       
-      const batchPhotos = [];
-      for (const entry of batch) {
+      const batchPromises = batch.map(async (entry) => {
         try {
           const fileId = entry.name.replace('.info', '');
           const photoDir = path.join(imagesDir, entry.name);
@@ -149,27 +148,45 @@ async function generateDatabaseFromLibrary() {
           } catch (error) {
             // generateFallbackMetadata removed - skipping file
             console.log(`⚠️  Skipping ${fileId} - generateFallbackMetadata removed`);
-            continue;
+            return null;
           }
           
           if (metadata) {
-            batchPhotos.push(metadata);
+            const relationships = [];
             
             // Extract folder relationships from metadata
             if (metadata.folders && Array.isArray(metadata.folders)) {
               for (const folderId of metadata.folders) {
-                photoFolderRelationships.push({
+                relationships.push({
                   photoId: fileId,
                   folderId: folderId
                 });
               }
             }
             
-            processedCount++;
+            return { metadata, relationships };
           }
         } catch (error) {
           console.warn(`⚠️  Failed to process ${entry.name}:`, error.message);
+          return { error: true };
+        }
+        return null;
+      });
+
+      const results = await Promise.all(batchPromises);
+      const batchPhotos = [];
+
+      for (const res of results) {
+        if (!res) continue;
+
+        if (res.error) {
           errorCount++;
+        } else {
+          batchPhotos.push(res.metadata);
+          if (res.relationships && res.relationships.length > 0) {
+            photoFolderRelationships.push(...res.relationships);
+          }
+          processedCount++;
         }
       }
       

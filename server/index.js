@@ -179,8 +179,7 @@ async function generateDatabase() {
     const batch = photoDirs.slice(i, i + batchSize);
     console.log(`📦 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(photoDirs.length / batchSize)} (${batch.length} items)`);
     
-    const batchPhotos = [];
-    for (const entry of batch) {
+    const batchPromises = batch.map(async (entry) => {
       try {
         const fileId = entry.name.replace('.info', '');
         const photoDir = path.join(imagesDir, entry.name);
@@ -191,19 +190,34 @@ async function generateDatabase() {
           const data = await fs.readFile(metadataPath, 'utf8');
           metadata = JSON.parse(data);
         } catch (_) {
-          continue; // skip files without metadata
+          return null; // skip files without metadata
         }
         
         if (metadata) {
-          batchPhotos.push(metadata);
+          const relationships = [];
           if (metadata.folders && Array.isArray(metadata.folders)) {
             for (const folderId of metadata.folders) {
-              photoFolderRelationships.push({ photoId: fileId, folderId });
+              relationships.push({ photoId: fileId, folderId });
             }
           }
+          return { metadata, relationships };
         }
       } catch (error) {
         console.warn(`⚠️  Failed to process ${entry.name}:`, error.message);
+        return null;
+      }
+      return null;
+    });
+
+    const results = await Promise.all(batchPromises);
+    const batchPhotos = [];
+
+    for (const res of results) {
+      if (res) {
+        batchPhotos.push(res.metadata);
+        if (res.relationships && res.relationships.length > 0) {
+          photoFolderRelationships.push(...res.relationships);
+        }
       }
     }
     
