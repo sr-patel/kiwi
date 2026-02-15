@@ -349,6 +349,12 @@ app.post('/api/config/validate', (req, res) => {
 app.get('/api/test/files/:photoId', requireLibrary, async (req, res) => {
   try {
     const { photoId } = req.params;
+
+    // Validate photo ID
+    if (!validatePhotoId(photoId)) {
+      return res.status(400).json({ error: 'Invalid photo ID' });
+    }
+
     const photoDir = path.join(LIBRARY_PATH, `images/${photoId}.info`);
     
     // Check if directory exists
