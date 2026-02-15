@@ -148,6 +148,7 @@ export interface AppState {
   requestPageSize: number;
   infoBoxSize: number;
   hideControlsWithInfoBox?: boolean;
+  transitionEffect?: 'none' | 'slide' | 'fade' | 'zoom';
   
   // Visualizer Settings
   visualizerSettings: {
@@ -219,6 +220,7 @@ export interface AppActions {
   setRequestPageSize: (size: number) => void;
   setInfoBoxSize: (size: number) => void;
   setHideControlsWithInfoBox: (value: boolean) => void;
+  setTransitionEffect: (effect: 'none' | 'slide' | 'fade' | 'zoom') => void;
   setNavigationList: (ids: string[]) => void;
   shuffleRandomOrder: () => void;
 }

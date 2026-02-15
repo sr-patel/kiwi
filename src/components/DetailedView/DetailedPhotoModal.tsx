@@ -20,7 +20,7 @@ import { EpubViewer } from './EpubViewer';
 
 export const DetailedPhotoModal: React.FC = () => {
   const navigate = useNavigate();
-  const { detailedPhoto, setDetailedPhoto, currentFolder, currentTag, sortOptions, restoreScrollPosition, folderTree, setCurrentFolder, setCurrentTag, saveScrollPosition, filters, searchQuery, navigationList, infoBoxSize, hideControlsWithInfoBox } = useAppStore();
+  const { detailedPhoto, setDetailedPhoto, currentFolder, currentTag, sortOptions, restoreScrollPosition, folderTree, setCurrentFolder, setCurrentTag, saveScrollPosition, filters, searchQuery, navigationList, infoBoxSize, hideControlsWithInfoBox, transitionEffect = 'slide' } = useAppStore();
   const { accentColor } = useAppStore();
   const [photo, setPhoto] = React.useState<any>(null);
   const [currentIndex, setCurrentIndex] = React.useState<number>(-1);
@@ -462,33 +462,61 @@ export const DetailedPhotoModal: React.FC = () => {
     }
   };
 
+  const performTransition = (direction: 'next' | 'prev', callback: () => void) => {
+    if (transitionEffect === 'none' || zoom > 1) {
+      callback();
+      return;
+    }
+
+    setIsSwipeTransitioning(true);
+    // Slide: -window.innerWidth for next (slide left), window.innerWidth for prev (slide right)
+    const offset = direction === 'next' ? -window.innerWidth : window.innerWidth;
+    setSwipeOffset(offset);
+
+    setTimeout(() => {
+      callback();
+      setSwipeOffset(0);
+      setIsSwipeTransitioning(false);
+    }, 250); // Match CSS transition duration
+  };
+
+  const navigateToPhoto = (photoId: string | null, direction: 'next' | 'prev') => {
+    if (!photoId) {
+      setDetailedPhoto(null);
+      return;
+    }
+    performTransition(direction, () => setDetailedPhoto(photoId));
+  };
+
   const showPrev = () => {
     if (navigationList && navigationList.length > 0 && detailedPhoto) {
       const idx = navigationList.indexOf(detailedPhoto);
-      if (idx > 0) setDetailedPhoto(navigationList[idx - 1]);
-      return;
+      if (idx > 0) {
+        navigateToPhoto(navigationList[idx - 1], 'prev');
+        return;
+      }
     }
     if (photos.length && currentIndex > 0) {
-      setDetailedPhoto(photos[currentIndex - 1].id);
+      navigateToPhoto(photos[currentIndex - 1].id, 'prev');
     } else if (currentIndex === -1 && photos.length > 0) {
-      setDetailedPhoto(photos[photos.length - 1].id);
+      navigateToPhoto(photos[photos.length - 1].id, 'prev');
     }
   };
   const showNext = () => {
     if (navigationList && navigationList.length > 0 && detailedPhoto) {
       const idx = navigationList.indexOf(detailedPhoto);
       if (idx !== -1 && idx < navigationList.length - 1) {
-        setDetailedPhoto(navigationList[idx + 1]);
+        navigateToPhoto(navigationList[idx + 1], 'next');
         return;
       }
       // Fall through when at the end of navigation list so we can load more items
     }
     if (photos.length && currentIndex >= 0 && currentIndex < photos.length - 1) {
-      setDetailedPhoto(photos[currentIndex + 1].id);
+      navigateToPhoto(photos[currentIndex + 1].id, 'next');
       return;
     }
     if (currentIndex === -1 && photos.length > 0) {
-      setDetailedPhoto(photos[0].id);
+      navigateToPhoto(photos[0].id, 'next');
       return;
     }
     if (hasNextPageAvailable && detailedPhoto) {
@@ -621,15 +649,40 @@ export const DetailedPhotoModal: React.FC = () => {
     
     // Apply swipe offset for touch drag animation
     if (swipeOffset !== 0) {
-      const opacity = 1 - Math.abs(swipeOffset) / (window.innerWidth * 2);
-      return {
-        ...baseStyle,
-        transform: `translateX(${swipeOffset}px) scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`,
-        transformOrigin: 'center',
-        transition: isSwipeTransitioning ? 'transform 0.2s ease-out, opacity 0.2s ease-out' : 'none',
-        opacity: Math.max(0.3, opacity),
-        cursor: isDragging ? 'grabbing' : 'grab'
-      };
+      const progress = Math.abs(swipeOffset) / window.innerWidth;
+      const baseTransition = isSwipeTransitioning ? 'all 0.2s ease-out' : 'none';
+
+      if (transitionEffect === 'fade') {
+        return {
+          ...baseStyle,
+          transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`,
+          transformOrigin: 'center',
+          transition: baseTransition,
+          opacity: Math.max(0, 1 - progress),
+          cursor: isDragging ? 'grabbing' : 'grab'
+        };
+      } else if (transitionEffect === 'zoom') {
+        const scale = Math.max(0.5, 1 - progress * 0.5);
+        return {
+          ...baseStyle,
+          transform: `scale(${zoom * scale}) translate(${pan.x}px, ${pan.y}px)`,
+          transformOrigin: 'center',
+          transition: baseTransition,
+          opacity: Math.max(0, 1 - progress),
+          cursor: isDragging ? 'grabbing' : 'grab'
+        };
+      } else {
+        // Slide (Default)
+        const opacity = 1 - Math.abs(swipeOffset) / (window.innerWidth * 2);
+        return {
+          ...baseStyle,
+          transform: `translateX(${swipeOffset}px) scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`,
+          transformOrigin: 'center',
+          transition: baseTransition,
+          opacity: Math.max(0.3, opacity),
+          cursor: isDragging ? 'grabbing' : 'grab'
+        };
+      }
     }
     
     if (zoom !== 1) {
@@ -643,6 +696,64 @@ export const DetailedPhotoModal: React.FC = () => {
     }
     
     return baseStyle;
+  };
+
+  const getPrevPreviewStyle = () => {
+    const progress = swipeOffset > 0 ? swipeOffset / window.innerWidth : 0;
+    const base = {
+      transition: isSwipeTransitioning ? 'all 0.2s ease-out' : 'none',
+      zIndex: swipeOffset > 0 ? 1 : -1
+    };
+
+    if (transitionEffect === 'fade') {
+      return {
+        ...base,
+        opacity: progress,
+        transform: 'none',
+      };
+    }
+    if (transitionEffect === 'zoom') {
+      return {
+        ...base,
+        opacity: progress,
+        transform: `scale(${0.5 + 0.5 * progress})`,
+      };
+    }
+    // Slide
+    return {
+      ...base,
+      opacity: swipeOffset > 0 ? Math.min(1, swipeOffset / 200) : 0,
+      transform: `translateX(${swipeOffset > 0 ? swipeOffset - window.innerWidth : -window.innerWidth}px)`,
+    };
+  };
+
+  const getNextPreviewStyle = () => {
+    const progress = swipeOffset < 0 ? Math.abs(swipeOffset) / window.innerWidth : 0;
+    const base = {
+      transition: isSwipeTransitioning ? 'all 0.2s ease-out' : 'none',
+      zIndex: swipeOffset < 0 ? 1 : -1
+    };
+
+    if (transitionEffect === 'fade') {
+      return {
+        ...base,
+        opacity: progress,
+        transform: 'none',
+      };
+    }
+    if (transitionEffect === 'zoom') {
+      return {
+        ...base,
+        opacity: progress,
+        transform: `scale(${0.5 + 0.5 * progress})`,
+      };
+    }
+    // Slide
+    return {
+      ...base,
+      opacity: swipeOffset < 0 ? Math.min(1, Math.abs(swipeOffset) / 200) : 0,
+      transform: `translateX(${swipeOffset < 0 ? swipeOffset + window.innerWidth : window.innerWidth}px)`,
+    };
   };
 
   // Apply video settings when state changes
@@ -1742,12 +1853,7 @@ export const DetailedPhotoModal: React.FC = () => {
         {currentIndex > 0 && photos[currentIndex - 1] && (
           <div 
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
-            style={{
-              transform: `translateX(${swipeOffset > 0 ? swipeOffset - window.innerWidth : -window.innerWidth}px)`,
-              opacity: swipeOffset > 0 ? Math.min(1, swipeOffset / 200) : 0,
-              transition: isSwipeTransitioning ? 'transform 0.2s ease-out, opacity 0.2s ease-out' : 'none',
-              zIndex: swipeOffset > 0 ? 1 : -1
-            }}
+            style={getPrevPreviewStyle()}
           >
             <img
               src={libraryService.getPhotoFileUrl(photos[currentIndex - 1].id, photos[currentIndex - 1].ext, photos[currentIndex - 1].name)}
@@ -1762,12 +1868,7 @@ export const DetailedPhotoModal: React.FC = () => {
         {currentIndex < photos.length - 1 && photos[currentIndex + 1] && (
           <div 
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
-            style={{
-              transform: `translateX(${swipeOffset < 0 ? swipeOffset + window.innerWidth : window.innerWidth}px)`,
-              opacity: swipeOffset < 0 ? Math.min(1, Math.abs(swipeOffset) / 200) : 0,
-              transition: isSwipeTransitioning ? 'transform 0.2s ease-out, opacity 0.2s ease-out' : 'none',
-              zIndex: swipeOffset < 0 ? 1 : -1
-            }}
+            style={getNextPreviewStyle()}
           >
             <img
               src={libraryService.getPhotoFileUrl(photos[currentIndex + 1].id, photos[currentIndex + 1].ext, photos[currentIndex + 1].name)}

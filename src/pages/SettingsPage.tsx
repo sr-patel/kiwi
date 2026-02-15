@@ -42,6 +42,8 @@ export const SettingsPage: React.FC = () => {
     setHideControlsWithInfoBox,
     autoplayGifsInGrid,
     setAutoplayGifsInGrid,
+    transitionEffect,
+    setTransitionEffect,
   } = useAppStore();
 
   // Accent helpers
@@ -476,6 +478,32 @@ export const SettingsPage: React.FC = () => {
                   </div>
                 </div>
               </label>
+
+              <div className="p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                <div className="text-gray-800 dark:text-gray-200 font-medium mb-2">
+                  Image Transition Effect
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(['none', 'slide', 'fade', 'zoom'] as const).map((effect) => (
+                    <button
+                      key={effect}
+                      onClick={() => setTransitionEffect(effect)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
+                        transitionEffect === effect
+                          ? 'text-white'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
+                      style={
+                        transitionEffect === effect
+                          ? { backgroundColor: accentHex }
+                          : {}
+                      }
+                    >
+                      {effect}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 
