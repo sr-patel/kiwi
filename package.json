@@ -18,7 +18,7 @@
     "@tanstack/react-query": "^5.81.5",
     "@types/react-window": "^1.8.8",
     "axios": "^1.4.0",
-    "better-sqlite3": "^12.2.0",
+    "better-sqlite3": "^12.6.2",
     "clsx": "^2.0.0",
     "crypto-js": "^4.2.0",
     "framer-motion": "^10.12.16",
