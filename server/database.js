@@ -328,7 +328,25 @@ class PhotoLibraryDatabase {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    query += ` ORDER BY ${orderBy} ${orderDirection}`;
+    // Validate and sanitize sort parameters
+    const validSortColumns = {
+      'name': 'name',
+      'date': 'date_time',
+      'mtime': 'mtime',
+      'size': 'size',
+      'type': 'type',
+      'created_at': 'created_at',
+      'updated_at': 'updated_at',
+      'camera': 'camera'
+    };
+
+    const safeOrderBy = validSortColumns[orderBy] || 'mtime';
+
+    // Validate order direction
+    const validOrderDirections = ['ASC', 'DESC'];
+    const safeOrderDirection = validOrderDirections.includes(orderDirection?.toUpperCase()) ? orderDirection.toUpperCase() : 'DESC';
+
+    query += ` ORDER BY ${safeOrderBy} ${safeOrderDirection}`;
 
     if (limit) {
       query += ' LIMIT ? OFFSET ?';
@@ -528,14 +546,24 @@ class PhotoLibraryDatabase {
     let sql;
     let params = [];
 
-    // Handle random sorting specially and map frontend column names to database column names
-    let orderByColumn = orderBy;
-    if (orderBy === 'date') {
-      orderByColumn = 'date_time';
-    }
-    const orderByClause = orderBy === 'random' ? 'RANDOM()' : `p.${orderByColumn}`;
+    // Validate and sanitize sort parameters
+    const validSortColumns = {
+      'name': 'p.name',
+      'date': 'p.date_time',
+      'mtime': 'p.mtime',
+      'size': 'p.size',
+      'type': 'p.type',
+      'camera': 'p.camera',
+      'random': 'RANDOM()'
+    };
     
-    console.log('🔍 Order by debug:', { orderBy, orderByColumn, orderByClause });
+    const orderByClause = validSortColumns[orderBy] || 'p.mtime';
+
+    // Validate order direction
+    const validOrderDirections = ['ASC', 'DESC'];
+    const safeOrderDirection = validOrderDirections.includes(orderDirection?.toUpperCase()) ? orderDirection.toUpperCase() : 'DESC';
+
+    console.log('🔍 Order by debug:', { orderBy, orderByClause, orderDirection: safeOrderDirection });
     const folderFilterSql = folderId ? ' AND EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.photo_id = p.id AND pf.folder_id = ?)' : '';
     const tagContextSql = tagContext ? ' AND EXISTS (SELECT 1 FROM tags tctx WHERE tctx.photo_id = p.id AND tctx.tag LIKE ?)' : '';
 
@@ -560,7 +588,7 @@ class PhotoLibraryDatabase {
           ${type ? 'AND p.type = ?' : ''}
           ${folderFilterSql}
           ${tagContextSql}
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${safeOrderDirection}
           LIMIT ? OFFSET ?
         `;
         const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
@@ -617,7 +645,7 @@ class PhotoLibraryDatabase {
           ${type ? 'AND p.type = ?' : ''}
           ${folderFilterSql}
           ${tagContextSql}
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${safeOrderDirection}
           LIMIT ? OFFSET ?
         `;
         params = [tagParts[0].toLowerCase()];
@@ -642,7 +670,7 @@ class PhotoLibraryDatabase {
           ${type ? 'AND p.type = ?' : ''}
           ${folderFilterSql}
           ${tagContextSql}
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${safeOrderDirection}
           LIMIT ? OFFSET ?
         `;
         const tagTerms = tagParts.map(tag => tag.toLowerCase());
@@ -669,7 +697,7 @@ class PhotoLibraryDatabase {
         ${type ? 'AND p.type = ?' : ''}
         ${folderFilterSql}
         ${tagContextSql}
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${safeOrderDirection}
         LIMIT ? OFFSET ?
       `;
       const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
@@ -1266,19 +1294,22 @@ class PhotoLibraryDatabase {
         orderByClause = 'mtime';
     }
     
+    const validOrderDirections = ['ASC', 'DESC'];
+    const safeOrderDirection = validOrderDirections.includes(orderDirection?.toUpperCase()) ? orderDirection.toUpperCase() : 'DESC';
+
     if (folderId) {
       query = `
         SELECT p.* FROM photos p
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ?
-        ORDER BY p.${orderByClause} ${orderDirection}
+        ORDER BY p.${orderByClause} ${safeOrderDirection}
         LIMIT ? OFFSET ?
       `;
       params = [folderId, limit, offset];
     } else {
       query = `
         SELECT * FROM photos
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${safeOrderDirection}
         LIMIT ? OFFSET ?
       `;
       params = [limit, offset];
@@ -1372,6 +1403,9 @@ class PhotoLibraryDatabase {
         orderByClause = 'mtime';
     }
     
+    const validOrderDirections = ['ASC', 'DESC'];
+    const safeOrderDirection = validOrderDirections.includes(orderDirection?.toUpperCase()) ? orderDirection.toUpperCase() : 'DESC';
+
     if (folderId) {
       // Handle special sorting cases
       let orderByWithAlias;
@@ -1398,14 +1432,14 @@ class PhotoLibraryDatabase {
         SELECT p.* FROM photos p
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ?
-        ORDER BY ${orderByWithAlias} ${orderDirection}
+        ORDER BY ${orderByWithAlias} ${safeOrderDirection}
         LIMIT ? OFFSET ?
       `;
       params = [folderId, limit, offset];
     } else {
       query = `
         SELECT * FROM photos
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${safeOrderDirection}
         LIMIT ? OFFSET ?
       `;
       params = [limit, offset];
@@ -1451,7 +1485,7 @@ class PhotoLibraryDatabase {
           LEFT JOIN tags t ON p.id = t.photo_id
           WHERE pf.folder_id = ?
           GROUP BY p.id
-          ORDER BY ${orderByWithAlias} ${orderDirection}
+          ORDER BY ${orderByWithAlias} ${safeOrderDirection}
           LIMIT ? OFFSET ?
         `;
         optimizedParams = [folderId, limit, offset];
@@ -1465,7 +1499,7 @@ class PhotoLibraryDatabase {
           LEFT JOIN photo_folders pf ON p.id = pf.photo_id
           LEFT JOIN tags t ON p.id = t.photo_id
           GROUP BY p.id
-          ORDER BY ${orderByClause} ${orderDirection}
+          ORDER BY ${orderByClause} ${safeOrderDirection}
           LIMIT ? OFFSET ?
         `;
         optimizedParams = [limit, offset];
@@ -1811,13 +1845,16 @@ class PhotoLibraryDatabase {
           orderByClause = 'p.mtime';
       }
 
+      const validOrderDirections = ['ASC', 'DESC'];
+      const safeOrderDirection = validOrderDirections.includes(orderDirection?.toUpperCase()) ? orderDirection.toUpperCase() : 'DESC';
+
       // Use JOIN to get photos with tags and apply sorting properly
       const query = `
         SELECT DISTINCT p.* 
         FROM photos p
         INNER JOIN tags t ON p.id = t.photo_id
         WHERE t.tag = ?
-        ORDER BY ${orderByClause} ${orderDirection}
+        ORDER BY ${orderByClause} ${safeOrderDirection}
         LIMIT ? OFFSET ?
       `;
       const photos = this.db.prepare(query).all(tag, limit, offset);
