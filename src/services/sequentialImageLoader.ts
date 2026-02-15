@@ -9,6 +9,8 @@ interface LoadingTask {
 class SequentialImageLoader {
   private loadingQueue: LoadingTask[] = [];
   private currentlyLoading: Set<string> = new Set();
+  private loadedCache: Map<string, string> = new Map();
+  private pendingCallbacks: Map<string, ((url: string) => void)[]> = new Map();
   private maxConcurrent = 2; // Load 2 images at a time
   private isProcessing = false;
   private loadingDelay = 100; // 100ms delay between starting each image load
@@ -21,9 +23,20 @@ class SequentialImageLoader {
    * Add an image to the loading queue
    */
   addToQueue(photoId: string, photoName: string, callback: (url: string) => void, index: number, priority: 'high' | 'normal' | 'low' = 'normal') {
-    // Skip if already loading or in queue
+    // Check cache first
+    if (this.loadedCache.has(photoId)) {
+      const url = this.loadedCache.get(photoId)!;
+      callback(url);
+      return;
+    }
+
+    // Add to pending callbacks if already loading or queued
     if (this.currentlyLoading.has(photoId) || this.loadingQueue.some(task => task.photoId === photoId)) {
-      console.log(`SequentialLoader: Skipping ${photoId} - already loading or queued`);
+      // console.log(`SequentialLoader: ${photoId} already loading/queued, adding to pending callbacks`);
+      if (!this.pendingCallbacks.has(photoId)) {
+        this.pendingCallbacks.set(photoId, []);
+      }
+      this.pendingCallbacks.get(photoId)!.push(callback);
       return;
     }
 
@@ -32,7 +45,7 @@ class SequentialImageLoader {
       photoId,
       photoName,
       priority: priorityMap[priority],
-      callback,
+      callback, // This will be the first callback
       index
     };
 
@@ -104,7 +117,7 @@ class SequentialImageLoader {
             resolved = true;
             this.currentlyLoading.delete(task.photoId);
             const fallbackUrl = libraryService.getPhotoFileUrl(task.photoId, task.photoName.split('.').pop() || '', task.photoName);
-            task.callback(fallbackUrl);
+            this.handleSuccess(task.photoId, fallbackUrl, task.callback);
             resolve(fallbackUrl);
           }
         }, 10000); // 10 second timeout
@@ -115,7 +128,7 @@ class SequentialImageLoader {
             resolved = true;
             clearTimeout(timeout);
             this.currentlyLoading.delete(task.photoId);
-            task.callback(thumbnailUrl);
+            this.handleSuccess(task.photoId, thumbnailUrl, task.callback);
             resolve(thumbnailUrl);
           }
         };
@@ -134,7 +147,7 @@ class SequentialImageLoader {
                 resolved = true;
                 clearTimeout(timeout);
                 this.currentlyLoading.delete(task.photoId);
-                task.callback(fallbackUrl);
+                this.handleSuccess(task.photoId, fallbackUrl, task.callback);
                 resolve(fallbackUrl);
               }
             };
@@ -145,7 +158,7 @@ class SequentialImageLoader {
                 clearTimeout(timeout);
                 this.currentlyLoading.delete(task.photoId);
                 // Still pass the fallback URL in case the browser can handle it
-                task.callback(fallbackUrl);
+                this.handleSuccess(task.photoId, fallbackUrl, task.callback);
                 resolve(fallbackUrl);
               }
             };
@@ -160,6 +173,21 @@ class SequentialImageLoader {
     } catch (error) {
       console.warn(`SequentialLoader: Failed to load image ${task.photoId}:`, error);
       this.currentlyLoading.delete(task.photoId);
+    }
+  }
+
+  private handleSuccess(photoId: string, url: string, initialCallback: (url: string) => void) {
+    // Update cache
+    this.loadedCache.set(photoId, url);
+
+    // Call initial callback
+    initialCallback(url);
+
+    // Call any pending callbacks
+    const pending = this.pendingCallbacks.get(photoId);
+    if (pending) {
+      pending.forEach(cb => cb(url));
+      this.pendingCallbacks.delete(photoId);
     }
   }
 
