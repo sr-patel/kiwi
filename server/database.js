@@ -83,6 +83,55 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Generates an ORDER BY SQL clause based on the provided sort parameters.
+   * This centralizes sorting logic and ensures consistent behavior (like natural sorting for names).
+   */
+  getOrderByClause(orderBy, options = {}) {
+    const { tableAlias = '', randomSeed = null } = options;
+    const prefix = tableAlias ? `${tableAlias}.` : '';
+
+    switch (orderBy) {
+      case 'name':
+        return `CAST(
+          CASE
+            WHEN ${prefix}name GLOB '[0-9]*' THEN
+              CASE
+                WHEN INSTR(${prefix}name, '.') > 0 THEN
+                  SUBSTR(${prefix}name, 1, INSTR(${prefix}name, '.') - 1)
+                ELSE ${prefix}name
+              END
+            ELSE NULL
+          END AS INTEGER
+        ) ASC NULLS LAST, ${prefix}name COLLATE NOCASE`;
+      case 'date':
+        return `${prefix}date_time`;
+      case 'date_created':
+        return `${prefix}created_at`;
+      case 'date_updated':
+        return `${prefix}updated_at`;
+      case 'size':
+        return `${prefix}size`;
+      case 'type':
+        return `${prefix}ext`;
+      case 'dimensions':
+        return `${prefix}width * ${prefix}height`;
+      case 'tags':
+        // Count tags for the photo; assumes 'tags' table exists and links via photo_id
+        return `(SELECT COUNT(*) FROM tags WHERE photo_id = ${prefix}id)`;
+      case 'random':
+        if (randomSeed) {
+          // Use seeded random for consistent results if provided
+          const seed = parseFloat(randomSeed) || 0;
+          return `(RANDOM() * ${seed}) % 1`;
+        }
+        return 'RANDOM()';
+      case 'mtime':
+      default:
+        return `${prefix}mtime`;
+    }
+  }
+
+  /**
    * Create database tables
    */
   async createTables() {
@@ -336,12 +385,9 @@ class PhotoLibraryDatabase {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    // Validate orderBy and orderDirection
-    const allowedColumns = ['id', 'name', 'ext', 'size', 'mtime', 'type', 'width', 'height', 'duration', 'camera', 'date_time', 'created_at', 'updated_at', 'metadata_hash'];
-    const validOrderBy = allowedColumns.includes(orderBy) ? orderBy : 'mtime';
+    const orderByClause = this.getOrderByClause(orderBy);
     const validDirection = this._validateDirection(orderDirection);
-
-    query += ` ORDER BY ${validOrderBy} ${validDirection}`;
+    query += ` ORDER BY ${orderByClause} ${validDirection}`;
 
     if (limit) {
       query += ' LIMIT ? OFFSET ?';
@@ -541,22 +587,11 @@ class PhotoLibraryDatabase {
     let sql;
     let params = [];
 
-    // Handle random sorting specially and map frontend column names to database column names
-    let orderByColumn = orderBy;
-    if (orderBy === 'date') {
-      orderByColumn = 'date_time';
-    }
-
-    // Validate orderByColumn
-    const allowedColumns = ['id', 'name', 'ext', 'size', 'mtime', 'type', 'width', 'height', 'duration', 'camera', 'date_time', 'created_at', 'updated_at'];
-    if (!allowedColumns.includes(orderByColumn) && orderBy !== 'random') {
-       orderByColumn = 'mtime';
-    }
-
-    const orderByClause = orderBy === 'random' ? 'RANDOM()' : `p.${orderByColumn}`;
+    // Handle sorting using the central helper
+    const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
     const validDirection = this._validateDirection(orderDirection);
     
-    console.log('🔍 Order by debug:', { orderBy, orderByColumn, orderByClause, validDirection });
+    console.log('🔍 Order by debug:', { orderBy, orderByClause });
     const folderFilterSql = folderId ? ' AND EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.photo_id = p.id AND pf.folder_id = ?)' : '';
     const tagContextSql = tagContext ? ' AND EXISTS (SELECT 1 FROM tags tctx WHERE tctx.photo_id = p.id AND tctx.tag LIKE ?)' : '';
 
@@ -918,204 +953,6 @@ class PhotoLibraryDatabase {
     if (tagContext) params.push(`%${tagContext}%`);
 
     try {
-      console.log('🔍 Count SQL:', sql);
-      console.log('🔍 Count params:', params);
-      
-      const stmt = this.db.prepare(sql);
-      const result = stmt.get(...params);
-      
-      console.log(`🔍 Search count result:`, result);
-      
-      return result.count;
-    } catch (error) {
-      console.error('❌ Failed to get search count:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get search result total size
-   */
-  async getSearchTotalSize(options = {}) {
-    const { query = '', type = null, folderId = null, tagContext = null } = options;
-
-    if (!query.trim()) {
-      // If no search query, get total size for all photos
-      if (folderId) {
-        const result = this.db.prepare('SELECT SUM(p.size) as totalSize FROM photos p JOIN photo_folders pf ON p.id = pf.photo_id WHERE pf.folder_id = ?').get(folderId);
-        return result ? result.totalSize || 0 : 0;
-      } else {
-        const result = this.db.prepare('SELECT SUM(size) as totalSize FROM photos').get();
-        return result ? result.totalSize || 0 : 0;
-      }
-    }
-
-    // Use the same parsing logic as searchPhotos for consistency
-    const allTags = await this.getAllTags();
-    const tagSet = new Set();
-    if (Array.isArray(allTags)) {
-      for (const tagRow of allTags) {
-        if (tagRow && typeof tagRow.tag === 'string') {
-          tagSet.add(tagRow.tag.toLowerCase());
-        }
-      }
-    }
-
-    // Parse query to separate content and tag searches
-    // Handle explicit tag: prefixes with proper multi-word support
-    const contentParts = [];
-    const tagParts = [];
-    
-    // Split by 'tag:' to find all tag sections
-    const parts = query.split(/(?=tag:)/g);
-    
-    for (const part of parts) {
-      if (part.startsWith('tag:')) {
-        // This is a tag section, extract the tag content
-        const tagContent = part.replace(/^tag:/, '').trim();
-        if (tagContent) {
-          tagParts.push(tagContent);
-        }
-      } else if (part.trim()) {
-        // This is content, process for implicit tag detection
-        const contentWords = part.trim().split(/\s+/).filter(Boolean);
-        
-        for (let i = 0; i < contentWords.length; i++) {
-          const word = contentWords[i];
-          
-          // Check if this word (or combination of words) matches an existing tag
-          let potentialTag = word;
-          let j = i;
-          let foundMultiWordTag = false;
-          
-          // Try to find the longest possible tag match starting from this position
-          while (j < contentWords.length) {
-            const testTag = contentWords.slice(i, j + 1).join(' ');
-            if (typeof testTag === 'string' && tagSet.has(testTag.toLowerCase())) {
-              potentialTag = testTag;
-              foundMultiWordTag = true;
-              // Don't break here - continue to find the longest match
-            }
-            j++;
-          }
-          
-          // If we found a tag match, add it to tagParts
-          if (typeof potentialTag === 'string' && tagSet.has(potentialTag.toLowerCase())) {
-            tagParts.push(potentialTag);
-            // Skip the parts we've consumed for the multi-word tag
-            if (foundMultiWordTag && potentialTag.includes(' ')) {
-              const consumedParts = potentialTag.split(' ').length - 1;
-              i += consumedParts; // Skip the additional parts
-            }
-          } else {
-            // Otherwise, treat as content
-            contentParts.push(word);
-          }
-        }
-      }
-    }
-    
-    const contentQueryFinal = contentParts.join(' ');
-    const tagQuery = tagParts.join(' ');
-
-    // Build SQL based on what we're searching for
-    let sql;
-    let params = [];
-    const folderFilterSql = folderId ? ' AND EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.photo_id = p.id AND pf.folder_id = ?)' : '';
-    const tagContextSql = tagContext ? ' AND EXISTS (SELECT 1 FROM tags tctx WHERE tctx.photo_id = p.id AND tctx.tag LIKE ?)' : '';
-
-    if (contentQueryFinal && tagParts.length > 0) {
-      // Search both content and tags - use parsed tagParts directly
-      if (tagParts.length === 1) {
-        // Single tag with content search
-        sql = `
-          SELECT SUM(p.size) as totalSize
-          FROM photos p
-          WHERE EXISTS (
-            SELECT 1 FROM tags t 
-            WHERE t.photo_id = p.id AND LOWER(t.tag) = ?
-          ) AND (LOWER(p.name) LIKE ? OR LOWER(p.camera) LIKE ?)
-          ${type ? 'AND p.type = ?' : ''}
-          ${folderFilterSql}
-          ${tagContextSql}
-        `;
-        const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
-        params = [tagParts[0].toLowerCase(), contentTerm, contentTerm];
-      } else {
-        // Multiple tags with content search
-        sql = `
-          SELECT SUM(p.size) as totalSize
-          FROM photos p
-          WHERE EXISTS (
-            SELECT 1 FROM tags t 
-            WHERE t.photo_id = p.id AND LOWER(t.tag) = ?
-          )
-          ${tagParts.length > 1 ? tagParts.slice(1).map(() => 'AND EXISTS (SELECT 1 FROM tags t3 WHERE t3.photo_id = p.id AND LOWER(t3.tag) = ?)').join(' ') : ''}
-          AND (LOWER(p.name) LIKE ? OR LOWER(p.camera) LIKE ?)
-          ${type ? 'AND p.type = ?' : ''}
-          ${folderFilterSql}
-          ${tagContextSql}
-        `;
-        const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
-        const tagTerms = tagParts.map(tag => tag.toLowerCase());
-        params = [...tagTerms, contentTerm, contentTerm];
-      }
-    } else if (tagParts.length > 0) {
-      // Search only tags - use parsed tagParts directly
-      if (tagParts.length === 1) {
-        // Single tag - search for exact match
-        sql = `
-          SELECT SUM(p.size) as totalSize
-          FROM photos p
-          WHERE EXISTS (
-            SELECT 1 FROM tags t 
-            WHERE t.photo_id = p.id AND LOWER(t.tag) = ?
-          )
-          ${type ? 'AND p.type = ?' : ''}
-          ${folderFilterSql}
-          ${tagContextSql}
-        `;
-        params = [tagParts[0].toLowerCase()];
-      } else {
-        // Multiple tags - search for all tags
-        sql = `
-          SELECT SUM(p.size) as totalSize
-          FROM photos p
-          WHERE EXISTS (
-            SELECT 1 FROM tags t 
-            WHERE t.photo_id = p.id AND LOWER(t.tag) = ?
-          )
-          ${tagParts.length > 1 ? tagParts.slice(1).map(() => 'AND EXISTS (SELECT 1 FROM tags t3 WHERE t3.photo_id = p.id AND LOWER(t3.tag) = ?)').join(' ') : ''}
-          ${type ? 'AND p.type = ?' : ''}
-          ${folderFilterSql}
-          ${tagContextSql}
-        `;
-        const tagTerms = tagParts.map(tag => tag.toLowerCase());
-        params = [...tagTerms];
-      }
-    } else {
-      // Search only content - optimized
-      sql = `
-        SELECT SUM(p.size) as totalSize
-        FROM photos p
-        WHERE (
-          LOWER(p.name) LIKE ? OR 
-          LOWER(p.camera) LIKE ? OR 
-          EXISTS (SELECT 1 FROM tags t WHERE t.photo_id = p.id AND LOWER(t.tag) LIKE ?)
-        )
-        ${type ? 'AND p.type = ?' : ''}
-        ${folderFilterSql}
-        ${tagContextSql}
-      `;
-      const contentTerm = `%${contentQueryFinal.toLowerCase()}%`;
-      params = [contentTerm, contentTerm, contentTerm];
-    }
-
-    if (type) params.push(type);
-    if (folderId) params.push(folderId);
-    if (tagContext) params.push(`%${tagContext}%`);
-
-    try {
       const stmt = this.db.prepare(sql);
       const result = stmt.get(...params);
       return result ? result.totalSize || 0 : 0;
@@ -1250,43 +1087,8 @@ class PhotoLibraryDatabase {
     let query, params;
     
     // Build the ORDER BY clause based on sort parameters
-    let orderByClause;
-    switch (orderBy) {
-      case 'name':
-        orderByClause = `CAST(
-          CASE 
-            WHEN name GLOB '[0-9]*' THEN 
-              CASE 
-                WHEN INSTR(name, '.') > 0 THEN 
-                  SUBSTR(name, 1, INSTR(name, '.') - 1)
-                ELSE name
-              END
-            ELSE NULL
-          END AS INTEGER
-        ) ASC NULLS LAST, name COLLATE NOCASE`;
-        break;
-      case 'date_created':
-        orderByClause = 'created_at';
-        break;
-      case 'date_updated':
-        orderByClause = 'updated_at';
-        break;
-      case 'size':
-        orderByClause = 'size';
-        break;
-      case 'type':
-        orderByClause = 'ext';
-        break;
-      case 'dimensions':
-        orderByClause = '(width * height)';
-        break;
-      case 'random':
-        orderByClause = 'RANDOM()';
-        break;
-      default:
-        orderByClause = 'mtime';
-    }
-    
+    // Fix: Pass tableAlias: 'p' and use returned clause directly
+    const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
     const validDirection = this._validateDirection(orderDirection);
 
     if (folderId) {
@@ -1294,13 +1096,13 @@ class PhotoLibraryDatabase {
         SELECT p.* FROM photos p
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ?
-        ORDER BY p.${orderByClause} ${validDirection}
+        ORDER BY ${orderByClause} ${validDirection}
         LIMIT ? OFFSET ?
       `;
       params = [folderId, limit, offset];
     } else {
       query = `
-        SELECT * FROM photos
+        SELECT * FROM photos p
         ORDER BY ${orderByClause} ${validDirection}
         LIMIT ? OFFSET ?
       `;
@@ -1358,67 +1160,16 @@ class PhotoLibraryDatabase {
     let query, params;
     
     // Build the ORDER BY clause based on sort parameters
-    let orderByClause;
-    switch (orderBy) {
-      case 'name':
-        orderByClause = `CAST(
-          CASE 
-            WHEN name GLOB '[0-9]*' THEN 
-              CASE 
-                WHEN INSTR(name, '.') > 0 THEN 
-                  SUBSTR(name, 1, INSTR(name, '.') - 1)
-                ELSE name
-              END
-            ELSE NULL
-          END AS INTEGER
-        ) ASC NULLS LAST, name COLLATE NOCASE`;
-        break;
-      case 'date_created':
-        orderByClause = 'created_at';
-        break;
-      case 'date_updated':
-        orderByClause = 'updated_at';
-        break;
-      case 'size':
-        orderByClause = 'size';
-        break;
-      case 'type':
-        orderByClause = 'ext';
-        break;
-      case 'dimensions':
-        orderByClause = '(width * height)';
-        break;
-      case 'random':
-        orderByClause = 'RANDOM()';
-        break;
-      default:
-        orderByClause = 'mtime';
-    }
+    // For fast queries without folders, default table alias might be empty or 'p' depending on implementation
+    // But here we use optimizedQuery which defines alias 'p'
+    const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
     
+    const validDirection = this._validateDirection(orderDirection);
+
     if (folderId) {
       // Handle special sorting cases
-      let orderByWithAlias;
-      if (orderBy === 'random') {
-        orderByWithAlias = 'RANDOM()';
-      } else if (orderBy === 'name') {
-        // Name sorting uses complex natural sort expression
-        orderByWithAlias = `CAST(
-          CASE 
-            WHEN p.name GLOB '[0-9]*' THEN 
-              CASE 
-                WHEN INSTR(p.name, '.') > 0 THEN 
-                  SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                ELSE p.name
-              END
-            ELSE NULL
-          END AS INTEGER
-        ) ASC NULLS LAST, p.name COLLATE NOCASE`;
-      } else {
-        orderByWithAlias = `p.${orderByClause}`;
-      }
+      const orderByWithAlias = this.getOrderByClause(orderBy, { tableAlias: 'p' });
       
-      const validDirection = this._validateDirection(orderDirection);
-
       query = `
         SELECT p.* FROM photos p
         JOIN photo_folders pf ON p.id = pf.photo_id
@@ -1428,10 +1179,8 @@ class PhotoLibraryDatabase {
       `;
       params = [folderId, limit, offset];
     } else {
-      const validDirection = this._validateDirection(orderDirection);
-
       query = `
-        SELECT * FROM photos
+        SELECT * FROM photos p
         ORDER BY ${orderByClause} ${validDirection}
         LIMIT ? OFFSET ?
       `;
@@ -1445,29 +1194,7 @@ class PhotoLibraryDatabase {
       
       if (folderId) {
         // Handle special sorting cases for folder queries
-        let orderByWithAlias;
-        if (orderBy === 'random') {
-          if (randomSeed) {
-            // Use seeded random for consistent results
-            orderByWithAlias = `(RANDOM() * ${randomSeed}) % 1`;
-          } else {
-            orderByWithAlias = 'RANDOM()';
-          }
-        } else if (orderBy === 'name') {
-          orderByWithAlias = `CAST(
-            CASE 
-              WHEN p.name GLOB '[0-9]*' THEN 
-                CASE 
-                  WHEN INSTR(p.name, '.') > 0 THEN 
-                    SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                  ELSE p.name
-                END
-              ELSE NULL
-            END AS INTEGER
-          ) ASC NULLS LAST, p.name COLLATE NOCASE`;
-        } else {
-          orderByWithAlias = `p.${orderByClause}`;
-        }
+        const orderByWithAlias = this.getOrderByClause(orderBy, { tableAlias: 'p', randomSeed });
         
         optimizedQuery = `
           SELECT 
@@ -1799,49 +1526,10 @@ class PhotoLibraryDatabase {
   async getPhotosByTagPaginated({ tag, limit = 50, offset = 0, orderBy = 'mtime', orderDirection = 'DESC' }) {
     try {
       // Handle special sort fields
-      let orderByClause;
-      switch (orderBy) {
-        case 'name':
-          orderByClause = `CAST(
-            CASE 
-              WHEN p.name GLOB '[0-9]*' THEN 
-                CASE 
-                  WHEN INSTR(p.name, '.') > 0 THEN 
-                    SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                  ELSE p.name
-                END
-              ELSE NULL
-            END AS INTEGER
-          ) ASC NULLS LAST, p.name COLLATE NOCASE`;
-          break;
-        case 'date_created':
-          orderByClause = 'p.created_at';
-          break;
-        case 'date_updated':
-          orderByClause = 'p.updated_at';
-          break;
-        case 'size':
-          orderByClause = 'p.size';
-          break;
-        case 'type':
-          orderByClause = 'p.ext';
-          break;
-        case 'dimensions':
-          orderByClause = 'p.width * p.height';
-          break;
-        case 'tags':
-          orderByClause = '(SELECT COUNT(*) FROM tags WHERE photo_id = p.id)';
-          break;
-        case 'random':
-          orderByClause = 'RANDOM()';
-          break;
-        default:
-          orderByClause = 'p.mtime';
-      }
-
-      // Use JOIN to get photos with tags and apply sorting properly
+      const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
       const validDirection = this._validateDirection(orderDirection);
 
+      // Use JOIN to get photos with tags and apply sorting properly
       const query = `
         SELECT DISTINCT p.* 
         FROM photos p
@@ -1964,19 +1652,7 @@ class PhotoLibraryDatabase {
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ? 
           AND LOWER(p.ext) IN ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff', 'tif', 'avif')
-        ORDER BY 
-          CAST(
-            CASE 
-              WHEN p.name GLOB '[0-9]*' THEN 
-                CASE 
-                  WHEN INSTR(p.name, '.') > 0 THEN 
-                    SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                  ELSE p.name
-                END
-              ELSE NULL
-            END AS INTEGER
-          ) ASC NULLS LAST,
-          p.name COLLATE NOCASE ASC
+        ORDER BY ${this.getOrderByClause('name', { tableAlias: 'p' })} ASC
         LIMIT 1
       `);
       
@@ -2020,4 +1696,4 @@ class PhotoLibraryDatabase {
   }
 }
 
-module.exports = PhotoLibraryDatabase; 
+module.exports = PhotoLibraryDatabase;

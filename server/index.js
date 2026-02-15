@@ -349,7 +349,14 @@ app.post('/api/config/validate', (req, res) => {
 app.get('/api/test/files/:photoId', requireLibrary, async (req, res) => {
   try {
     const { photoId } = req.params;
-    const photoDir = path.join(LIBRARY_PATH, `images/${photoId}.info`);
+
+    // Validate photo ID to prevent path traversal
+    if (!validatePhotoId(photoId)) {
+      return res.status(400).json({ error: 'Invalid photo ID' });
+    }
+
+    const safePhotoId = path.basename(photoId);
+    const photoDir = path.join(LIBRARY_PATH, 'images', `${safePhotoId}.info`);
     
     // Check if directory exists
     const dirExists = await fs.access(photoDir).then(() => true).catch(() => false);
@@ -378,13 +385,27 @@ app.get('/api/test/files/:photoId', requireLibrary, async (req, res) => {
   }
 });
 
-// Input validation helper
-function validatePhotoId(photoId) {
-  if (!photoId || typeof photoId !== 'string') {
+/**
+ * Validate path components to prevent path traversal.
+ * @param {string} component
+ * @returns {boolean}
+ */
+function validatePathComponent(component) {
+  if (!component || typeof component !== 'string') {
     return false;
   }
-  // Allow alphanumeric characters and common separators
-  return /^[a-zA-Z0-9._-]+$/.test(photoId);
+  // Allow alphanumeric characters and common separators, prevent path traversal
+  // This blocks slashes, backslashes, and ".."
+  return /^[a-zA-Z0-9._-]+$/.test(component) && !component.includes('..');
+}
+
+// Input validation helper
+function validatePhotoId(photoId) {
+  return validatePathComponent(photoId);
+}
+
+function validateFileNameComponent(component) {
+  return validatePathComponent(component);
 }
 
 function validateFolderId(folderId) {
@@ -658,7 +679,8 @@ app.get('/api/photos/:id', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
-    const photoDir = path.join(LIBRARY_PATH, `images/${id}.info`);
+    const safeId = path.basename(id);
+    const photoDir = path.join(LIBRARY_PATH, 'images', `${safeId}.info`);
     const metadataPath = path.join(photoDir, 'metadata.json');
     
     try {
@@ -710,7 +732,8 @@ app.get('/api/photos/:id/metadata', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
-    const photoDir = path.join(LIBRARY_PATH, `images/${id}.info`);
+    const safeId = path.basename(id);
+    const photoDir = path.join(LIBRARY_PATH, 'images', `${safeId}.info`);
     const metadataPath = path.join(photoDir, 'metadata.json');
     
     try {
@@ -770,6 +793,7 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
+
     const { ext, name } = req.query;
     
     console.log('File request debug:', { id, ext, name });
@@ -778,8 +802,16 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
       console.log('Missing parameters:', { ext, name });
       return res.status(400).json({ error: 'Missing ext or name parameter' });
     }
+
+    // Validate parameters to prevent path traversal
+    if (!validateFileNameComponent(name) || !validateFileNameComponent(ext)) {
+      return res.status(400).json({ error: 'Invalid file name or extension' });
+    }
     
-    const filePath = path.join(LIBRARY_PATH, `images/${id}.info/${name}.${ext}`);
+    const safeId = path.basename(id);
+    const safeName = path.basename(name);
+    const safeExt = path.basename(ext);
+    const filePath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}.${safeExt}`);
     console.log('Constructed file path:', filePath);
     
     // Check if file exists
@@ -850,13 +882,21 @@ app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
+
     const { name } = req.query;
     
     if (!name) {
       return res.status(400).json({ error: 'Missing name parameter' });
     }
+
+    // Validate parameters to prevent path traversal
+    if (!validateFileNameComponent(name)) {
+      return res.status(400).json({ error: 'Invalid thumbnail name' });
+    }
     
-    const thumbnailPath = path.join(LIBRARY_PATH, `images/${id}.info/${name}_thumbnail.png`);
+    const safeId = path.basename(id);
+    const safeName = path.basename(name);
+    const thumbnailPath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}_thumbnail.png`);
     
     // Check if thumbnail exists
     try {
