@@ -897,15 +897,13 @@ app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
     }
     
     // Security: Sanitize input to prevent path traversal
+    const safeId = path.basename(id);
     const safeName = path.basename(name);
 
     if (!safeName) {
       return res.status(400).json({ error: 'Invalid name' });
     }
 
-    const thumbnailPath = path.join(LIBRARY_PATH, `images/${id}.info/${safeName}_thumbnail.png`);
-    const safeId = path.basename(id);
-    const safeName = path.basename(name);
     const thumbnailPath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}_thumbnail.png`);
     
     // Check if thumbnail exists
