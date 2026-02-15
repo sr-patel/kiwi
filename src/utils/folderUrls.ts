@@ -1,4 +1,4 @@
-import { FolderNode } from '@/types';
+import type { FolderNode } from '@/types';
 
 /**
  * Generate a URL path for a folder based on its path in the folder tree
