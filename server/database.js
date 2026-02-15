@@ -75,6 +75,55 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Generates an ORDER BY SQL clause based on the provided sort parameters.
+   * This centralizes sorting logic and ensures consistent behavior (like natural sorting for names).
+   */
+  getOrderByClause(orderBy, options = {}) {
+    const { tableAlias = '', randomSeed = null } = options;
+    const prefix = tableAlias ? `${tableAlias}.` : '';
+
+    switch (orderBy) {
+      case 'name':
+        return `CAST(
+          CASE
+            WHEN ${prefix}name GLOB '[0-9]*' THEN
+              CASE
+                WHEN INSTR(${prefix}name, '.') > 0 THEN
+                  SUBSTR(${prefix}name, 1, INSTR(${prefix}name, '.') - 1)
+                ELSE ${prefix}name
+              END
+            ELSE NULL
+          END AS INTEGER
+        ) ASC NULLS LAST, ${prefix}name COLLATE NOCASE`;
+      case 'date':
+        return `${prefix}date_time`;
+      case 'date_created':
+        return `${prefix}created_at`;
+      case 'date_updated':
+        return `${prefix}updated_at`;
+      case 'size':
+        return `${prefix}size`;
+      case 'type':
+        return `${prefix}ext`;
+      case 'dimensions':
+        return `${prefix}width * ${prefix}height`;
+      case 'tags':
+        // Count tags for the photo; assumes 'tags' table exists and links via photo_id
+        return `(SELECT COUNT(*) FROM tags WHERE photo_id = ${prefix}id)`;
+      case 'random':
+        if (randomSeed) {
+          // Use seeded random for consistent results if provided
+          const seed = parseFloat(randomSeed) || 0;
+          return `(RANDOM() * ${seed}) % 1`;
+        }
+        return 'RANDOM()';
+      case 'mtime':
+      default:
+        return `${prefix}mtime`;
+    }
+  }
+
+  /**
    * Create database tables
    */
   async createTables() {
@@ -328,7 +377,8 @@ class PhotoLibraryDatabase {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    query += ` ORDER BY ${orderBy} ${orderDirection}`;
+    const orderByClause = this.getOrderByClause(orderBy);
+    query += ` ORDER BY ${orderByClause} ${orderDirection}`;
 
     if (limit) {
       query += ' LIMIT ? OFFSET ?';
@@ -528,14 +578,10 @@ class PhotoLibraryDatabase {
     let sql;
     let params = [];
 
-    // Handle random sorting specially and map frontend column names to database column names
-    let orderByColumn = orderBy;
-    if (orderBy === 'date') {
-      orderByColumn = 'date_time';
-    }
-    const orderByClause = orderBy === 'random' ? 'RANDOM()' : `p.${orderByColumn}`;
+    // Handle sorting using the central helper
+    const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
     
-    console.log('🔍 Order by debug:', { orderBy, orderByColumn, orderByClause });
+    console.log('🔍 Order by debug:', { orderBy, orderByClause });
     const folderFilterSql = folderId ? ' AND EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.photo_id = p.id AND pf.folder_id = ?)' : '';
     const tagContextSql = tagContext ? ' AND EXISTS (SELECT 1 FROM tags tctx WHERE tctx.photo_id = p.id AND tctx.tag LIKE ?)' : '';
 
@@ -1229,42 +1275,7 @@ class PhotoLibraryDatabase {
     let query, params;
     
     // Build the ORDER BY clause based on sort parameters
-    let orderByClause;
-    switch (orderBy) {
-      case 'name':
-        orderByClause = `CAST(
-          CASE 
-            WHEN name GLOB '[0-9]*' THEN 
-              CASE 
-                WHEN INSTR(name, '.') > 0 THEN 
-                  SUBSTR(name, 1, INSTR(name, '.') - 1)
-                ELSE name
-              END
-            ELSE NULL
-          END AS INTEGER
-        ) ASC NULLS LAST, name COLLATE NOCASE`;
-        break;
-      case 'date_created':
-        orderByClause = 'created_at';
-        break;
-      case 'date_updated':
-        orderByClause = 'updated_at';
-        break;
-      case 'size':
-        orderByClause = 'size';
-        break;
-      case 'type':
-        orderByClause = 'ext';
-        break;
-      case 'dimensions':
-        orderByClause = '(width * height)';
-        break;
-      case 'random':
-        orderByClause = 'RANDOM()';
-        break;
-      default:
-        orderByClause = 'mtime';
-    }
+    const orderByClause = this.getOrderByClause(orderBy);
     
     if (folderId) {
       query = `
@@ -1335,64 +1346,11 @@ class PhotoLibraryDatabase {
     let query, params;
     
     // Build the ORDER BY clause based on sort parameters
-    let orderByClause;
-    switch (orderBy) {
-      case 'name':
-        orderByClause = `CAST(
-          CASE 
-            WHEN name GLOB '[0-9]*' THEN 
-              CASE 
-                WHEN INSTR(name, '.') > 0 THEN 
-                  SUBSTR(name, 1, INSTR(name, '.') - 1)
-                ELSE name
-              END
-            ELSE NULL
-          END AS INTEGER
-        ) ASC NULLS LAST, name COLLATE NOCASE`;
-        break;
-      case 'date_created':
-        orderByClause = 'created_at';
-        break;
-      case 'date_updated':
-        orderByClause = 'updated_at';
-        break;
-      case 'size':
-        orderByClause = 'size';
-        break;
-      case 'type':
-        orderByClause = 'ext';
-        break;
-      case 'dimensions':
-        orderByClause = '(width * height)';
-        break;
-      case 'random':
-        orderByClause = 'RANDOM()';
-        break;
-      default:
-        orderByClause = 'mtime';
-    }
+    const orderByClause = this.getOrderByClause(orderBy);
     
     if (folderId) {
       // Handle special sorting cases
-      let orderByWithAlias;
-      if (orderBy === 'random') {
-        orderByWithAlias = 'RANDOM()';
-      } else if (orderBy === 'name') {
-        // Name sorting uses complex natural sort expression
-        orderByWithAlias = `CAST(
-          CASE 
-            WHEN p.name GLOB '[0-9]*' THEN 
-              CASE 
-                WHEN INSTR(p.name, '.') > 0 THEN 
-                  SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                ELSE p.name
-              END
-            ELSE NULL
-          END AS INTEGER
-        ) ASC NULLS LAST, p.name COLLATE NOCASE`;
-      } else {
-        orderByWithAlias = `p.${orderByClause}`;
-      }
+      const orderByWithAlias = this.getOrderByClause(orderBy, { tableAlias: 'p' });
       
       query = `
         SELECT p.* FROM photos p
@@ -1417,29 +1375,7 @@ class PhotoLibraryDatabase {
       
       if (folderId) {
         // Handle special sorting cases for folder queries
-        let orderByWithAlias;
-        if (orderBy === 'random') {
-          if (randomSeed) {
-            // Use seeded random for consistent results
-            orderByWithAlias = `(RANDOM() * ${randomSeed}) % 1`;
-          } else {
-            orderByWithAlias = 'RANDOM()';
-          }
-        } else if (orderBy === 'name') {
-          orderByWithAlias = `CAST(
-            CASE 
-              WHEN p.name GLOB '[0-9]*' THEN 
-                CASE 
-                  WHEN INSTR(p.name, '.') > 0 THEN 
-                    SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                  ELSE p.name
-                END
-              ELSE NULL
-            END AS INTEGER
-          ) ASC NULLS LAST, p.name COLLATE NOCASE`;
-        } else {
-          orderByWithAlias = `p.${orderByClause}`;
-        }
+        const orderByWithAlias = this.getOrderByClause(orderBy, { tableAlias: 'p', randomSeed });
         
         optimizedQuery = `
           SELECT 
@@ -1771,45 +1707,7 @@ class PhotoLibraryDatabase {
   async getPhotosByTagPaginated({ tag, limit = 50, offset = 0, orderBy = 'mtime', orderDirection = 'DESC' }) {
     try {
       // Handle special sort fields
-      let orderByClause;
-      switch (orderBy) {
-        case 'name':
-          orderByClause = `CAST(
-            CASE 
-              WHEN p.name GLOB '[0-9]*' THEN 
-                CASE 
-                  WHEN INSTR(p.name, '.') > 0 THEN 
-                    SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                  ELSE p.name
-                END
-              ELSE NULL
-            END AS INTEGER
-          ) ASC NULLS LAST, p.name COLLATE NOCASE`;
-          break;
-        case 'date_created':
-          orderByClause = 'p.created_at';
-          break;
-        case 'date_updated':
-          orderByClause = 'p.updated_at';
-          break;
-        case 'size':
-          orderByClause = 'p.size';
-          break;
-        case 'type':
-          orderByClause = 'p.ext';
-          break;
-        case 'dimensions':
-          orderByClause = 'p.width * p.height';
-          break;
-        case 'tags':
-          orderByClause = '(SELECT COUNT(*) FROM tags WHERE photo_id = p.id)';
-          break;
-        case 'random':
-          orderByClause = 'RANDOM()';
-          break;
-        default:
-          orderByClause = 'p.mtime';
-      }
+      const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
 
       // Use JOIN to get photos with tags and apply sorting properly
       const query = `
@@ -1934,19 +1832,7 @@ class PhotoLibraryDatabase {
         JOIN photo_folders pf ON p.id = pf.photo_id
         WHERE pf.folder_id = ? 
           AND LOWER(p.ext) IN ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff', 'tif', 'avif')
-        ORDER BY 
-          CAST(
-            CASE 
-              WHEN p.name GLOB '[0-9]*' THEN 
-                CASE 
-                  WHEN INSTR(p.name, '.') > 0 THEN 
-                    SUBSTR(p.name, 1, INSTR(p.name, '.') - 1)
-                  ELSE p.name
-                END
-              ELSE NULL
-            END AS INTEGER
-          ) ASC NULLS LAST,
-          p.name COLLATE NOCASE ASC
+        ORDER BY ${this.getOrderByClause('name', { tableAlias: 'p' })} ASC
         LIMIT 1
       `);
       
