@@ -1090,22 +1090,12 @@ app.get('/api/tags', requireLibrary, async (req, res) => {
   }
 });
 
-// Get photo counts for all tags (single query instead of N+1)
+// Get photo counts for all tags (optimized single query)
 app.get('/api/tags/counts', requireLibrary, async (req, res) => {
   try {
     const database = getDb();
-    // Try batch method first; fall back to N+1 if not available
-    if (typeof database.getTagCounts === 'function') {
-      const tagCounts = await database.getTagCounts();
-      res.json(tagCounts);
-    } else {
-      const rows = await database.getAllTags();
-      const tagCounts = {};
-      for (const row of rows) {
-        tagCounts[row.tag] = await database.getPhotoCountForTag(row.tag);
-      }
-      res.json(tagCounts);
-    }
+    const tagCounts = await database.getTagCounts();
+    res.json(tagCounts);
   } catch (error) {
     console.error('❌ Error getting tag counts:', error);
     res.status(500).json({ error: 'Failed to get tag counts' });
