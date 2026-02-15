@@ -16,7 +16,7 @@ import { parseTagFromUrl } from '@/utils/tagUrls';
 import { MiniAudioPlayer } from '@/components/AudioPlayer/MiniAudioPlayer';
 import { AudioProvider } from '@/components/AudioPlayer/AudioProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary/ErrorBoundary';
-import { ApiErrorBoundary } from '@/components/ErrorBoundary/ApiErrorBoundary';
+import { RouteWrapper } from '@/components/Layout/RouteWrapper';
 import { SplashScreen } from '@/components/SplashScreen/SplashScreen';
 import { SetupWizard } from '@/components/SetupWizard/SetupWizard';
 import './App.css';
@@ -32,9 +32,9 @@ const RootRoute: React.FC<{ isMobile: boolean }> = ({ isMobile }) => {
   }, [setCurrentFolder, setCurrentTag]);
 
   return (
-    <ApiErrorBoundary>
+    <RouteWrapper>
       <PhotoGrid isMobile={isMobile} />
-    </ApiErrorBoundary>
+    </RouteWrapper>
   );
 };
 
@@ -59,9 +59,9 @@ const TagRoute: React.FC<{ isMobile: boolean }> = ({ isMobile }) => {
   }, [tagPath, setCurrentTag, setCurrentFolder, navigate]);
 
   return (
-    <ApiErrorBoundary>
+    <RouteWrapper>
       <PhotoGrid isMobile={isMobile} />
-    </ApiErrorBoundary>
+    </RouteWrapper>
   );
 };
 
@@ -86,9 +86,9 @@ const FolderRoute: React.FC<{ isMobile: boolean }> = ({ isMobile }) => {
   }, [folderPath, folderTree, setCurrentFolder, setCurrentTag, navigate]);
 
   return (
-    <ApiErrorBoundary>
+    <RouteWrapper>
       <PhotoGrid isMobile={isMobile} />
-    </ApiErrorBoundary>
+    </RouteWrapper>
   );
 };
 
@@ -352,10 +352,10 @@ function App() {
               >
                 <Routes>
                   <Route path="/" element={<RootRoute isMobile={isMobile} />} />
-                  <Route path="/admin" element={<AdminDatabaseStatus />} />
+                  <Route path="/admin" element={<RouteWrapper><AdminDatabaseStatus /></RouteWrapper>} />
                   <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
                   <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/settings" element={<RouteWrapper><SettingsPage /></RouteWrapper>} />
                   <Route path="*" element={<RootRoute isMobile={isMobile} />} />
                 </Routes>
               </main>
