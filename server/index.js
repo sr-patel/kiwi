@@ -779,7 +779,15 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
       return res.status(400).json({ error: 'Missing ext or name parameter' });
     }
     
-    const filePath = path.join(LIBRARY_PATH, `images/${id}.info/${name}.${ext}`);
+    // Security: Sanitize input to prevent path traversal
+    const safeName = path.basename(name);
+    const safeExt = path.basename(ext);
+
+    if (!safeName || !safeExt) {
+      return res.status(400).json({ error: 'Invalid name or extension' });
+    }
+
+    const filePath = path.join(LIBRARY_PATH, `images/${id}.info/${safeName}.${safeExt}`);
     console.log('Constructed file path:', filePath);
     
     // Check if file exists
@@ -856,7 +864,14 @@ app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
       return res.status(400).json({ error: 'Missing name parameter' });
     }
     
-    const thumbnailPath = path.join(LIBRARY_PATH, `images/${id}.info/${name}_thumbnail.png`);
+    // Security: Sanitize input to prevent path traversal
+    const safeName = path.basename(name);
+
+    if (!safeName) {
+      return res.status(400).json({ error: 'Invalid name' });
+    }
+
+    const thumbnailPath = path.join(LIBRARY_PATH, `images/${id}.info/${safeName}_thumbnail.png`);
     
     // Check if thumbnail exists
     try {
