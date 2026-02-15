@@ -823,6 +823,15 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
       return res.status(400).json({ error: 'Invalid file name or extension' });
     }
     
+    // Security: Sanitize input to prevent path traversal
+    const safeName = path.basename(name);
+    const safeExt = path.basename(ext);
+
+    if (!safeName || !safeExt) {
+      return res.status(400).json({ error: 'Invalid name or extension' });
+    }
+
+    const filePath = path.join(LIBRARY_PATH, `images/${id}.info/${safeName}.${safeExt}`);
     const safeId = path.basename(id);
     const safeName = path.basename(name);
     const safeExt = path.basename(ext);
@@ -909,6 +918,14 @@ app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
       return res.status(400).json({ error: 'Invalid thumbnail name' });
     }
     
+    // Security: Sanitize input to prevent path traversal
+    const safeName = path.basename(name);
+
+    if (!safeName) {
+      return res.status(400).json({ error: 'Invalid name' });
+    }
+
+    const thumbnailPath = path.join(LIBRARY_PATH, `images/${id}.info/${safeName}_thumbnail.png`);
     const safeId = path.basename(id);
     const safeName = path.basename(name);
     const thumbnailPath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}_thumbnail.png`);
