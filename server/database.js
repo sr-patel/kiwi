@@ -1689,6 +1689,51 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Get recursive photo counts for all folders in the tree
+   * Optimized to avoid N+1 queries
+   */
+  async getRecursiveFolderCounts(folderTree) {
+    try {
+      // 1. Get all direct counts in one query
+      const directCountsMap = await this.getPhotoCountsByFolder();
+
+      // If no tree provided, we can only return direct counts
+      if (!folderTree) {
+        return directCountsMap;
+      }
+
+      // 2. Calculate recursive counts in memory
+      const recursiveCounts = {};
+
+      // Helper to traverse and sum counts
+      // Returns the total count for the current node (including children)
+      const calculateRecursive = (nodes) => {
+        let siblingsTotal = 0;
+
+        for (const node of nodes) {
+          let nodeTotal = directCountsMap[node.id] || 0;
+
+          if (node.children && node.children.length > 0) {
+            nodeTotal += calculateRecursive(node.children);
+          }
+
+          recursiveCounts[node.id] = nodeTotal;
+          siblingsTotal += nodeTotal;
+        }
+
+        return siblingsTotal;
+      };
+
+      calculateRecursive(folderTree);
+
+      return recursiveCounts;
+    } catch (error) {
+      console.error('❌ Failed to get recursive folder counts:', error.message);
+      return {};
+    }
+  }
+
+  /**
    * Get all unique folder IDs from the database
    */
   async getAllFolderIds() {

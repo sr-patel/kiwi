@@ -546,28 +546,9 @@ app.get('/api/folders/counts/recursive', requireLibrary, async (req, res) => {
       console.warn('⚠️  Could not read folder tree from metadata.json:', error.message);
     }
     
-    // Get all folder IDs from the folder tree (not just from database)
-    const getAllFolderIdsFromTree = (folders) => {
-      const folderIds = [];
-      const traverse = (folderList) => {
-        for (const folder of folderList) {
-          folderIds.push(folder.id);
-          if (folder.children && folder.children.length > 0) {
-            traverse(folder.children);
-          }
-        }
-      };
-      traverse(folders);
-      return folderIds;
-    };
-    
     const database = getDb();
-    const allFolderIds = folderTree ? getAllFolderIdsFromTree(folderTree) : await database.getAllFolderIds();
-    const counts = {};
-    
-    for (const folderId of allFolderIds) {
-      counts[folderId] = await database.getRecursivePhotoCountForFolder(folderId, folderTree);
-    }
+    // Use optimized recursive counting that avoids N+1 queries
+    const counts = await database.getRecursiveFolderCounts(folderTree);
     
     res.json(counts);
   } catch (error) {
