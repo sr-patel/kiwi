@@ -805,6 +805,7 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
     }
     
     // Security: Sanitize input to prevent path traversal
+    const safeId = path.basename(id);
     const safeName = path.basename(name);
     const safeExt = path.basename(ext);
 
@@ -812,10 +813,6 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
       return res.status(400).json({ error: 'Invalid name or extension' });
     }
 
-    const filePath = path.join(LIBRARY_PATH, `images/${id}.info/${safeName}.${safeExt}`);
-    const safeId = path.basename(id);
-    const safeName = path.basename(name);
-    const safeExt = path.basename(ext);
     const filePath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}.${safeExt}`);
     console.log('Constructed file path:', filePath);
     
