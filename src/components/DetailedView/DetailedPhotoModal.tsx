@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
-import { X, ArrowLeft, ArrowRight, Camera, MapPin, Calendar, FileText, Tag, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Play, Pause, BookOpen, Download, Folder, Volume2, VolumeX, Repeat, Rewind, FastForward, Eye, EyeOff } from 'lucide-react';
+import { X, ArrowLeft, ArrowRight, Camera, MapPin, Calendar, FileText, Tag, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Play, Pause, BookOpen, Download, Folder, Volume2, VolumeX, Repeat, Rewind, FastForward, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useInfinitePhotos } from '@/hooks/useInfinitePhotos';
 import { usePhotosByTag } from '@/hooks/usePhotosByTag';
 import { useFastSearch } from '@/hooks/useFastSearch';
@@ -46,6 +46,7 @@ export const DetailedPhotoModal: React.FC = () => {
   const [videoProgress, setVideoProgress] = React.useState<number>(0);
   const [videoDuration, setVideoDuration] = React.useState<number>(0);
   const [isSeeking, setIsSeeking] = React.useState<boolean>(false);
+  const [pendingNavigation, setPendingNavigation] = React.useState<{ direction: 'next'; anchorId: string } | null>(null);
   
   // Touch/swipe support for mobile navigation with animations
   const [touchStart, setTouchStart] = React.useState<{ x: number; y: number } | null>(null);
@@ -128,6 +129,50 @@ export const DetailedPhotoModal: React.FC = () => {
 
   // Use the appropriate query based on current selection
   const photosQuery = currentTag ? tagPhotosQuery : folderPhotosQuery;
+
+  const hasNextPageAvailable = React.useMemo(() => {
+    if (searchQuery.trim().length > 0) return false;
+    if (currentTag) return Boolean(tagPhotosQuery.hasNextPage);
+    return Boolean(folderPhotosQuery.hasNextPage);
+  }, [
+    searchQuery,
+    currentTag,
+    tagPhotosQuery.hasNextPage,
+    folderPhotosQuery.hasNextPage
+  ]);
+
+  const isFetchingNextPage = React.useMemo(() => {
+    if (searchQuery.trim().length > 0) return false;
+    if (currentTag) return Boolean(tagPhotosQuery.isFetchingNextPage);
+    return Boolean(folderPhotosQuery.isFetchingNextPage);
+  }, [
+    searchQuery,
+    currentTag,
+    tagPhotosQuery.isFetchingNextPage,
+    folderPhotosQuery.isFetchingNextPage
+  ]);
+
+  const triggerFetchNextPage = React.useCallback(() => {
+    if (searchQuery.trim().length > 0) return;
+    if (currentTag) {
+      if (tagPhotosQuery.hasNextPage && !tagPhotosQuery.isFetchingNextPage) {
+        tagPhotosQuery.fetchNextPage();
+      }
+    } else {
+      if (folderPhotosQuery.hasNextPage && !folderPhotosQuery.isFetchingNextPage) {
+        folderPhotosQuery.fetchNextPage();
+      }
+    }
+  }, [
+    searchQuery,
+    currentTag,
+    tagPhotosQuery.hasNextPage,
+    tagPhotosQuery.isFetchingNextPage,
+    tagPhotosQuery.fetchNextPage,
+    folderPhotosQuery.hasNextPage,
+    folderPhotosQuery.isFetchingNextPage,
+    folderPhotosQuery.fetchNextPage
+  ]);
   
   // Source of truth for navigation order:
   // 1) If we have a captured navigationList from the grid, build the list strictly
@@ -340,6 +385,24 @@ export const DetailedPhotoModal: React.FC = () => {
     }
   }, [detailedPhoto, photos, photo?.id]);
 
+  useEffect(() => {
+    if (!pendingNavigation) return;
+    if (pendingNavigation.direction === 'next') {
+      const anchorIndex = photos.findIndex((p) => p.id === pendingNavigation.anchorId);
+      if (anchorIndex !== -1 && anchorIndex < photos.length - 1) {
+        setPendingNavigation(null);
+        setDetailedPhoto(photos[anchorIndex + 1].id);
+      }
+    }
+  }, [pendingNavigation, photos, setDetailedPhoto]);
+
+  useEffect(() => {
+    if (!pendingNavigation) return;
+    if (!hasNextPageAvailable && !isFetchingNextPage) {
+      setPendingNavigation(null);
+    }
+  }, [pendingNavigation, hasNextPageAvailable, isFetchingNextPage]);
+
   // Function to fetch a specific photo when it's not in the current dataset
   const fetchSpecificPhoto = async (photoId: string) => {
     try {
@@ -414,13 +477,25 @@ export const DetailedPhotoModal: React.FC = () => {
   const showNext = () => {
     if (navigationList && navigationList.length > 0 && detailedPhoto) {
       const idx = navigationList.indexOf(detailedPhoto);
-      if (idx !== -1 && idx < navigationList.length - 1) setDetailedPhoto(navigationList[idx + 1]);
-      return;
+      if (idx !== -1 && idx < navigationList.length - 1) {
+        setDetailedPhoto(navigationList[idx + 1]);
+        return;
+      }
+      // Fall through when at the end of navigation list so we can load more items
     }
     if (photos.length && currentIndex >= 0 && currentIndex < photos.length - 1) {
       setDetailedPhoto(photos[currentIndex + 1].id);
-    } else if (currentIndex === -1 && photos.length > 0) {
+      return;
+    }
+    if (currentIndex === -1 && photos.length > 0) {
       setDetailedPhoto(photos[0].id);
+      return;
+    }
+    if (hasNextPageAvailable && detailedPhoto) {
+      if (!pendingNavigation) {
+        setPendingNavigation({ direction: 'next', anchorId: detailedPhoto });
+      }
+      triggerFetchNextPage();
     }
   };
 
@@ -1188,8 +1263,8 @@ export const DetailedPhotoModal: React.FC = () => {
         currentIndex,
         photosLength: photos.length,
         remainingPhotos,
-        hasNextPage: photosQuery.hasNextPage,
-        isFetchingNextPage: photosQuery.isFetchingNextPage
+        hasNextPage: hasNextPageAvailable,
+        isFetchingNextPage
       });
 
       // Trigger pagination for the appropriate query
@@ -1199,21 +1274,22 @@ export const DetailedPhotoModal: React.FC = () => {
           console.log('DetailedView: Fetching next page of search results');
           // Note: fastSearchQuery doesn't have fetchNextPage, it's a single query
         }
-      } else if (currentTag) {
-        // Tag filtered results
-        if (tagPhotosQuery.hasNextPage && !tagPhotosQuery.isFetchingNextPage) {
-          console.log('DetailedView: Fetching next page of tag results');
-          tagPhotosQuery.fetchNextPage();
-        }
-      } else {
-        // Folder results
-        if (folderPhotosQuery.hasNextPage && !folderPhotosQuery.isFetchingNextPage) {
-          console.log('DetailedView: Fetching next page of folder results');
-          folderPhotosQuery.fetchNextPage();
-        }
+      } else if (hasNextPageAvailable && !isFetchingNextPage) {
+        console.log('DetailedView: Fetching next page of results via auto-preload');
+        triggerFetchNextPage();
       }
     }
-  }, [photo, currentIndex, photos, photosQuery.hasNextPage, photosQuery.isFetchingNextPage, searchQuery, currentTag, fastSearchQuery, tagPhotosQuery, folderPhotosQuery]);
+  }, [
+    photo,
+    currentIndex,
+    photos,
+    hasNextPageAvailable,
+    isFetchingNextPage,
+    searchQuery,
+    currentTag,
+    fastSearchQuery,
+    triggerFetchNextPage
+  ]);
 
 
   const isModalOpen = detailedPhoto !== null;
@@ -1324,6 +1400,9 @@ export const DetailedPhotoModal: React.FC = () => {
 
   console.log('DetailedPhotoModal: Rendering modal with photo:', photo.name);
 
+  const isWaitingForMorePhotos = Boolean(pendingNavigation) || isFetchingNextPage;
+  const shouldShowNextButton = photos.length > 0 && (currentIndex < photos.length - 1 || hasNextPageAvailable || Boolean(pendingNavigation));
+
   return (
     <div 
       ref={modalRef}
@@ -1345,14 +1424,19 @@ export const DetailedPhotoModal: React.FC = () => {
           <ArrowLeft className="w-8 h-8" />
         </button>
       )}
-      {photos.length && currentIndex < photos.length - 1 && (
+      {shouldShowNextButton && (
         <button
-          className={`absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white z-10 touch-manipulation transition-opacity ${
-            isNearRightEdge ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          className={`absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white z-10 touch-manipulation transition-opacity disabled:opacity-70 disabled:cursor-not-allowed ${
+            isNearRightEdge || currentIndex >= photos.length - 1 ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
           onClick={(e) => { e.stopPropagation(); showNext(); }}
+          disabled={currentIndex >= photos.length - 1 && (!hasNextPageAvailable || isWaitingForMorePhotos)}
         >
-          <ArrowRight className="w-8 h-8" />
+          {currentIndex >= photos.length - 1 && isWaitingForMorePhotos ? (
+            <Loader2 className="w-8 h-8 animate-spin" />
+          ) : (
+            <ArrowRight className="w-8 h-8" />
+          )}
         </button>
       )}
       
@@ -1376,6 +1460,13 @@ export const DetailedPhotoModal: React.FC = () => {
             </div>
           )}
         </>
+      )}
+
+      {pendingNavigation && (
+        <div className="absolute bottom-10 right-16 flex items-center gap-2 bg-black/60 backdrop-blur-sm text-white text-sm px-3 py-2 rounded-full z-10">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Loading more photos…</span>
+        </div>
       )}
 
       {/* View mode controls - only for images */}

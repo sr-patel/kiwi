@@ -2,22 +2,54 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
-const { exec } = require('child_process');
-const util = require('util');
 const PhotoLibraryDatabase = require('./database');
-const { getLibraryPath, getDatabasePath } = require('./config-loader');
-
-const execAsync = util.promisify(exec);
+const {
+  loadConfig,
+  isConfigured,
+  updateConfig,
+  validateLibraryPath,
+  getLibraryPath,
+  getDatabasePath,
+  reloadConfig,
+} = require('./config-loader');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Configure library path from config
-const LIBRARY_PATH = getLibraryPath();
+// Lazy-initialized: null until a valid library is configured
+let LIBRARY_PATH = getLibraryPath();
+let db = null;
 
-// Database instance
-const dbPath = getDatabasePath();
-const db = new PhotoLibraryDatabase(dbPath);
+function getDb() {
+  if (!db) {
+    const dbPath = getDatabasePath();
+    if (dbPath) {
+      db = new PhotoLibraryDatabase(dbPath);
+    }
+  }
+  return db;
+}
+
+/**
+ * Middleware that blocks library-dependent routes when not configured.
+ */
+function requireLibrary(req, res, next) {
+  if (!LIBRARY_PATH || !isConfigured()) {
+    return res.status(503).json({
+      error: 'Library not configured',
+      setup: true,
+      message: 'Please configure your library path via the setup wizard.',
+    });
+  }
+  if (!getDb()) {
+    return res.status(503).json({
+      error: 'Database not available',
+      setup: true,
+      message: 'Database is initializing. Please wait.',
+    });
+  }
+  next();
+}
 
 // Security middleware
 app.use(cors({
@@ -30,7 +62,15 @@ app.use(cors({
 // Rate limiting (basic) - very lenient for local development
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10000; // 10000 requests per minute (very lenient for local development with large libraries)
+const RATE_LIMIT_MAX_REQUESTS = 10000;
+
+// Periodic cleanup of expired rate-limit entries (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of rateLimitMap) {
+    if (now > data.resetTime) rateLimitMap.delete(ip);
+  }
+}, 5 * 60 * 1000);
 
 app.use((req, res, next) => {
   const clientIP = req.ip || req.connection.remoteAddress;
@@ -67,8 +107,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from the library directory
-app.use('/library', express.static(LIBRARY_PATH));
+// Serve static files from the library directory (dynamic – path may change)
+app.use('/library', (req, res, next) => {
+  if (!LIBRARY_PATH) {
+    return res.status(503).json({ error: 'Library not configured' });
+  }
+  express.static(LIBRARY_PATH)(req, res, next);
+});
 
 // --- Global update progress state ---
 const updateProgress = {
@@ -84,18 +129,22 @@ const updateProgress = {
 };
 
 /**
- * Initialize the database
+ * Initialize the database (only if library is configured)
  */
 async function initializeDatabase() {
+  const database = getDb();
+  if (!database) {
+    console.log('⚠️  No library configured – skipping database init');
+    return false;
+  }
+
   try {
     console.log('🗄️  Initializing database...');
-    await db.initialize();
+    await database.initialize();
     
-    // Check if database has data
-    const stats = await db.getStats();
+    const stats = await database.getStats();
     if (stats.totalPhotos === 0) {
-      console.log('⚠️  Database is empty. Please run the regeneration script first:');
-      console.log('   node server/regenerateFromCache.js');
+      console.log('⚠️  Database is empty – will build on first run');
     } else {
       console.log(`✅ Database initialized with ${stats.totalPhotos} photos`);
     }
@@ -108,295 +157,196 @@ async function initializeDatabase() {
 }
 
 /**
- * Check if database needs to be refreshed by comparing modification times
- */
-async function needsDatabaseRefresh() {
-  try {
-    // Check if database exists
-    const dbExists = await fs.access(dbPath).then(() => true).catch(() => false);
-    if (!dbExists) {
-      console.log('🔄 Database does not exist, needs refresh');
-      return { needsRefresh: true, reason: 'database_not_exists' };
-    }
-
-    // Get database modification time
-    const dbStats = await fs.stat(dbPath);
-    const dbTime = dbStats.mtime.getTime();
-
-    // Get images directory modification time
-    const imagesDir = path.join(LIBRARY_PATH, 'images');
-    const imagesStats = await fs.stat(imagesDir);
-    const imagesTime = imagesStats.mtime.getTime();
-
-    // Check if images directory was modified after database
-    if (imagesTime > dbTime) {
-      console.log('🔄 Images directory modified after database, needs refresh');
-      return { needsRefresh: true, reason: 'directory_modified' };
-    }
-
-    // Check individual photo directories for changes
-    const entries = await fs.readdir(imagesDir, { withFileTypes: true });
-    const modifiedFiles = [];
-    
-    for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.endsWith('.info')) {
-        const photoDir = path.join(imagesDir, entry.name);
-        try {
-          const photoStats = await fs.stat(photoDir);
-          if (photoStats.mtime.getTime() > dbTime) {
-            modifiedFiles.push(entry.name.replace('.info', ''));
-          }
-        } catch (error) {
-          // Skip if we can't access the directory
-        }
-      }
-    }
-
-    if (modifiedFiles.length > 0) {
-      console.log(`🔄 ${modifiedFiles.length} files modified after database, needs incremental update`);
-      return { 
-        needsRefresh: true, 
-        reason: 'files_modified',
-        modifiedFiles 
-      };
-    }
-
-    console.log('✅ Database is up to date');
-    return { needsRefresh: false };
-  } catch (error) {
-    console.log('🔄 Error checking database, will refresh:', error.message);
-    return { needsRefresh: true, reason: 'error' };
-  }
-}
-
-/**
- * Update database with modified files
- */
-async function updateDatabaseFiles(fileIds) {
-  try {
-    console.log(`🔄 Updating ${fileIds.length} files in database...`);
-    
-    const imagesDir = path.join(LIBRARY_PATH, 'images');
-    const updatedPhotos = [];
-    
-    for (const fileId of fileIds) {
-      try {
-        const photoDir = path.join(imagesDir, `${fileId}.info`);
-        // generateFallbackMetadata removed - skipping file
-        console.log(`⚠️  Skipping ${fileId} - generateFallbackMetadata removed`);
-        continue;
-      } catch (error) {
-        console.warn(`⚠️  Failed to update metadata for ${fileId}:`, error.message);
-      }
-    }
-    
-    if (updatedPhotos.length > 0) {
-      await db.insertPhotosBatch(updatedPhotos);
-      console.log(`✅ Updated ${updatedPhotos.length} files in database`);
-    }
-    
-    // Update last refresh time
-    await db.updateCacheInfo('last_refresh', new Date().toISOString());
-    
-    return updatedPhotos.length;
-  } catch (error) {
-    console.error('❌ Failed to update database files:', error.message);
-    throw error;
-  }
-}
-
-/**
- * Find new files that aren't in the database
- */
-async function findNewFiles() {
-  try {
-    console.log('🔍 Finding new files...');
-    
-    const imagesDir = path.join(LIBRARY_PATH, 'images');
-    const entries = await fs.readdir(imagesDir, { withFileTypes: true });
-    const photoDirs = entries.filter(entry => entry.isDirectory() && entry.name.endsWith('.info'));
-    
-    const existingIds = new Set();
-    const existingPhotos = await db.getPhotos();
-    existingPhotos.forEach(photo => existingIds.add(photo.id));
-    
-    const newFileIds = [];
-    for (const entry of photoDirs) {
-      const fileId = entry.name.replace('.info', '');
-      if (!existingIds.has(fileId)) {
-        newFileIds.push(fileId);
-      }
-    }
-    
-    console.log(`📊 Found ${newFileIds.length} new files out of ${photoDirs.length} total`);
-    return newFileIds;
-  } catch (error) {
-    console.error('❌ Failed to find new files:', error.message);
-    throw error;
-  }
-}
-
-/**
  * Generate complete database from library
  */
 async function generateDatabase() {
-  try {
-    console.log('🔄 Generating complete database from library...');
+  const database = getDb();
+  if (!database) throw new Error('Database not available');
+
+  console.log('🔄 Generating complete database from library...');
+  
+  const imagesDir = path.join(LIBRARY_PATH, 'images');
+  const entries = await fs.readdir(imagesDir, { withFileTypes: true });
+  const photoDirs = entries.filter(entry => entry.isDirectory() && entry.name.endsWith('.info'));
+  
+  console.log(`📊 Processing ${photoDirs.length} photo directories...`);
+  
+  const batchSize = 100;
+  const allPhotos = [];
+  const photoFolderRelationships = [];
+  
+  for (let i = 0; i < photoDirs.length; i += batchSize) {
+    const batch = photoDirs.slice(i, i + batchSize);
+    console.log(`📦 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(photoDirs.length / batchSize)} (${batch.length} items)`);
     
-    const imagesDir = path.join(LIBRARY_PATH, 'images');
-    const entries = await fs.readdir(imagesDir, { withFileTypes: true });
-    const photoDirs = entries.filter(entry => entry.isDirectory() && entry.name.endsWith('.info'));
-    
-    console.log(`📊 Processing ${photoDirs.length} photo directories...`);
-    
-    const batchSize = 100;
-    const allPhotos = [];
-    const photoFolderRelationships = [];
-    
-    for (let i = 0; i < photoDirs.length; i += batchSize) {
-      const batch = photoDirs.slice(i, i + batchSize);
-      console.log(`📦 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(photoDirs.length / batchSize)} (${batch.length} items)`);
-      
-      const batchPhotos = [];
-      for (const entry of batch) {
+    const batchPhotos = [];
+    for (const entry of batch) {
+      try {
+        const fileId = entry.name.replace('.info', '');
+        const photoDir = path.join(imagesDir, entry.name);
+        
+        const metadataPath = path.join(photoDir, 'metadata.json');
+        let metadata;
         try {
-          const fileId = entry.name.replace('.info', '');
-          const photoDir = path.join(imagesDir, entry.name);
-          
-          // Try to read existing metadata first
-          let metadata;
-          const metadataPath = path.join(photoDir, 'metadata.json');
-          try {
-            const data = await fs.readFile(metadataPath, 'utf8');
-            metadata = JSON.parse(data);
-            console.log(`  📄 Read existing metadata for ${fileId}`);
-          } catch (error) {
-            // If metadata.json doesn't exist or is corrupted, skip file
-            console.log(`  ⚠️  Skipping ${fileId} - no metadata.json found`);
-            continue;
-          }
-          
-          if (metadata) {
-            batchPhotos.push(metadata);
-            
-            // Extract folder relationships from metadata
-            if (metadata.folders && Array.isArray(metadata.folders)) {
-              for (const folderId of metadata.folders) {
-                photoFolderRelationships.push({
-                  photoId: fileId,
-                  folderId: folderId
-                });
-              }
+          const data = await fs.readFile(metadataPath, 'utf8');
+          metadata = JSON.parse(data);
+        } catch (_) {
+          continue; // skip files without metadata
+        }
+        
+        if (metadata) {
+          batchPhotos.push(metadata);
+          if (metadata.folders && Array.isArray(metadata.folders)) {
+            for (const folderId of metadata.folders) {
+              photoFolderRelationships.push({ photoId: fileId, folderId });
             }
           }
-        } catch (error) {
-          console.warn(`⚠️  Failed to process ${entry.name}:`, error.message);
         }
-      }
-      
-      if (batchPhotos.length > 0) {
-        await db.insertPhotosBatch(batchPhotos);
-        allPhotos.push(...batchPhotos);
+      } catch (error) {
+        console.warn(`⚠️  Failed to process ${entry.name}:`, error.message);
       }
     }
     
-    // Insert photo-folder relationships
-    if (photoFolderRelationships.length > 0) {
-      console.log(`📁 Inserting ${photoFolderRelationships.length} photo-folder relationships...`);
-      await db.insertPhotoFolderRelationships(photoFolderRelationships);
+    if (batchPhotos.length > 0) {
+      await database.insertPhotosBatch(batchPhotos);
+      allPhotos.push(...batchPhotos);
     }
-    
-    // Update last refresh time
-    await db.updateCacheInfo('last_refresh', new Date().toISOString());
-    await db.updateCacheInfo('total_photos', allPhotos.length.toString());
-    
-    console.log(`✅ Generated database with ${allPhotos.length} photos and ${photoFolderRelationships.length} folder relationships`);
-    return allPhotos;
-  } catch (error) {
-    console.error('❌ Failed to generate database:', error.message);
-    throw error;
   }
+  
+  if (photoFolderRelationships.length > 0) {
+    console.log(`📁 Inserting ${photoFolderRelationships.length} photo-folder relationships...`);
+    await database.insertPhotoFolderRelationships(photoFolderRelationships);
+  }
+  
+  await database.updateCacheInfo('last_refresh', new Date().toISOString());
+  await database.updateCacheInfo('total_photos', allPhotos.length.toString());
+  
+  console.log(`✅ Generated database with ${allPhotos.length} photos and ${photoFolderRelationships.length} folder relationships`);
+  return allPhotos;
 }
 
 /**
  * Get photos from database with optional filtering
  */
 async function getPhotosFromDatabase(options = {}) {
-  try {
-    return await db.getPhotos(options);
-  } catch (error) {
-    console.error('❌ Failed to get photos from database:', error.message);
-    throw error;
-  }
-}
-
-/**
- * Get photo count from database
- */
-async function getPhotoCountFromDatabase(options = {}) {
-  try {
-    return await db.getPhotoCount(options);
-  } catch (error) {
-    console.error('❌ Failed to get photo count from database:', error.message);
-    throw error;
-  }
+  const database = getDb();
+  if (!database) throw new Error('Database not available');
+  return await database.getPhotos(options);
 }
 
 /**
  * Get database statistics
  */
 async function getDatabaseStats() {
-  try {
-    const stats = await db.getStats();
-    
-    // Convert typeStats array to fileTypes object
-    const fileTypes = {};
-    if (stats.typeStats) {
-      stats.typeStats.forEach(typeStat => {
-        fileTypes[typeStat.type] = typeStat.count;
-      });
-    }
-    
-    // Get last refresh time
-    const lastRefresh = await db.getCacheInfo('last_refresh');
-    
-    return {
-      totalPhotos: stats.totalPhotos,
-      dbSize: stats.dbSize,
-      totalSize: stats.totalSize,
-      lastRefresh: lastRefresh,
-      fileTypes: fileTypes
-    };
-  } catch (error) {
-    console.error('❌ Failed to get database stats:', error.message);
-    throw error;
+  const database = getDb();
+  if (!database) throw new Error('Database not available');
+
+  const stats = await database.getStats();
+  const fileTypes = {};
+  if (stats.typeStats) {
+    stats.typeStats.forEach(typeStat => {
+      fileTypes[typeStat.type] = typeStat.count;
+    });
   }
+  const lastRefresh = await database.getCacheInfo('last_refresh');
+  return {
+    totalPhotos: stats.totalPhotos,
+    dbSize: stats.dbSize,
+    totalSize: stats.totalSize,
+    lastRefresh,
+    fileTypes,
+  };
 }
 
 /**
- * Check database status (simplified - just check if database exists and has data)
+ * Check database status
  */
 async function checkDatabaseStatus() {
+  const database = getDb();
+  if (!database) {
+    return { exists: false, totalPhotos: 0, dbSize: 0, lastRefresh: null };
+  }
   try {
-    const stats = await db.getStats();
+    const stats = await database.getStats();
     return {
       exists: true,
       totalPhotos: stats.totalPhotos,
       dbSize: stats.dbSize,
-      lastRefresh: await db.getCacheInfo('last_refresh')
+      lastRefresh: await database.getCacheInfo('last_refresh'),
     };
   } catch (error) {
-    return {
-      exists: false,
-      totalPhotos: 0,
-      dbSize: 0,
-      lastRefresh: null
-    };
+    return { exists: false, totalPhotos: 0, dbSize: 0, lastRefresh: null };
   }
 }
 
+// ─── Config API (always available, even in setup mode) ───
+
+/** GET /api/config – return current config + setup status */
+app.get('/api/config', (req, res) => {
+  const config = loadConfig();
+  const configured = isConfigured();
+  const validation = configured
+    ? { valid: true }
+    : validateLibraryPath(config.libraryPath);
+
+  res.json({ ...config, _configured: configured, _validation: validation });
+});
+
+/** PUT /api/config – update config and optionally re-initialize */
+app.put('/api/config', async (req, res) => {
+  try {
+    const updates = req.body;
+    const merged = updateConfig(updates);
+
+    // If libraryPath changed, re-initialize
+    if (updates.libraryPath) {
+      LIBRARY_PATH = merged.libraryPath;
+      db = null; // reset so getDb() rebuilds it
+
+      if (isConfigured()) {
+        try {
+          await initializeDatabase();
+
+          // Kick off database build in the background if empty, but don't block response
+          checkDatabaseStatus()
+            .then((status) => {
+              if (!status.exists || status.totalPhotos === 0) {
+                console.log('🔄 Database empty after config change, starting background regeneration...');
+                return generateDatabase()
+                  .then(() => console.log('✅ Background database regeneration after config change completed'))
+                  .catch((err) =>
+                    console.error('❌ Background database regeneration after config change failed:', err)
+                  );
+              }
+              return undefined;
+            })
+            .catch((err) => {
+              console.error('❌ Failed to check database status after config change:', err);
+            });
+        } catch (err) {
+          console.error('Re-init failed after config change:', err.message);
+        }
+      }
+    }
+
+    res.json({ success: true, config: merged });
+  } catch (error) {
+    console.error('Error updating config:', error);
+    res.status(500).json({ error: 'Failed to update config' });
+  }
+});
+
+/** POST /api/config/validate – check if a library path is valid */
+app.post('/api/config/validate', (req, res) => {
+  const { libraryPath } = req.body;
+  const result = validateLibraryPath(libraryPath);
+  res.json(result);
+});
+
+// ─── Library-dependent routes (guarded) ───
+
 // Test endpoint to verify file paths
-app.get('/api/test/files/:photoId', async (req, res) => {
+app.get('/api/test/files/:photoId', requireLibrary, async (req, res) => {
   try {
     const { photoId } = req.params;
     const photoDir = path.join(LIBRARY_PATH, `images/${photoId}.info`);
@@ -446,7 +396,7 @@ function validateFolderId(folderId) {
 }
 
 // API Routes
-app.get('/api/library/metadata', async (req, res) => {
+app.get('/api/library/metadata', requireLibrary, async (req, res) => {
   try {
     const metadataPath = path.join(LIBRARY_PATH, 'metadata.json');
     const data = await fs.readFile(metadataPath, 'utf8');
@@ -458,8 +408,7 @@ app.get('/api/library/metadata', async (req, res) => {
   }
 });
 
-// New endpoint: Get mtime data for caching
-app.get('/api/library/mtime', async (req, res) => {
+app.get('/api/library/mtime', requireLibrary, async (req, res) => {
   try {
     const mtimePath = path.join(LIBRARY_PATH, 'mtime.json');
     const data = await fs.readFile(mtimePath, 'utf8');
@@ -471,7 +420,7 @@ app.get('/api/library/mtime', async (req, res) => {
   }
 });
 
-app.get('/api/library/tags', async (req, res) => {
+app.get('/api/library/tags', requireLibrary, async (req, res) => {
   try {
     const tagsPath = path.join(LIBRARY_PATH, 'tags.json');
     const data = await fs.readFile(tagsPath, 'utf8');
@@ -483,8 +432,7 @@ app.get('/api/library/tags', async (req, res) => {
   }
 });
 
-// New endpoint: Get all photo metadata for folder structure
-app.get('/api/photos/metadata', async (req, res) => {
+app.get('/api/photos/metadata', requireLibrary, async (req, res) => {
   try {
     console.log('🔄 Getting metadata cache...');
     const metadata = await getPhotosFromDatabase();
@@ -496,7 +444,7 @@ app.get('/api/photos/metadata', async (req, res) => {
   }
 });
 
-app.get('/api/metadata', async (req, res) => {
+app.get('/api/metadata', requireLibrary, async (req, res) => {
   try {
     console.log('🔄 Getting metadata from database...');
     const metadata = await getPhotosFromDatabase();
@@ -508,10 +456,9 @@ app.get('/api/metadata', async (req, res) => {
   }
 });
 
-// Get total photo count
-app.get('/api/photos/count', async (req, res) => {
+app.get('/api/photos/count', requireLibrary, async (req, res) => {
   try {
-    const count = await db.getPhotoCount();
+    const count = await getDb().getPhotoCount();
     res.json({ count });
   } catch (error) {
     console.error('❌ Error getting total photo count:', error);
@@ -519,10 +466,9 @@ app.get('/api/photos/count', async (req, res) => {
   }
 });
 
-// Get photo counts for every folder
-app.get('/api/folders/counts', async (req, res) => {
+app.get('/api/folders/counts', requireLibrary, async (req, res) => {
   try {
-    const counts = await db.getPhotoCountsByFolder();
+    const counts = await getDb().getPhotoCountsByFolder();
     res.json(counts);
   } catch (error) {
     console.error('❌ Error getting folder counts:', error);
@@ -530,8 +476,7 @@ app.get('/api/folders/counts', async (req, res) => {
   }
 });
 
-// Get photo count for a specific folder
-app.get('/api/folders/:folderId/count', async (req, res) => {
+app.get('/api/folders/:folderId/count', requireLibrary, async (req, res) => {
   try {
     const { folderId } = req.params;
     const { recursive = 'false' } = req.query;
@@ -539,10 +484,9 @@ app.get('/api/folders/:folderId/count', async (req, res) => {
     let count;
     if (recursive === 'true') {
       // Get recursive count including subfolders
-      count = await db.getRecursivePhotoCountForFolder(folderId);
+      count = await getDb().getRecursivePhotoCountForFolder(folderId);
     } else {
-      // Get direct count only
-      count = await db.getPhotoCountForFolder(folderId);
+      count = await getDb().getPhotoCountForFolder(folderId);
     }
     
     res.json({ folderId, count, recursive: recursive === 'true' });
@@ -552,8 +496,7 @@ app.get('/api/folders/:folderId/count', async (req, res) => {
   }
 });
 
-// Get recursive photo counts for all folders
-app.get('/api/folders/counts/recursive', async (req, res) => {
+app.get('/api/folders/counts/recursive', requireLibrary, async (req, res) => {
   try {
     // First get the folder tree structure
     const metadataPath = path.join(LIBRARY_PATH, 'metadata.json');
@@ -582,12 +525,12 @@ app.get('/api/folders/counts/recursive', async (req, res) => {
       return folderIds;
     };
     
-    const allFolderIds = folderTree ? getAllFolderIdsFromTree(folderTree) : await db.getAllFolderIds();
+    const database = getDb();
+    const allFolderIds = folderTree ? getAllFolderIdsFromTree(folderTree) : await database.getAllFolderIds();
     const counts = {};
     
-    // Get recursive count for each folder
     for (const folderId of allFolderIds) {
-      counts[folderId] = await db.getRecursivePhotoCountForFolder(folderId, folderTree);
+      counts[folderId] = await database.getRecursivePhotoCountForFolder(folderId, folderTree);
     }
     
     res.json(counts);
@@ -597,11 +540,10 @@ app.get('/api/folders/counts/recursive', async (req, res) => {
   }
 });
 
-// Get first thumbnail image for a folder
-app.get('/api/folders/:folderId/thumbnail', async (req, res) => {
+app.get('/api/folders/:folderId/thumbnail', requireLibrary, async (req, res) => {
   try {
     const { folderId } = req.params;
-    const firstImage = db.getFirstImageInFolder(folderId);
+    const firstImage = getDb().getFirstImageInFolder(folderId);
     
     if (!firstImage) {
       return res.status(404).json({ error: 'No images found in folder' });
@@ -618,8 +560,7 @@ app.get('/api/folders/:folderId/thumbnail', async (req, res) => {
   }
 });
 
-// Get paginated photos for a folder (or all)
-app.get('/api/photos', async (req, res) => {
+app.get('/api/photos', requireLibrary, async (req, res) => {
   try {
     const folderId = req.query.folderId || null;
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
@@ -627,7 +568,7 @@ app.get('/api/photos', async (req, res) => {
     const orderBy = req.query.orderBy || 'mtime';
     const orderDirection = req.query.orderDirection || 'DESC';
     const randomSeed = req.query.randomSeed ? parseInt(req.query.randomSeed, 10) : undefined;
-    const result = await db.getPhotosPaginated({ folderId, limit, offset, orderBy, orderDirection, randomSeed });
+    const result = await getDb().getPhotosPaginated({ folderId, limit, offset, orderBy, orderDirection, randomSeed });
     res.json(result);
   } catch (error) {
     console.error('❌ Error getting paginated photos:', error);
@@ -635,8 +576,7 @@ app.get('/api/photos', async (req, res) => {
   }
 });
 
-// Fast search photos with tags support
-app.get('/api/search/photos', async (req, res) => {
+app.get('/api/search/photos', requireLibrary, async (req, res) => {
   try {
     const query = req.query.q || '';
     const type = req.query.type || null;
@@ -649,7 +589,7 @@ app.get('/api/search/photos', async (req, res) => {
     
     console.log(`🔍 Searching for: "${query}" (type: ${type}, limit: ${limit}, offset: ${offset}, folderId: ${folderId}, tagCtx: ${tag})`);
     
-    const photos = await db.searchPhotos({ 
+    const photos = await getDb().searchPhotos({ 
       query, type, limit, offset, orderBy, orderDirection, folderId, tagContext: tag 
     });
     
@@ -661,15 +601,14 @@ app.get('/api/search/photos', async (req, res) => {
   }
 });
 
-// Get search result count
-app.get('/api/search/count', async (req, res) => {
+app.get('/api/search/count', requireLibrary, async (req, res) => {
   try {
     const query = req.query.q || '';
     const type = req.query.type || null;
     const folderId = req.query.folderId || null;
     const tag = req.query.tag || null;
     
-    const count = await db.getSearchCount({ query, type, folderId, tagContext: tag });
+    const count = await getDb().getSearchCount({ query, type, folderId, tagContext: tag });
     res.json({ count });
   } catch (error) {
     console.error('❌ Error getting search count:', error);
@@ -677,15 +616,14 @@ app.get('/api/search/count', async (req, res) => {
   }
 });
 
-// Get search result total size
-app.get('/api/search/size', async (req, res) => {
+app.get('/api/search/size', requireLibrary, async (req, res) => {
   try {
     const query = req.query.q || '';
     const type = req.query.type || null;
     const folderId = req.query.folderId || null;
     const tag = req.query.tag || null;
     
-    const totalSize = await db.getSearchTotalSize({ query, type, folderId, tagContext: tag });
+    const totalSize = await getDb().getSearchTotalSize({ query, type, folderId, tagContext: tag });
     res.json({ totalSize });
   } catch (error) {
     console.error('❌ Error getting search total size:', error);
@@ -693,12 +631,12 @@ app.get('/api/search/size', async (req, res) => {
   }
 });
 
-// Debug endpoint to check database content
-app.get('/api/debug/database', async (req, res) => {
+app.get('/api/debug/database', requireLibrary, async (req, res) => {
   try {
-    const stats = await db.getStats();
-    const samplePhotos = await db.getPhotos({ limit: 5 });
-    const sampleTags = await db.getAllTags();
+    const database = getDb();
+    const stats = await database.getStats();
+    const samplePhotos = await database.getPhotos({ limit: 5 });
+    const sampleTags = await database.getAllTags();
     
     res.json({
       stats,
@@ -712,7 +650,7 @@ app.get('/api/debug/database', async (req, res) => {
   }
 });
 
-app.get('/api/photos/:id', async (req, res) => {
+app.get('/api/photos/:id', requireLibrary, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -740,12 +678,13 @@ app.get('/api/photos/:id', async (req, res) => {
       
       // Try to get from database
       try {
-        const photo = await db.getPhotoById(id);
+        const database = getDb();
+        const photo = await database.getPhotoById(id);
         if (photo) {
-          const folders = await db.getFoldersForPhoto(id);
+          const folders = await database.getFoldersForPhoto(id);
           const photoMetadata = {
             ...photo,
-            folders: folders,
+            folders,
             url: `/api/photos/${id}/file?ext=${photo.ext}&name=${encodeURIComponent(photo.name)}`,
             thumbnailUrl: `/api/photos/${id}/thumbnail?name=${encodeURIComponent(photo.name)}`
           };
@@ -756,8 +695,6 @@ app.get('/api/photos/:id', async (req, res) => {
         console.warn(`Failed to get photo from database for ${id}:`, dbError.message);
       }
       
-      // No fallback metadata generation - return 404
-      console.error(`Photo metadata not found for ${id}`);
       res.status(404).json({ error: 'Photo not found' });
     }
   } catch (error) {
@@ -766,12 +703,10 @@ app.get('/api/photos/:id', async (req, res) => {
   }
 });
 
-// New endpoint: Get photo metadata by ID
-app.get('/api/photos/:id/metadata', async (req, res) => {
+app.get('/api/photos/:id/metadata', requireLibrary, async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Validate photo ID
     if (!validatePhotoId(id)) {
       return res.status(400).json({ error: 'Invalid photo ID' });
     }
@@ -782,10 +717,9 @@ app.get('/api/photos/:id/metadata', async (req, res) => {
       const data = await fs.readFile(metadataPath, 'utf8');
       const metadata = JSON.parse(data);
       
-      // Add the photo ID to the metadata
       const photoMetadata = {
         ...metadata,
-        id: id,
+        id,
         folders: metadata.folders || [],
         tags: metadata.tags || [],
         isDeleted: metadata.isDeleted || false,
@@ -797,16 +731,16 @@ app.get('/api/photos/:id/metadata', async (req, res) => {
     } catch (error) {
       console.warn(`Failed to read metadata for ${id}:`, error.message);
       
-      // Try to get from database
       try {
-        const photo = await db.getPhotoById(id);
+        const database = getDb();
+        const photo = await database.getPhotoById(id);
         if (photo) {
-          const folders = await db.getFoldersForPhoto(id);
+          const folders = await database.getFoldersForPhoto(id);
           const photoMetadata = {
             ...photo,
-            id: id,
-            folders: folders,
-            tags: [], // Database doesn't store tags yet
+            id,
+            folders,
+            tags: [],
             isDeleted: false,
             url: `/api/photos/${id}/file?ext=${photo.ext}&name=${encodeURIComponent(photo.name)}`,
             thumbnailUrl: `/api/photos/${id}/thumbnail?name=${encodeURIComponent(photo.name)}`
@@ -828,8 +762,7 @@ app.get('/api/photos/:id/metadata', async (req, res) => {
   }
 });
 
-// New endpoint: Get photo file
-app.get('/api/photos/:id/file', async (req, res) => {
+app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -909,8 +842,7 @@ app.get('/api/photos/:id/file', async (req, res) => {
   }
 });
 
-// New endpoint: Get photo thumbnail
-app.get('/api/photos/:id/thumbnail', async (req, res) => {
+app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -940,51 +872,13 @@ app.get('/api/photos/:id/thumbnail', async (req, res) => {
   }
 });
 
-// SMB connection test endpoint
-app.post('/api/smb/test', async (req, res) => {
-  try {
-    const { host, port, username, password, share, path: smbPath } = req.body;
-    
-    // This is a simplified test - in production you'd use a proper SMB library
-    const testCommand = `net use \\\\${host}\\${share} /user:${username} ${password}`;
-    
-    try {
-      await execAsync(testCommand);
-      res.json({ success: true, message: 'SMB connection successful' });
-    } catch (error) {
-      res.status(400).json({ success: false, message: 'SMB connection failed' });
-    }
-  } catch (error) {
-    console.error('SMB test error:', error);
-    res.status(500).json({ error: 'Failed to test SMB connection' });
-  }
-});
-
-// List SMB files endpoint
-app.post('/api/smb/list', async (req, res) => {
-  try {
-    const { host, share, path: smbPath } = req.body;
-    
-    // This would list files from the SMB share
-    // For now, return a mock response
-    res.json({
-      files: [],
-      directories: [],
-      path: smbPath || '/'
-    });
-  } catch (error) {
-    console.error('SMB list error:', error);
-    res.status(500).json({ error: 'Failed to list SMB files' });
-  }
-});
-
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Database management endpoints
-app.post('/api/database/refresh', async (req, res) => {
+app.post('/api/database/refresh', requireLibrary, async (req, res) => {
   try {
     console.log('🔄 Manual database refresh requested...');
     
@@ -1025,7 +919,7 @@ app.post('/api/database/refresh', async (req, res) => {
   }
 });
 
-app.post('/api/database/update', async (req, res) => {
+app.post('/api/database/update', requireLibrary, async (req, res) => {
   try {
     console.log('🔄 Manual incremental database update requested...');
     
@@ -1036,10 +930,10 @@ app.post('/api/database/update', async (req, res) => {
       console.log('📁 Performing incremental update from library files...');
       
       // Import the incremental update function
-      const { updateDatabaseIncremental } = require('./updateDatabaseIncremental');
+      const { incrementalUpdateDatabase } = require('./incrementalUpdateDatabase');
       
       // Run the incremental update
-      await updateDatabaseIncremental(updateProgress);
+      await incrementalUpdateDatabase(updateProgress);
       
       res.json({ 
         success: true, 
@@ -1060,7 +954,7 @@ app.post('/api/database/update', async (req, res) => {
   }
 });
 
-app.get('/api/database/status', async (req, res) => {
+app.get('/api/database/status', requireLibrary, async (req, res) => {
   try {
     const status = await checkDatabaseStatus();
     
@@ -1078,7 +972,7 @@ app.get('/api/database/status', async (req, res) => {
   }
 });
 
-app.get('/api/database/stats', async (req, res) => {
+app.get('/api/database/stats', requireLibrary, async (req, res) => {
   try {
     const stats = await getDatabaseStats();
     res.json(stats);
@@ -1088,7 +982,7 @@ app.get('/api/database/stats', async (req, res) => {
   }
 });
 
-app.get('/api/database/analyze', async (req, res) => {
+app.get('/api/database/analyze', requireLibrary, async (req, res) => {
   try {
     console.log('🔄 Analyzing database...');
     
@@ -1144,9 +1038,10 @@ app.get('/api/database/analyze', async (req, res) => {
 });
 
 // Get all unique tags
-app.get('/api/tags', async (req, res) => {
+app.get('/api/tags', requireLibrary, async (req, res) => {
   try {
-    const rows = await db.getAllTags();
+    const database = getDb();
+    const rows = await database.getAllTags();
     const tags = rows.map(row => row.tag).sort((a, b) => a.localeCompare(b));
     res.json(tags);
   } catch (error) {
@@ -1155,19 +1050,22 @@ app.get('/api/tags', async (req, res) => {
   }
 });
 
-// Get photo counts for all tags
-app.get('/api/tags/counts', async (req, res) => {
+// Get photo counts for all tags (single query instead of N+1)
+app.get('/api/tags/counts', requireLibrary, async (req, res) => {
   try {
-    const rows = await db.getAllTags();
-    const tagCounts = {};
-    
-    // Get count for each tag
-    for (const row of rows) {
-      const count = await db.getPhotoCountForTag(row.tag);
-      tagCounts[row.tag] = count;
+    const database = getDb();
+    // Try batch method first; fall back to N+1 if not available
+    if (typeof database.getTagCounts === 'function') {
+      const tagCounts = await database.getTagCounts();
+      res.json(tagCounts);
+    } else {
+      const rows = await database.getAllTags();
+      const tagCounts = {};
+      for (const row of rows) {
+        tagCounts[row.tag] = await database.getPhotoCountForTag(row.tag);
+      }
+      res.json(tagCounts);
     }
-    
-    res.json(tagCounts);
   } catch (error) {
     console.error('❌ Error getting tag counts:', error);
     res.status(500).json({ error: 'Failed to get tag counts' });
@@ -1175,14 +1073,14 @@ app.get('/api/tags/counts', async (req, res) => {
 });
 
 // Get paginated photos for a tag
-app.get('/api/tags/:tag/photos', async (req, res) => {
+app.get('/api/tags/:tag/photos', requireLibrary, async (req, res) => {
   try {
     const tag = req.params.tag;
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
     const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
     const orderBy = req.query.orderBy || 'mtime';
     const orderDirection = req.query.orderDirection || 'DESC';
-    const result = await db.getPhotosByTagPaginated({ tag, limit, offset, orderBy, orderDirection });
+    const result = await getDb().getPhotosByTagPaginated({ tag, limit, offset, orderBy, orderDirection });
     res.json(result);
   } catch (error) {
     console.error('❌ Error getting photos for tag:', error);
@@ -1220,10 +1118,10 @@ app.post('/api/database/incremental-update', async (req, res) => {
     console.log('🔄 Starting incremental update from admin request...');
     
     // Import and run the incremental update function
-    const { updateDatabaseIncremental } = require('./updateDatabaseIncremental');
+    const { incrementalUpdateDatabase } = require('./incrementalUpdateDatabase');
     
     // Run the incremental update asynchronously
-    updateDatabaseIncremental(updateProgress)
+    incrementalUpdateDatabase(updateProgress)
       .then(() => {
         updateProgress.status = 'done';
         console.log('✅ Incremental update completed successfully');
@@ -1278,52 +1176,56 @@ server.on('connection', (socket) => {
 // Start server
 server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
+
+  if (!isConfigured()) {
+    console.log('⚠️  No valid library configured – running in setup mode');
+    console.log('   Open the app in your browser to configure via the setup wizard.');
+    console.log('🚀 Server ready (setup mode)');
+    return;
+  }
+
   console.log(`Library files served from: ${LIBRARY_PATH}`);
-  
+
   try {
-    // Initialize database
     const dbInitStart = Date.now();
     await initializeDatabase();
     const dbInitTime = ((Date.now() - dbInitStart) / 1000).toFixed(1);
-    console.log(`✅ Database initialized successfully (${dbInitTime}s)`);
-    
-    // Check if database exists and has data
-    console.log('📊 Checking database status...');
-    const status = await checkDatabaseStatus();
-    
-    if (!status.exists || status.totalPhotos === 0) {
-      // No database or empty database - do full regeneration
-      console.log('🔄 Database is empty, performing full regeneration...');
-      await generateDatabase();
-      console.log('✅ Database generation completed');
-    } else {
-      // Database exists - just log status, don't run incremental update
-      console.log(`✅ Database ready with ${status.totalPhotos.toLocaleString()} photos`);
-      console.log('📝 Use the admin page to run incremental updates manually');
-    }
-    
+    console.log(`✅ Database initialized (${dbInitTime}s)`);
+
+    // Check status and, if empty, start background regeneration instead of blocking startup
+    checkDatabaseStatus()
+      .then((status) => {
+        if (!status.exists || status.totalPhotos === 0) {
+          console.log('🔄 Database is empty, starting background regeneration...');
+          return generateDatabase()
+            .then(() => console.log('✅ Background database generation completed'))
+            .catch((err) =>
+              console.error('❌ Background database generation failed:', err)
+            );
+        }
+
+        console.log(`✅ Database ready with ${status.totalPhotos.toLocaleString()} photos`);
+        return undefined;
+      })
+      .catch((err) => {
+        console.error('❌ Failed to check database status on startup:', err);
+      });
+
     console.log('🚀 Server ready to serve requests');
   } catch (error) {
     console.error('❌ Failed to initialize server:', error);
-    process.exit(1);
+    // Don't exit – keep running so the user can reconfigure via API
   }
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+function shutdown() {
   server.close(() => {
     console.log('Server closed');
-    db.close();
+    const database = getDb();
+    if (database) database.close();
     process.exit(0);
   });
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
-  server.close(() => {
-    console.log('Server closed');
-    db.close();
-    process.exit(0);
-  });
-});
+}
+process.on('SIGTERM', () => { console.log('SIGTERM received'); shutdown(); });
+process.on('SIGINT', () => { console.log('SIGINT received'); shutdown(); });

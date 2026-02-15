@@ -93,7 +93,7 @@ A modern web client for browsing and managing Eagle photo libraries. Built with 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd kiwo
+   cd kiwi
    ```
 
 2. **Install dependencies**
@@ -101,18 +101,7 @@ A modern web client for browsing and managing Eagle photo libraries. Built with 
    npm install
    ```
 
-3. **Configure your library**
-   Edit `config.json` to point to your photo library:
-   ```json
-   {
-     "libraryPath": "/path/to/your/photo/library",
-     "requestPageSize": 50,
-     "defaultTheme": "dark",
-     "defaultAccentColor": "kiwi"
-   }
-   ```
-
-4. **Start the development server**
+3. **Start the development server**
    ```bash
    npm run dev
    ```
@@ -122,18 +111,9 @@ The application will be available at `http://localhost:5173`
 ## 🗄️ Database Management
 
 ### Initial Setup
-When first setting up your photo library, you need to build the initial database:
+On first run, Kiwi automatically detects an empty database and builds it from your Eagle library. No manual CLI commands are required.
 
-```bash
-cd server
-node fullRebuildDatabase.js
-```
-
-This script will:
-- Scan your entire photo library
-- Extract metadata from all photos
-- Build the complete database structure
-- Create necessary indexes for optimal performance
+You can also trigger a full rebuild or incremental update from the **Admin** page (`/admin`) in the web UI.
 
 ### Updating the Database
 For subsequent updates when you've added new photos or modified your library:
@@ -142,11 +122,6 @@ For subsequent updates when you've added new photos or modified your library:
 cd server
 node incrementalUpdateDatabase.js
 ```
-
-This script will:
-- Detect new or modified files
-- Update only the changed content
-- Maintain existing database structure
 
 ### Database Maintenance Notes
 

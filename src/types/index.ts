@@ -67,7 +67,6 @@ export interface FolderCache {
   folderToPhotos: { [folderId: string]: string[] };
   lastUpdate: number;
   mtimeData: MTimeData;
-  allPhotos: PhotoMetadata[];
 }
 
 export interface FolderNode {
@@ -81,14 +80,6 @@ export interface FolderNode {
   tags: string[];
   icon?: string;
   path: string[];
-}
-
-export interface SMBConnection {
-  host: string;
-  share: string;
-  username: string;
-  password: string;
-  port?: number;
 }
 
 export interface AppState {
@@ -122,7 +113,6 @@ export interface AppState {
   navigationList: string[]; // exact order from grid used for detailed navigation
   detailedPhoto: string | null;
   searchQuery: string;
-  smbConnections: SMBConnection[];
   cacheProgress: {
     current: number;
     total: number;
@@ -194,9 +184,6 @@ export interface AppActions {
   toggleSelectedItem: (itemId: string) => void;
   setDetailedPhoto: (photoId: string | null) => void;
   setSearchQuery: (query: string) => void;
-  addSMBConnection: (connection: SMBConnection) => void;
-  removeSMBConnection: (index: number) => void;
-  
   // Cache management actions
   loadFromCache: () => Promise<boolean>;
   clearCache: () => Promise<void>;
@@ -271,7 +258,6 @@ export interface AppSettings {
   defaultSort: SortOptions;
   autoRefresh: boolean;
   thumbnailQuality: 'low' | 'medium' | 'high';
-  smbConnections: SMBConnection[];
 }
 
 export interface PaginatedPhotosResponse {

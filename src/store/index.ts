@@ -40,7 +40,6 @@ export const useAppStore = create<AppStore>()(
       searchQuery: '',
       // Captured navigation list of photo IDs from the grid at open time
       navigationList: [],
-      smbConnections: [],
       cacheProgress: {
         current: 0,
         total: 0,
@@ -329,13 +328,6 @@ export const useAppStore = create<AppStore>()(
         }
       })),
       
-      addSMBConnection: (connection) => set((state) => ({
-        smbConnections: [...state.smbConnections, connection]
-      })),
-      removeSMBConnection: (index: number) => set((state) => ({
-        smbConnections: state.smbConnections.filter((_, i) => i !== index)
-      })),
-
       // Cache management actions
       loadFromCache: async () => {
         try {
@@ -469,8 +461,7 @@ export const useAppStore = create<AppStore>()(
         currentView: state.currentView,
         filters: state.filters,
         sortOptions: state.sortOptions,
-        smbConnections: state.smbConnections,
-        podcastMode: state.podcastMode, // Persist podcast mode settings and time tracking
+        podcastMode: state.podcastMode,
         visualizerSettings: state.visualizerSettings, // Persist visualizer settings
         useFolderThumbnails: state.useFolderThumbnails,
         enableColorIntegration: state.enableColorIntegration,

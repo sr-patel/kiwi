@@ -1,18 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '@/store';
-import { libraryService } from '@/services/libraryService';
-import { SMBConnectionModal } from '@/components/SMBConnection/SMBConnectionModal';
-import { SMBConnection } from '@/types';
 import { FolderTree } from '@/components/FolderTree/FolderTree';
 import { getAccentColor } from '@/utils/accentColors';
 
 export const Sidebar = () => {
-  const { 
-    currentLibraryPath, 
-    setCurrentLibraryPath, 
-    smbConnections,
-    addSMBConnection,
-    removeSMBConnection,
+  const {
     sidebarOpen,
     setSidebarOpen,
     sidebarWidth,
@@ -24,47 +16,23 @@ export const Sidebar = () => {
     setCurrentTag,
     isMobile,
     accentColor,
-    isMiniPlayer
+    isMiniPlayer,
   } = useAppStore();
 
-  const [showSMBModal, setShowSMBModal] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
 
-  const handleLocalLibrary = () => {
-    // In a real app, this would open a file dialog
-    setCurrentLibraryPath('./photos.library');
-  };
-
-  const handleSMBConnection = () => {
-    setShowSMBModal(true);
-  };
-
-  const handleSMBConnect = (connection: SMBConnection) => {
-    addSMBConnection(connection);
-    setCurrentLibraryPath(`smb://${connection.host}/${connection.share}`);
-  };
-
   const handleFolderSelect = (folderId: string | null) => {
-    console.log('Sidebar: handleFolderSelect called with:', folderId, 'current tag:', currentTag);
-    // Note: Navigation is now handled in the FolderTree component
     setCurrentFolder(folderId);
-    setCurrentTag(null); // Clear tag selection when folder is selected
-    if (isMobile) {
-      setSidebarOpen(false);
-    }
+    setCurrentTag(null);
+    if (isMobile) setSidebarOpen(false);
   };
 
   const handleTagSelect = (tag: string | null) => {
-    console.log('Sidebar: handleTagSelect called with:', tag, 'current folder:', currentFolder);
     setCurrentTag(tag);
-    setCurrentFolder(null); // Clear folder selection when tag is selected
-    if (isMobile) {
-      setSidebarOpen(false);
-    }
+    setCurrentFolder(null);
+    if (isMobile) setSidebarOpen(false);
   };
-
-
 
   // Resize functionality
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -75,19 +43,13 @@ export const Sidebar = () => {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      
       const newWidth = e.clientX;
-      const minWidth = 200; // Minimum width
-      const maxWidth = 600; // Maximum width
-      
-      if (newWidth >= minWidth && newWidth <= maxWidth) {
+      if (newWidth >= 200 && newWidth <= 600) {
         setSidebarWidth(newWidth);
       }
     };
 
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
+    const handleMouseUp = () => setIsResizing(false);
 
     if (isResizing) {
       document.addEventListener('mousemove', handleMouseMove);
@@ -103,11 +65,8 @@ export const Sidebar = () => {
   if (!sidebarOpen) return null;
 
   return (
-    <div 
-      className={`
-        fixed inset-y-0 left-0 z-50 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800
-        ${isMobile ? 'block' : 'block'}
-      `}
+    <div
+      className="fixed inset-y-0 left-0 z-50 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800"
       style={{ width: `${sidebarWidth}px` }}
     >
       {/* Header */}
@@ -116,7 +75,7 @@ export const Sidebar = () => {
       }`}>
         <div className="flex items-center gap-2">
           <img src="/kiwi.png" alt="Kiwi" className="w-8 h-8" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Kiwi</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Kiwi</h2>
         </div>
         <button
           onClick={() => setSidebarOpen(false)}
@@ -156,15 +115,6 @@ export const Sidebar = () => {
           onMouseDown={handleMouseDown}
         />
       )}
-
-      {/* SMB Connection Modal - Hidden but functionality remains */}
-      {/* 
-      <SMBConnectionModal
-        isOpen={showSMBModal}
-        onClose={() => setShowSMBModal(false)}
-        onConnect={handleSMBConnect}
-      />
-      */}
     </div>
   );
-}; 
+};
