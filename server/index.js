@@ -272,6 +272,7 @@ async function getDatabaseStats() {
     lastRefresh,
     fileTypes,
     typeStats: stats.typeStats,
+    extensionStats: stats.extensionStats,
   };
 }
 
