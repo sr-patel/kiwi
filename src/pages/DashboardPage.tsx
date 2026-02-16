@@ -1,12 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid
+  PieChart, Pie,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import { HardDrive, Image, Folder, Tag, Database, Clock } from 'lucide-react';
 import { formatBytes } from '@/utils/formatBytes';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
 
 interface DatabaseStats {
   totalPhotos: number;
@@ -47,15 +62,15 @@ const EXTENSION_GROUPS: Record<string, string> = {
 const getGroup = (ext: string) => EXTENSION_GROUPS[ext.toLowerCase()] || 'Other';
 
 export const DashboardPage: React.FC = () => {
-  const { accentColor, theme } = useAppStore();
+  const { accentColor } = useAppStore();
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const accentHex = getAccentHex(accentColor);
 
-  // Chart colors
-  const COLORS = [
+  // Chart colors palette
+  const CHART_COLORS = [
     accentHex,
     '#3b82f6', // blue
     '#ef4444', // red
@@ -85,6 +100,114 @@ export const DashboardPage: React.FC = () => {
     fetchStats();
   }, []);
 
+  // Prepare Chart Data
+  const { extensionChartData, extensionChartConfig, groupChartData, groupChartConfig, avgSizeData, avgSizeConfig } = useMemo(() => {
+    if (!stats) return {
+      extensionChartData: [], extensionChartConfig: {},
+      groupChartData: [], groupChartConfig: {},
+      avgSizeData: [], avgSizeConfig: {}
+    };
+
+    // 1. Extension Distribution
+    let extensionsData: { name: string; value: number }[] = [];
+    if (stats.extensionStats) {
+      extensionsData = stats.extensionStats
+        .map(item => ({ name: (item.ext || 'unknown').toLowerCase(), value: item.count }))
+        .sort((a, b) => b.value - a.value);
+    } else if (stats.fileTypes) {
+      extensionsData = Object.entries(stats.fileTypes)
+        .map(([name, value]) => ({ name: name.toLowerCase(), value }))
+        .sort((a, b) => b.value - a.value);
+    }
+
+    // Top 8 + Other
+    const topExtensions = extensionsData.slice(0, 8);
+    const otherExtensionsCount = extensionsData.slice(8).reduce((acc, curr) => acc + curr.value, 0);
+    if (otherExtensionsCount > 0) {
+      topExtensions.push({ name: 'other', value: otherExtensionsCount });
+    }
+
+    const extensionConfig: ChartConfig = {
+      value: { label: "Count" },
+    };
+
+    const extensionDataWithFill = topExtensions.map((item, index) => {
+      const color = CHART_COLORS[index % CHART_COLORS.length];
+      extensionConfig[item.name] = {
+        label: item.name.toUpperCase(),
+        color: color,
+      };
+      return {
+        ...item,
+        fill: `var(--color-${item.name})`,
+      };
+    });
+
+    // 2. Group Distribution
+    const groupCounts: Record<string, number> = {};
+    if (stats.extensionStats) {
+      stats.extensionStats.forEach(item => {
+        const group = getGroup(item.ext || 'unknown');
+        groupCounts[group] = (groupCounts[group] || 0) + item.count;
+      });
+    } else {
+      extensionsData.forEach(item => {
+        const group = getGroup(item.name);
+        groupCounts[group] = (groupCounts[group] || 0) + item.value;
+      });
+    }
+
+    const groupDataRaw = Object.entries(groupCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const groupConfig: ChartConfig = {
+      value: { label: "Count" },
+    };
+
+    const groupDataWithFill = groupDataRaw.map((item, index) => {
+      const color = CHART_COLORS[index % CHART_COLORS.length];
+      // Keys in config must be safe, simplify group name for key
+      const key = item.name.toLowerCase().replace(/\s+/g, '_');
+      groupConfig[key] = {
+        label: item.name,
+        color: color,
+      };
+      return {
+        ...item,
+        key, // Store safe key for mapping
+        fill: `var(--color-${key})`,
+      };
+    });
+
+    // 3. Avg Size
+    let avgData: { name: string; size: number; prettySize: string }[] = [];
+    if (stats.extensionStats) {
+      const topByCount = [...stats.extensionStats].sort((a, b) => b.count - a.count).slice(0, 12);
+      avgData = topByCount.map(item => ({
+        name: (item.ext || 'unknown').toUpperCase(),
+        size: item.avgSize,
+        prettySize: formatBytes(item.avgSize)
+      }));
+    }
+
+    const avgConfig: ChartConfig = {
+      size: {
+        label: "Size",
+        color: accentHex,
+      },
+    };
+
+    return {
+      extensionChartData: extensionDataWithFill,
+      extensionChartConfig: extensionConfig,
+      groupChartData: groupDataWithFill,
+      groupChartConfig: groupConfig,
+      avgSizeData: avgData,
+      avgSizeConfig: avgConfig
+    };
+  }, [stats, accentHex]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[50vh]">
@@ -108,93 +231,20 @@ export const DashboardPage: React.FC = () => {
     );
   }
 
-  // --- Process Data ---
-
-  // 1. Extension Distribution (Count)
-  let extensionsData: { name: string; value: number }[] = [];
-  if (stats.extensionStats) {
-    extensionsData = stats.extensionStats
-      .map(item => ({ name: (item.ext || 'unknown').toUpperCase(), value: item.count }))
-      .sort((a, b) => b.value - a.value);
-  } else if (stats.fileTypes) {
-    // Fallback for old API response
-    extensionsData = Object.entries(stats.fileTypes)
-      .map(([name, value]) => ({ name: name.toUpperCase(), value }))
-      .sort((a, b) => b.value - a.value);
-  }
-
-  // Limit for Pie Chart 1
-  const topExtensions = extensionsData.slice(0, 8);
-  const otherExtensionsCount = extensionsData.slice(8).reduce((acc, curr) => acc + curr.value, 0);
-  if (otherExtensionsCount > 0) {
-    topExtensions.push({ name: 'OTHER', value: otherExtensionsCount });
-  }
-
-  // 2. Group Distribution (Count)
-  const groupCounts: Record<string, number> = {};
-  if (stats.extensionStats) {
-    stats.extensionStats.forEach(item => {
-      const group = getGroup(item.ext || 'unknown');
-      groupCounts[group] = (groupCounts[group] || 0) + item.count;
-    });
-  } else {
-    // Fallback
-    extensionsData.forEach(item => {
-      const group = getGroup(item.name.toLowerCase());
-      groupCounts[group] = (groupCounts[group] || 0) + item.value;
-    });
-  }
-
-  const groupData = Object.entries(groupCounts)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-
-  // 3. Average Size (Bar Chart)
-  // We want to show average size for the most common file types to keep it relevant
-  // Let's take the top 12 extensions by count, and show their avg sizes.
-  let avgSizeData: { name: string; size: number; prettySize: string }[] = [];
-
-  if (stats.extensionStats) {
-    // Filter out extensions with very few files (optional, but keeps chart clean)
-    // Here we just take top 12 by count
-    const topByCount = [...stats.extensionStats].sort((a, b) => b.count - a.count).slice(0, 12);
-
-    avgSizeData = topByCount.map(item => ({
-      name: (item.ext || 'unknown').toUpperCase(),
-      size: item.avgSize,
-      prettySize: formatBytes(item.avgSize)
-    }));
-  }
-
   const StatCard = ({ icon: Icon, label, value, subtext }: { icon: any, label: string, value: string | number, subtext?: string }) => (
-    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex items-start justify-between transition-transform hover:scale-[1.02]">
-      <div>
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</p>
-        <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</h3>
-        {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
-      </div>
-      <div className={`p-3 rounded-lg bg-opacity-10`} style={{ backgroundColor: `${accentHex}20` }}>
-        <Icon className="w-6 h-6" style={{ color: accentHex }} />
-      </div>
-    </div>
+    <Card className="hover:scale-[1.02] transition-transform">
+      <CardContent className="p-6 flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground mb-1">{label}</p>
+          <h3 className="text-2xl font-bold">{value}</h3>
+          {subtext && <p className="text-xs text-muted-foreground mt-1">{subtext}</p>}
+        </div>
+        <div className={`p-3 rounded-lg bg-opacity-10`} style={{ backgroundColor: `${accentHex}20` }}>
+          <Icon className="w-6 h-6" style={{ color: accentHex }} />
+        </div>
+      </CardContent>
+    </Card>
   );
-
-  const ChartCard = ({ title, children }: { title: string, children: React.ReactNode }) => (
-    <div className="bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm min-h-[400px] flex flex-col">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">{title}</h3>
-      <div className="flex-1 w-full min-h-[300px]">
-        {children}
-      </div>
-    </div>
-  );
-
-  const tooltipStyle = {
-    backgroundColor: theme === 'dark' ? '#1f2937' : '#fff',
-    borderColor: theme === 'dark' ? '#374151' : '#e5e7eb',
-    color: theme === 'dark' ? '#f3f4f6' : '#111827',
-    borderRadius: '0.5rem',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8 animate-fade-in pb-20">
@@ -242,91 +292,98 @@ export const DashboardPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
         {/* Chart 1: File Extensions (Pie) */}
-        <ChartCard title="File Extension Distribution">
-          {topExtensions.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={topExtensions}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {topExtensions.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: theme === 'dark' ? '#f3f4f6' : '#111827' }} />
-                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ color: theme === 'dark' ? '#9ca3af' : '#4b5563' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">No data available</div>
-          )}
-        </ChartCard>
+        <Card className="flex flex-col">
+          <CardHeader>
+            <CardTitle>File Extension Distribution</CardTitle>
+            <CardDescription>Breakdown by file extension</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 pb-0">
+            {extensionChartData.length > 0 ? (
+              <ChartContainer config={extensionChartConfig} className="mx-auto aspect-square max-h-[300px]">
+                <PieChart>
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                  <Pie
+                    data={extensionChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={60}
+                    strokeWidth={5}
+                  />
+                  <ChartLegend content={<ChartLegendContent nameKey="name" />} className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" />
+                </PieChart>
+              </ChartContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[300px] text-muted-foreground">No data available</div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Chart 2: File Groups (Pie) */}
-        <ChartCard title="File Group Distribution">
-          {groupData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={groupData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {groupData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: theme === 'dark' ? '#f3f4f6' : '#111827' }} />
-                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ color: theme === 'dark' ? '#9ca3af' : '#4b5563' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-             <div className="flex items-center justify-center h-full text-gray-400">No data available</div>
-          )}
-        </ChartCard>
+        <Card className="flex flex-col">
+          <CardHeader>
+            <CardTitle>File Group Distribution</CardTitle>
+            <CardDescription>Breakdown by file category</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 pb-0">
+            {groupChartData.length > 0 ? (
+              <ChartContainer config={groupChartConfig} className="mx-auto aspect-square max-h-[300px]">
+                <PieChart>
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                  <Pie
+                    data={groupChartData}
+                    dataKey="value"
+                    nameKey="key"
+                    innerRadius={60}
+                    strokeWidth={5}
+                  />
+                  <ChartLegend content={<ChartLegendContent nameKey="key" />} className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" />
+                </PieChart>
+              </ChartContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[300px] text-muted-foreground">No data available</div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Chart 3: Average File Size (Bar) - Full Width on lg */}
-        <div className="lg:col-span-2">
-          <ChartCard title="Average File Size by Type">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Average File Size by Type</CardTitle>
+            <CardDescription>Top file types by size</CardDescription>
+          </CardHeader>
+          <CardContent>
             {avgSizeData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={avgSizeData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#374151' : '#e5e7eb'} />
+              <ChartContainer config={avgSizeConfig} className="aspect-auto h-[300px] w-full">
+                <BarChart
+                  accessibilityLayer
+                  data={avgSizeData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid vertical={false} />
                   <XAxis
                     dataKey="name"
-                    stroke={theme === 'dark' ? '#9ca3af' : '#4b5563'}
-                    tick={{ fill: theme === 'dark' ? '#9ca3af' : '#4b5563' }}
+                    tickLine={false}
+                    tickMargin={10}
+                    axisLine={false}
                   />
                   <YAxis
-                    stroke={theme === 'dark' ? '#9ca3af' : '#4b5563'}
-                    tick={{ fill: theme === 'dark' ? '#9ca3af' : '#4b5563' }}
+                    tickLine={false}
+                    axisLine={false}
                     tickFormatter={(value) => formatBytes(value)}
                   />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    itemStyle={{ color: theme === 'dark' ? '#f3f4f6' : '#111827' }}
-                    formatter={(value: number) => [formatBytes(value), 'Avg Size']}
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent hideLabel />}
                   />
-                  <Bar dataKey="size" fill={accentHex} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="size" fill="var(--color-size)" radius={4}>
+                  </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ChartContainer>
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-400">No data available</div>
+              <div className="flex items-center justify-center h-[300px] text-muted-foreground">No data available</div>
             )}
-          </ChartCard>
-        </div>
+          </CardContent>
+        </Card>
 
       </div>
     </div>
