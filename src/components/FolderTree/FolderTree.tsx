@@ -1,6 +1,6 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Image, Video, Music, FileText } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Image, Video, Music, FileText, LayoutDashboard } from 'lucide-react';
 import { FolderNode } from '@/types';
 import { useAppStore } from '@/store';
 import { getAccentText, getAccentSelected, getAccentHover, getAccentBorder } from '@/utils/accentColors';
@@ -130,8 +130,12 @@ const FolderItem: React.FC<FolderItemProps> = ({ folder, level, currentFolderId,
 };
 
 export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId, currentTag, onFolderSelect, onTagSelect }) => {
-  const { accentColor, setCurrentFolder, setCurrentTag } = useAppStore();
+  const { accentColor, setCurrentFolder, setCurrentTag, defaultLandingPage } = useAppStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard';
+  const isAllFiles = location.pathname === '/all' || (location.pathname === '/' && defaultLandingPage !== 'dashboard') || (currentFolderId === null && !currentTag && !isDashboard);
+
   const { data: folderCounts = {}, isLoading: isLoadingCounts } = useRecursiveFolderCounts();
   const { data: totalPhotoCount = 0, isLoading: isLoadingTotalCount } = useTotalPhotoCount();
   const { data: tags = [], isLoading: isLoadingTags } = useTags();
@@ -141,12 +145,39 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
     <div className="w-full">
       {/* Folders group */}
       <div className="mb-2">
-        <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Folders</div>
-        {/* Root folder */}
+        <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Navigation</div>
+
+        {/* Dashboard */}
         <div
           className={`
-            flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors
-            ${currentFolderId === null && !currentTag
+            flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors mb-1
+            ${isDashboard
+              ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
+              : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200'
+            }
+          `}
+          onClick={() => {
+            console.log('FolderTree: Dashboard clicked');
+            setCurrentFolder(null);
+            setCurrentTag(null);
+            navigate('/dashboard');
+            onFolderSelect(null);
+            onTagSelect(null);
+          }}
+        >
+          <LayoutDashboard className={`w-4 h-4 ${
+            isDashboard
+              ? getAccentText(accentColor)
+              : 'text-gray-500 dark:text-gray-400'
+          }`} />
+          <span className="font-medium">Dashboard</span>
+        </div>
+
+        {/* Root folder / All Files */}
+        <div
+          className={`
+            flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors mb-4
+            ${isAllFiles
               ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
               : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200'
             }
@@ -155,13 +186,13 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
             console.log('FolderTree: All Files clicked');
             setCurrentFolder(null);
             setCurrentTag(null);
-            navigate('/');
+            navigate('/all');
             onFolderSelect(null); 
             onTagSelect(null); 
           }}
         >
           <Folder className={`w-4 h-4 ${
-            currentFolderId === null && !currentTag
+            isAllFiles
               ? getAccentText(accentColor)
               : 'text-gray-500 dark:text-gray-400'
           }`} />
@@ -172,6 +203,8 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
             </span>
           )}
         </div>
+
+        <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Folders</div>
         {/* Folder tree */}
         {folders.map((folder) => (
           <FolderItem

@@ -72,6 +72,7 @@ export const useAppStore = create<AppStore>()(
       useFolderThumbnails: false,
       enableColorIntegration: true,
       enablePodcastMode: false,
+      defaultLandingPage: 'dashboard',
       requestPageSize: 50,
       infoBoxSize: 100, // Percentage size of info box (50-150%)
       hideControlsWithInfoBox: false, // Hide top controls when info box is hidden
@@ -99,6 +100,7 @@ export const useAppStore = create<AppStore>()(
       setUseFolderThumbnails: (value: boolean) => set({ useFolderThumbnails: value }),
       setEnableColorIntegration: (value: boolean) => set({ enableColorIntegration: value }),
       setEnablePodcastMode: (value: boolean) => set({ enablePodcastMode: value }),
+      setDefaultLandingPage: (page: 'dashboard' | 'all') => set({ defaultLandingPage: page }),
       setAutoplayGifsInGrid: (value: boolean) => set({ autoplayGifsInGrid: value }),
       setRequestPageSize: (size: number) => set({ requestPageSize: Math.max(10, Math.min(500, Math.floor(size))) }),
       setInfoBoxSize: (size: number) => set({ infoBoxSize: Math.max(50, Math.min(150, Math.floor(size))) }),
@@ -468,6 +470,7 @@ export const useAppStore = create<AppStore>()(
         useFolderThumbnails: state.useFolderThumbnails,
         enableColorIntegration: state.enableColorIntegration,
         enablePodcastMode: state.enablePodcastMode,
+        defaultLandingPage: state.defaultLandingPage,
         requestPageSize: state.requestPageSize,
         infoBoxSize: state.infoBoxSize,
         hideControlsWithInfoBox: state.hideControlsWithInfoBox,
