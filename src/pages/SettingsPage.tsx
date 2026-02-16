@@ -44,6 +44,8 @@ export const SettingsPage: React.FC = () => {
     setAutoplayGifsInGrid,
     transitionEffect,
     setTransitionEffect,
+    defaultLandingPage,
+    setDefaultLandingPage,
   } = useAppStore();
 
   // Accent helpers
@@ -373,6 +375,30 @@ export const SettingsPage: React.FC = () => {
                 );
               })}
             </div>
+          </section>
+
+          {/* Navigation */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
+              Navigation
+            </h2>
+            <label className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+              <input
+                type="checkbox"
+                checked={defaultLandingPage !== 'all'}
+                onChange={(e) => setDefaultLandingPage(e.target.checked ? 'dashboard' : 'all')}
+                className="w-4 h-4"
+                style={{ accentColor: accentHex }}
+              />
+              <div>
+                <div className="text-gray-800 dark:text-gray-200 font-medium">
+                  Start on Dashboard
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Show the dashboard statistics page when opening the app instead of the photo grid
+                </div>
+              </div>
+            </label>
           </section>
 
           {/* Appearance */}
