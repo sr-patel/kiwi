@@ -80,7 +80,7 @@ export const DashboardPage: React.FC = () => {
   }
 
   // Prepare chart data
-  const fileTypeData = stats.fileTypes
+  let fileTypeData = stats.fileTypes
     ? Object.entries(stats.fileTypes)
         .map(([name, value]) => ({ name: name.toUpperCase(), value }))
         .sort((a, b) => b.value - a.value)
@@ -92,7 +92,8 @@ export const DashboardPage: React.FC = () => {
      stats.typeStats.forEach(item => {
        fileTypeData.push({ name: item.type.toUpperCase(), value: item.count });
      });
-     fileTypeData.sort((a, b) => b.value - a.value).slice(0, 8);
+     // Reassign after sorting and slicing, as slice returns a new array
+     fileTypeData = fileTypeData.sort((a, b) => b.value - a.value).slice(0, 8);
   }
 
   const StatCard = ({ icon: Icon, label, value, subtext }: { icon: any, label: string, value: string | number, subtext?: string }) => (
