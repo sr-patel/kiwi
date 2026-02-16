@@ -105,7 +105,7 @@ export interface AppState {
     fileTypes: string[];
   };
   sortOptions: {
-    field: 'name' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
+    field: 'name' | 'date' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
     direction: 'asc' | 'desc';
     randomSeed?: number;
   };
@@ -145,6 +145,7 @@ export interface AppState {
   useFolderThumbnails?: boolean;
   enableColorIntegration?: boolean;
   enablePodcastMode?: boolean;
+  defaultLandingPage?: 'dashboard' | 'all';
   requestPageSize: number;
   infoBoxSize: number;
   hideControlsWithInfoBox?: boolean;
@@ -216,6 +217,7 @@ export interface AppActions {
   setUseFolderThumbnails: (value: boolean) => void;
   setEnableColorIntegration: (value: boolean) => void;
   setEnablePodcastMode: (value: boolean) => void;
+  setDefaultLandingPage: (page: 'dashboard' | 'all') => void;
   setAutoplayGifsInGrid: (value: boolean) => void;
   setRequestPageSize: (size: number) => void;
   setInfoBoxSize: (size: number) => void;
@@ -245,7 +247,7 @@ export interface FilterOptions {
 }
 
 export interface SortOptions {
-  field: 'name' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
+  field: 'name' | 'date' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
   direction: 'asc' | 'desc';
 }
 

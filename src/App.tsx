@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
+import { Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { Sidebar } from '@/components/Layout/Sidebar';
 import { PhotoGrid } from '@/components/PhotoGrid/PhotoGrid';
 import SettingsPage from '@/pages/SettingsPage';
+import DashboardPage from '@/pages/DashboardPage';
 import { AdminDatabaseStatus } from '@/pages/AdminDatabaseStatus';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
@@ -23,7 +24,14 @@ import './App.css';
 
 // ─── Route components ───
 
-const RootRoute: React.FC<{ isMobile: boolean }> = ({ isMobile }) => {
+const HomeRedirect: React.FC = () => {
+  const { defaultLandingPage } = useAppStore();
+  // Default to dashboard if not set (for existing users) or if explicitly set
+  const target = defaultLandingPage === 'all' ? '/all' : '/dashboard';
+  return <Navigate to={target} replace />;
+};
+
+const AllFilesRoute: React.FC<{ isMobile: boolean }> = ({ isMobile }) => {
   const { setCurrentFolder, setCurrentTag } = useAppStore();
 
   useEffect(() => {
@@ -351,12 +359,14 @@ function App() {
                 style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
               >
                 <Routes>
-                  <Route path="/" element={<RootRoute isMobile={isMobile} />} />
+                  <Route path="/" element={<HomeRedirect />} />
+                  <Route path="/dashboard" element={<RouteWrapper><DashboardPage /></RouteWrapper>} />
+                  <Route path="/all" element={<AllFilesRoute isMobile={isMobile} />} />
                   <Route path="/admin" element={<RouteWrapper><AdminDatabaseStatus /></RouteWrapper>} />
                   <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
                   <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
                   <Route path="/settings" element={<RouteWrapper><SettingsPage /></RouteWrapper>} />
-                  <Route path="*" element={<RootRoute isMobile={isMobile} />} />
+                  <Route path="*" element={<HomeRedirect />} />
                 </Routes>
               </main>
             </div>
