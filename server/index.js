@@ -265,10 +265,13 @@ async function getDatabaseStats() {
   const lastRefresh = await database.getCacheInfo('last_refresh');
   return {
     totalPhotos: stats.totalPhotos,
+    totalFolders: stats.totalFolders,
+    totalTags: stats.totalTags,
     dbSize: stats.dbSize,
     totalSize: stats.totalSize,
     lastRefresh,
     fileTypes,
+    typeStats: stats.typeStats,
   };
 }
 
