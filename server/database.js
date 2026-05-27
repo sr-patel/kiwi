@@ -1175,6 +1175,13 @@ class PhotoLibraryDatabase {
       `).all();
       
       const totalSize = this.db.prepare('SELECT SUM(size) as total FROM photos').get().total || 0;
+
+      // Get extension statistics
+      const extensionStats = this.db.prepare(`
+        SELECT ext, COUNT(*) as count, AVG(size) as avgSize, SUM(size) as totalSize
+        FROM photos
+        GROUP BY ext
+      `).all();
       
       // Get folder and tag statistics
       const totalFolders = this.db.prepare('SELECT COUNT(DISTINCT folder_id) as count FROM photo_folders').get().count || 0;
@@ -1185,6 +1192,7 @@ class PhotoLibraryDatabase {
         totalFolders,
         totalTags,
         typeStats,
+        extensionStats,
         totalSize,
         dbSize: await this.getDatabaseSize()
       };
