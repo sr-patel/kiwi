@@ -1,6 +1,7 @@
 interface LoadingTask {
   photoId: string;
   photoName: string;
+  photoExt: string;
   priority: number;
   callback: (url: string) => void;
   index: number;
@@ -22,7 +23,7 @@ class SequentialImageLoader {
   /**
    * Add an image to the loading queue
    */
-  addToQueue(photoId: string, photoName: string, callback: (url: string) => void, index: number, priority: 'high' | 'normal' | 'low' = 'normal') {
+  addToQueue(photoId: string, photoName: string, photoExt: string, callback: (url: string) => void, index: number, priority: 'high' | 'normal' | 'low' = 'normal') {
     // Check cache first
     if (this.loadedCache.has(photoId)) {
       const url = this.loadedCache.get(photoId)!;
@@ -44,6 +45,7 @@ class SequentialImageLoader {
     const task: LoadingTask = {
       photoId,
       photoName,
+      photoExt,
       priority: priorityMap[priority],
       callback, // This will be the first callback
       index
@@ -116,7 +118,7 @@ class SequentialImageLoader {
             console.log(`SequentialLoader: Timeout loading ${task.photoId}, trying fallback`);
             resolved = true;
             this.currentlyLoading.delete(task.photoId);
-            const fallbackUrl = libraryService.getPhotoFileUrl(task.photoId, task.photoName.split('.').pop() || '', task.photoName);
+            const fallbackUrl = libraryService.getPhotoFileUrl(task.photoId, task.photoExt, task.photoName);
             this.handleSuccess(task.photoId, fallbackUrl, task.callback);
             resolve(fallbackUrl);
           }
@@ -137,7 +139,7 @@ class SequentialImageLoader {
           if (!resolved) {
             console.log(`SequentialLoader: Thumbnail failed for ${task.photoId}, trying fallback`);
             // Try fallback to full image
-            const fallbackUrl = libraryService.getPhotoFileUrl(task.photoId, task.photoName.split('.').pop() || '', task.photoName);
+            const fallbackUrl = libraryService.getPhotoFileUrl(task.photoId, task.photoExt, task.photoName);
             console.log(`SequentialLoader: Loading fallback image for ${task.photoId}:`, fallbackUrl);
             
             const fallbackImg = new Image();

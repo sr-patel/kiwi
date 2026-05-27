@@ -33,9 +33,12 @@ class PhotoLibraryDatabase {
       this.db.pragma('auto_vacuum = INCREMENTAL'); // Auto-vacuum for maintenance
       this.db.pragma('optimize');                 // Optimize database after configuration
       
+      // Create tables first, then apply incremental migrations
+      await this.createTables();
+
       // Migration: add metadata_hash column if it doesn't exist
       try {
-        const colCheck = this.db.prepare("PRAGMA table_info(photos)").all();
+        const colCheck = this.db.prepare('PRAGMA table_info(photos)').all();
         if (!colCheck.some(col => col.name === 'metadata_hash')) {
           this.db.exec('ALTER TABLE photos ADD COLUMN metadata_hash TEXT');
           console.log('✅ Added metadata_hash column to photos table');
@@ -43,9 +46,6 @@ class PhotoLibraryDatabase {
       } catch (e) {
         console.error('❌ Failed to add metadata_hash column:', e.message);
       }
-      
-      // Create tables
-      await this.createTables();
       
       console.log('✅ Database initialized successfully');
       return true;
@@ -498,11 +498,7 @@ class PhotoLibraryDatabase {
       return this.getPhotos({ type, limit, offset, orderBy, orderDirection });
     }
 
-    // First, get all available tags to check for exact matches
-    console.log('🔍 About to call getAllTags... VERSION 2.0');
     const allTags = await this.getAllTags();
-    console.log('🔍 getAllTags result:', { type: typeof allTags, length: allTags?.length, firstItem: allTags?.[0] });
-    console.log('🔍 getAllTags is array:', Array.isArray(allTags));
     
     // Create tag set - getAllTags returns [{tag: "tag1"}, {tag: "tag2"}, ...]
     const tagSet = new Set();
@@ -514,9 +510,6 @@ class PhotoLibraryDatabase {
       }
     }
     
-    console.log('🔍 Available tags sample:', Array.from(tagSet).slice(0, 10));
-    console.log('🔍 Looking for tag:', query, 'in set:', tagSet.has(query.toLowerCase()));
-
     // Parse query to separate content and tag searches
     // Handle explicit tag: prefixes with proper multi-word support
     const contentParts = [];
@@ -524,7 +517,6 @@ class PhotoLibraryDatabase {
     
     // Split by 'tag:' to find all tag sections
     const parts = query.split(/(?=tag:)/g);
-    console.log('🔍 Parts after tag: split:', parts);
     
     for (const part of parts) {
       if (part.startsWith('tag:')) {
@@ -574,17 +566,6 @@ class PhotoLibraryDatabase {
     
     const contentQueryFinal = contentParts.join(' ');
     const tagQuery = tagParts.join(' ');
-    
-    console.log('🔍 Parsed search query:', { 
-      originalQuery: query, 
-      contentQuery: contentQueryFinal, 
-      tagParts, 
-      tagQuery,
-      allTagsCount: allTags.length
-    });
-    
-    console.log('🔍 DEBUG: tagParts length:', tagParts.length);
-    console.log('🔍 DEBUG: tagParts content:', tagParts);
 
     // Build SQL based on what we're searching for
     let sql;
@@ -593,13 +574,8 @@ class PhotoLibraryDatabase {
     // Handle sorting using the central helper
     const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
     const validatedDirection = this._validateDirection(orderDirection);
-    
-    console.log('🔍 Order by debug:', { orderBy, orderByClause });
     const folderFilterSql = folderId ? ' AND EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.photo_id = p.id AND pf.folder_id = ?)' : '';
     const tagContextSql = tagContext ? ' AND EXISTS (SELECT 1 FROM tags tctx WHERE tctx.photo_id = p.id AND tctx.tag LIKE ?)' : '';
-
-    console.log('🔍 DEBUG: contentQueryFinal:', contentQueryFinal);
-    console.log('🔍 DEBUG: tagParts.length:', tagParts.length);
 
     if (contentQueryFinal && tagParts.length > 0) {
       // Search both content and tags - use parsed tagParts directly
@@ -659,7 +635,6 @@ class PhotoLibraryDatabase {
       }
     } else if (tagParts.length > 0) {
       // Search only tags - use parsed tagParts directly
-      console.log('🔍 DEBUG: Taking tags-only branch');
       if (tagParts.length === 1) {
         // Single tag - search for exact match
         sql = `
@@ -740,24 +715,8 @@ class PhotoLibraryDatabase {
     }
 
     try {
-      console.log('🔍 Search SQL:', sql);
-      console.log('🔍 Search params:', params);
-      console.log('🔍 Search context:', { 
-        query, 
-        contentQueryFinal, 
-        tagQuery, 
-        tagParts,
-        orderBy,
-        orderDirection,
-        type,
-        folderId,
-        tagContext
-      });
-      
       const stmt = this.db.prepare(sql);
       const photos = stmt.all(...params);
-      
-      console.log(`🔍 Found ${photos.length} photos in search results`);
       
       // Parse EXIF data back to objects and add URL fields
       return photos.map(photo => ({
@@ -956,13 +915,8 @@ class PhotoLibraryDatabase {
     if (tagContext) params.push(`%${tagContext}%`);
 
     try {
-      console.log('🔍 Count SQL:', sql);
-      console.log('🔍 Count params:', params);
-      
       const stmt = this.db.prepare(sql);
       const result = stmt.get(...params);
-      
-      console.log(`🔍 Search count result:`, result);
       
       return result.count;
     } catch (error) {

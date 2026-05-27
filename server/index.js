@@ -12,6 +12,9 @@ const {
   getDatabasePath,
   reloadConfig,
 } = require('./config-loader');
+const { reconcileLibrary } = require('./librarySync');
+const { startWatcher, stopWatcher, getWatcherStatus, setLastReconcileTime } = require('./watcher');
+const { generateDatabaseFromLibrary } = require('./regenerateFromLibrary');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -115,19 +118,6 @@ app.use('/library', (req, res, next) => {
   express.static(LIBRARY_PATH)(req, res, next);
 });
 
-// --- Global update progress state ---
-const updateProgress = {
-  status: 'idle', // idle, running, done, error
-  totalFiles: 0,
-  processedFiles: 0,
-  percent: 0,
-  eta: null,
-  startTime: null,
-  elapsed: 0,
-  logs: [], // Array of recent log lines
-  error: null
-};
-
 /**
  * Initialize the database (only if library is configured)
  */
@@ -157,86 +147,34 @@ async function initializeDatabase() {
 }
 
 /**
- * Generate complete database from library
+ * Full rebuild from library files
  */
 async function generateDatabase() {
   const database = getDb();
   if (!database) throw new Error('Database not available');
+  return generateDatabaseFromLibrary({ libraryPath: LIBRARY_PATH, db: database });
+}
 
-  console.log('🔄 Generating complete database from library...');
-  
-  const imagesDir = path.join(LIBRARY_PATH, 'images');
-  const entries = await fs.readdir(imagesDir, { withFileTypes: true });
-  const photoDirs = entries.filter(entry => entry.isDirectory() && entry.name.endsWith('.info'));
-  
-  console.log(`📊 Processing ${photoDirs.length} photo directories...`);
-  
-  const batchSize = 100;
-  const allPhotos = [];
-  const photoFolderRelationships = [];
-  
-  for (let i = 0; i < photoDirs.length; i += batchSize) {
-    const batch = photoDirs.slice(i, i + batchSize);
-    console.log(`📦 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(photoDirs.length / batchSize)} (${batch.length} items)`);
-    
-    const batchPromises = batch.map(async (entry) => {
-      try {
-        const fileId = entry.name.replace('.info', '');
-        const photoDir = path.join(imagesDir, entry.name);
-        
-        const metadataPath = path.join(photoDir, 'metadata.json');
-        let metadata;
-        try {
-          const data = await fs.readFile(metadataPath, 'utf8');
-          metadata = JSON.parse(data);
-        } catch (_) {
-          return null; // skip files without metadata
-        }
-        
-        if (metadata) {
-          const relationships = [];
-          if (metadata.folders && Array.isArray(metadata.folders)) {
-            for (const folderId of metadata.folders) {
-              relationships.push({ photoId: fileId, folderId });
-            }
-          }
-          return { metadata, relationships };
-        }
-      } catch (error) {
-        console.warn(`⚠️  Failed to process ${entry.name}:`, error.message);
-        return null;
-      }
-      return null;
-    });
+/**
+ * Reconcile library, then start the file watcher
+ */
+async function startLibrarySync() {
+  const database = getDb();
+  if (!database || !LIBRARY_PATH) return;
 
-    const results = await Promise.all(batchPromises);
-    const batchPhotos = [];
-
-    for (const res of results) {
-      if (res) {
-        batchPhotos.push(res.metadata);
-        if (res.relationships && res.relationships.length > 0) {
-          photoFolderRelationships.push(...res.relationships);
-        }
-      }
-    }
-    
-    if (batchPhotos.length > 0) {
-      await database.insertPhotosBatch(batchPhotos);
-      allPhotos.push(...batchPhotos);
-    }
+  const status = await checkDatabaseStatus();
+  if (!status.exists || status.totalPhotos === 0) {
+    console.log('🔄 Database is empty, starting full regeneration...');
+    await generateDatabase();
+  } else {
+    console.log('🔄 Reconciling library with database...');
+    const result = await reconcileLibrary(database, LIBRARY_PATH);
+    setLastReconcileTime(new Date().toISOString());
+    console.log(`✅ Reconcile complete — upserted: ${result.upserted}, deleted: ${result.deleted}`);
   }
-  
-  if (photoFolderRelationships.length > 0) {
-    console.log(`📁 Inserting ${photoFolderRelationships.length} photo-folder relationships...`);
-    await database.insertPhotoFolderRelationships(photoFolderRelationships);
-  }
-  
-  await database.updateCacheInfo('last_refresh', new Date().toISOString());
-  await database.updateCacheInfo('total_photos', allPhotos.length.toString());
-  
-  console.log(`✅ Generated database with ${allPhotos.length} photos and ${photoFolderRelationships.length} folder relationships`);
-  return allPhotos;
+
+  await stopWatcher();
+  await startWatcher(LIBRARY_PATH, database);
 }
 
 /**
@@ -323,24 +261,11 @@ app.put('/api/config', async (req, res) => {
 
       if (isConfigured()) {
         try {
+          await stopWatcher();
           await initializeDatabase();
-
-          // Kick off database build in the background if empty, but don't block response
-          checkDatabaseStatus()
-            .then((status) => {
-              if (!status.exists || status.totalPhotos === 0) {
-                console.log('🔄 Database empty after config change, starting background regeneration...');
-                return generateDatabase()
-                  .then(() => console.log('✅ Background database regeneration after config change completed'))
-                  .catch((err) =>
-                    console.error('❌ Background database regeneration after config change failed:', err)
-                  );
-              }
-              return undefined;
-            })
-            .catch((err) => {
-              console.error('❌ Failed to check database status after config change:', err);
-            });
+          startLibrarySync().catch((err) => {
+            console.error('❌ Failed to start library sync after config change:', err);
+          });
         } catch (err) {
           console.error('Re-init failed after config change:', err.message);
         }
@@ -404,27 +329,34 @@ app.get('/api/test/files/:photoId', requireLibrary, async (req, res) => {
 });
 
 /**
- * Validate path components to prevent path traversal.
+ * Validate Eagle photo IDs (alphanumeric, no path separators).
  * @param {string} component
  * @returns {boolean}
  */
-function validatePathComponent(component) {
+function validatePhotoId(component) {
   if (!component || typeof component !== 'string') {
     return false;
   }
-  // Allow alphanumeric characters and common separators, prevent path traversal
-  // This blocks slashes, backslashes, and ".."
-  // Updated to allow "+" characters in filenames
   return /^[a-zA-Z0-9._\-+]+$/.test(component) && !component.includes('..');
 }
 
-// Input validation helper
-function validatePhotoId(photoId) {
-  return validatePathComponent(photoId);
-}
-
+/**
+ * Validate file name / extension query params. Eagle filenames may contain
+ * spaces, parentheses, tildes, etc. — block path traversal only.
+ * @param {string} component
+ * @returns {boolean}
+ */
 function validateFileNameComponent(component) {
-  return validatePathComponent(component);
+  if (!component || typeof component !== 'string') {
+    return false;
+  }
+  if (component.includes('..') || component.includes('/') || component.includes('\\')) {
+    return false;
+  }
+  if (component.includes('\0') || component.length > 255) {
+    return false;
+  }
+  return true;
 }
 
 function validateFolderId(folderId) {
@@ -926,83 +858,43 @@ app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    sync: getWatcherStatus(),
+  });
+});
+
+// Sync status
+app.get('/api/sync/status', requireLibrary, (req, res) => {
+  res.json(getWatcherStatus());
 });
 
 // Database management endpoints
 app.post('/api/database/refresh', requireLibrary, async (req, res) => {
   try {
     console.log('🔄 Manual database refresh requested...');
-    
-    // Check if user wants to regenerate from library files
     const { source = 'library' } = req.body;
-    
-    if (source === 'library') {
-      console.log('📁 Regenerating database from library files...');
-      
-      // Import the regeneration function
-      const { generateDatabaseFromLibrary } = require('./regenerateFromLibrary');
-      
-      // Run the regeneration
-      await generateDatabaseFromLibrary();
-      
-      res.json({ 
-        success: true, 
-        message: 'Database regenerated successfully from library files',
-        source: 'library_files'
-      });
-    } else if (source === 'cache') {
-      console.log('⚠️  Database refresh from cache file is not supported via API');
-      console.log('   Please run: node server/regenerateFromCache.js');
-      res.json({ 
-        success: false, 
-        message: 'Database refresh from cache file is not supported via API. Please run the regeneration script manually.',
-        instructions: 'Run: node server/regenerateFromCache.js'
-      });
-    } else {
-      res.json({ 
-        success: false, 
-        message: 'Invalid source specified. Use "library" or "cache".'
+
+    if (source !== 'library') {
+      return res.json({
+        success: false,
+        message: 'Only library rebuild is supported. Use { "source": "library" }.',
       });
     }
+
+    await stopWatcher();
+    await generateDatabaseFromLibrary({ libraryPath: LIBRARY_PATH, db: getDb() });
+    await startWatcher(LIBRARY_PATH, getDb());
+
+    res.json({
+      success: true,
+      message: 'Database regenerated successfully from library files',
+      source: 'library_files',
+    });
   } catch (error) {
     console.error('❌ Error refreshing database:', error);
     res.status(500).json({ error: 'Failed to refresh database' });
-  }
-});
-
-app.post('/api/database/update', requireLibrary, async (req, res) => {
-  try {
-    console.log('🔄 Manual incremental database update requested...');
-    
-    // Check if user wants to update from library files
-    const { source = 'library' } = req.body;
-    
-    if (source === 'library') {
-      console.log('📁 Performing incremental update from library files...');
-      
-      // Import the incremental update function
-      const { incrementalUpdateDatabase } = require('./incrementalUpdateDatabase');
-      
-      // Run the incremental update
-      await incrementalUpdateDatabase(updateProgress);
-      
-      res.json({ 
-        success: true, 
-        message: 'Database updated incrementally from library files',
-        source: 'library_files'
-      });
-    } else {
-      console.log('⚠️  Incremental updates are not supported with cache-based database');
-      res.json({ 
-        success: false, 
-        message: 'Incremental updates are not supported with cache-based database',
-        instructions: 'To update the database, regenerate it from the cache file'
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error updating database:', error);
-    res.status(500).json({ error: 'Failed to update database' });
   }
 });
 
@@ -1015,8 +907,8 @@ app.get('/api/database/status', requireLibrary, async (req, res) => {
       totalPhotos: status.totalPhotos,
       dbSize: status.dbSize,
       lastRefresh: status.lastRefresh,
-      source: 'server-metadata-cache.json',
-      message: status.exists ? 'Database is ready' : 'Database is empty - run regeneration script'
+      source: 'library_files',
+      message: status.exists ? 'Database is ready' : 'Database is empty — full rebuild will run on startup',
     });
   } catch (error) {
     console.error('❌ Error getting database status:', error);
@@ -1048,13 +940,13 @@ app.get('/api/database/analyze', requireLibrary, async (req, res) => {
       recommendations.push({
         type: 'error',
         message: 'Database is empty',
-        action: 'Run: node server/regenerateFromCache.js'
+        action: 'Restart the server or run a full rebuild from Settings',
       });
     } else if (status.totalPhotos === 0) {
       recommendations.push({
         type: 'warning',
         message: 'Database has no photos',
-        action: 'Run: node server/regenerateFromCache.js'
+        action: 'Run a full rebuild from Settings or Admin',
       });
     } else {
       recommendations.push({
@@ -1078,7 +970,7 @@ app.get('/api/database/analyze', requireLibrary, async (req, res) => {
         totalPhotos: status.totalPhotos,
         dbSize: status.dbSize,
         lastRefresh: status.lastRefresh,
-        source: 'server-metadata-cache.json'
+        source: 'library_files',
       },
       stats: stats,
       recommendations
@@ -1130,67 +1022,6 @@ app.get('/api/tags/:tag/photos', requireLibrary, async (req, res) => {
   }
 });
 
-// API endpoint to get update progress
-app.get('/api/database/update-status', (req, res) => {
-  res.json(updateProgress);
-});
-
-// API endpoint for incremental updates
-app.post('/api/database/incremental-update', async (req, res) => {
-  try {
-    // Check if update is already running
-    if (updateProgress.status === 'running') {
-      return res.status(409).json({ 
-        error: 'Update already in progress',
-        message: 'An incremental update is currently running. Please wait for it to complete.'
-      });
-    }
-
-    // Reset progress state
-    updateProgress.status = 'running';
-    updateProgress.totalFiles = 0;
-    updateProgress.processedFiles = 0;
-    updateProgress.percent = 0;
-    updateProgress.eta = null;
-    updateProgress.startTime = new Date().toISOString();
-    updateProgress.elapsed = 0;
-    updateProgress.logs = [];
-    updateProgress.error = null;
-
-    console.log('🔄 Starting incremental update from admin request...');
-    
-    // Import and run the incremental update function
-    const { incrementalUpdateDatabase } = require('./incrementalUpdateDatabase');
-    
-    // Run the incremental update asynchronously
-    incrementalUpdateDatabase(updateProgress)
-      .then(() => {
-        updateProgress.status = 'done';
-        console.log('✅ Incremental update completed successfully');
-      })
-      .catch((error) => {
-        updateProgress.status = 'error';
-        updateProgress.error = error.message;
-        console.error('❌ Incremental update failed:', error.message);
-      });
-
-    res.json({ 
-      success: true, 
-      message: 'Incremental update started',
-      status: 'running'
-    });
-    
-  } catch (error) {
-    console.error('❌ Error starting incremental update:', error);
-    updateProgress.status = 'error';
-    updateProgress.error = error.message;
-    res.status(500).json({ 
-      error: 'Failed to start incremental update',
-      message: error.message
-    });
-  }
-});
-
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Server error:', error);
@@ -1234,26 +1065,9 @@ server.listen(PORT, '0.0.0.0', async () => {
     const dbInitTime = ((Date.now() - dbInitStart) / 1000).toFixed(1);
     console.log(`✅ Database initialized (${dbInitTime}s)`);
 
-    // Check status and, if empty, start background regeneration instead of blocking startup
-    checkDatabaseStatus()
-      .then((status) => {
-        if (!status.exists || status.totalPhotos === 0) {
-          console.log('🔄 Database is empty, starting background regeneration...');
-          return generateDatabase()
-            .then(() => console.log('✅ Background database generation completed'))
-            .catch((err) =>
-              console.error('❌ Background database generation failed:', err)
-            );
-        }
-
-        console.log(`✅ Database ready with ${status.totalPhotos.toLocaleString()} photos`);
-        return undefined;
-      })
-      .catch((err) => {
-        console.error('❌ Failed to check database status on startup:', err);
-      });
-
-    console.log('🚀 Server ready to serve requests');
+    startLibrarySync()
+      .then(() => console.log('🚀 Server ready with file watcher active'))
+      .catch((err) => console.error('❌ Failed to start library sync:', err));
   } catch (error) {
     console.error('❌ Failed to initialize server:', error);
     // Don't exit – keep running so the user can reconfigure via API
@@ -1261,7 +1075,8 @@ server.listen(PORT, '0.0.0.0', async () => {
 });
 
 // Graceful shutdown
-function shutdown() {
+async function shutdown() {
+  await stopWatcher();
   server.close(() => {
     console.log('Server closed');
     const database = getDb();
