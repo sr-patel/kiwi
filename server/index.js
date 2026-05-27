@@ -8,6 +8,8 @@ const {
   isConfigured,
   updateConfig,
   validateLibraryPath,
+  getBrowseRoots,
+  browseDirectories,
   getLibraryPath,
   getDatabasePath,
   reloadConfig,
@@ -187,19 +189,58 @@ async function getPhotosFromDatabase(options = {}) {
 }
 
 /**
+ * Flatten Eagle folder tree into id -> name map
+ */
+function flattenFolderNames(folders, map = {}) {
+  if (!Array.isArray(folders)) return map;
+  for (const folder of folders) {
+    if (folder?.id) {
+      map[folder.id] = folder.name || folder.id;
+    }
+    if (folder?.children?.length) {
+      flattenFolderNames(folder.children, map);
+    }
+  }
+  return map;
+}
+
+/**
  * Get database statistics
  */
 async function getDatabaseStats() {
   const database = getDb();
   if (!database) throw new Error('Database not available');
 
-  const stats = await database.getStats();
+  const [stats, analytics] = await Promise.all([
+    database.getStats(),
+    database.getDashboardAnalytics(),
+  ]);
+
   const fileTypes = {};
   if (stats.typeStats) {
     stats.typeStats.forEach(typeStat => {
       fileTypes[typeStat.type] = typeStat.count;
     });
   }
+
+  let folderNameMap = {};
+  if (LIBRARY_PATH) {
+    try {
+      const metadataPath = path.join(LIBRARY_PATH, 'metadata.json');
+      const metadataData = await fs.readFile(metadataPath, 'utf8');
+      const metadata = JSON.parse(metadataData);
+      folderNameMap = flattenFolderNames(metadata.folders || []);
+    } catch (error) {
+      console.warn('⚠️  Could not read folder names for dashboard stats:', error.message);
+    }
+  }
+
+  const topFolders = analytics.topFolders.map((row) => ({
+    folderId: row.folderId,
+    name: folderNameMap[row.folderId] || row.folderId,
+    count: row.count,
+  }));
+
   const lastRefresh = await database.getCacheInfo('last_refresh');
   return {
     totalPhotos: stats.totalPhotos,
@@ -211,6 +252,10 @@ async function getDatabaseStats() {
     fileTypes,
     typeStats: stats.typeStats,
     extensionStats: stats.extensionStats,
+    analytics: {
+      ...analytics,
+      topFolders,
+    },
   };
 }
 
@@ -284,6 +329,23 @@ app.post('/api/config/validate', (req, res) => {
   const { libraryPath } = req.body;
   const result = validateLibraryPath(libraryPath);
   res.json(result);
+});
+
+/** GET /api/config/browse – list directories for setup folder picker */
+app.get('/api/config/browse', (req, res) => {
+  try {
+    const requestedPath = req.query.path || null;
+    const result = browseDirectories(requestedPath);
+    res.json(result);
+  } catch (error) {
+    console.error('Error browsing directories:', error);
+    res.status(500).json({ error: 'Failed to browse directories' });
+  }
+});
+
+/** GET /api/config/browse-roots – available browse entry points */
+app.get('/api/config/browse-roots', (req, res) => {
+  res.json({ roots: getBrowseRoots() });
 });
 
 // ─── Library-dependent routes (guarded) ───

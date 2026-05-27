@@ -1152,8 +1152,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
             ) : (
               <>
                 <div className="text-4xl sm:text-6xl mb-4 opacity-20">📁</div>
-                <h3 className="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No files found</h3>
-                <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">Try adjusting your search or filters</p>
+                <h3 className="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No files here</h3>
+                <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
+                  Try <strong>All Files</strong> in the sidebar, or pick a different folder.
+                </p>
               </>
             )}
           </div>

@@ -17,6 +17,7 @@ import {
   getAccentRing,
   getAccentHex,
 } from '@/utils/accentColors';
+import { libraryService } from '@/services/libraryService';
 
 type LibraryStatus = 'idle' | 'loading' | 'valid' | 'invalid' | 'saving' | 'error';
 
@@ -45,6 +46,10 @@ export const SettingsPage: React.FC = () => {
     setTransitionEffect,
     defaultLandingPage,
     setDefaultLandingPage,
+    setCurrentLibraryPath,
+    setFolderTree,
+    setAllPhotos,
+    clearCache,
   } = useAppStore();
 
   // Accent helpers
@@ -115,7 +120,7 @@ export const SettingsPage: React.FC = () => {
         setLibraryMessage('Valid Eagle library detected.');
       } else {
         setLibraryStatus('invalid');
-        setLibraryMessage(data.reason || 'Invalid library path.');
+        setLibraryMessage(data.hint ? `${data.reason} ${data.hint}` : (data.reason || 'Invalid library path.'));
       }
     } catch {
       setLibraryStatus('error');
@@ -142,12 +147,26 @@ export const SettingsPage: React.FC = () => {
       }
       setLibraryStatus('valid');
       setIsConfigured(true);
-      setLibraryMessage('Configuration saved. The database will rebuild if needed.');
+      setLibraryMessage('Configuration saved. Reloading your library…');
+
+      const savedPath = libraryPath.trim();
+      setCurrentLibraryPath(savedPath);
+      try {
+        await clearCache();
+        const result = await libraryService.initializeLibrary();
+        if (result) {
+          await setFolderTree(result.folderTree);
+          await setAllPhotos(result.allPhotos);
+        }
+        setLibraryMessage('Library path saved and reloaded.');
+      } catch {
+        setLibraryMessage('Path saved. Refresh the page if folders do not update.');
+      }
     } catch {
       setLibraryStatus('error');
       setLibraryMessage('Failed to save configuration. Check server connection.');
     }
-  }, [libraryPath]);
+  }, [libraryPath, setCurrentLibraryPath, setFolderTree, setAllPhotos, clearCache]);
 
   const triggerFullRebuild = useCallback(async () => {
     setLibraryMessage('Starting full database rebuild...');

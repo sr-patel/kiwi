@@ -1203,6 +1203,132 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Dashboard analytics aggregations
+   */
+  async getDashboardAnalytics() {
+    const EXTENSION_GROUPS = {
+      jpg: 'Image', jpeg: 'Image', png: 'Image', gif: 'Image',
+      webp: 'Image', bmp: 'Image', tiff: 'Image', avif: 'Image',
+      svg: 'Image', heic: 'Image', heif: 'Image', raw: 'Image',
+      cr2: 'Image', nef: 'Image', arw: 'Image', dng: 'Image',
+      mp4: 'Video', avi: 'Video', mov: 'Video', mkv: 'Video',
+      webm: 'Video', m4v: 'Video', flv: 'Video', wmv: 'Video',
+      mpg: 'Video', mpeg: 'Video', '3gp': 'Video', ts: 'Video',
+      mp3: 'Audio', wav: 'Audio', flac: 'Audio', aac: 'Audio',
+      ogg: 'Audio', opus: 'Audio', m4a: 'Audio', wma: 'Audio',
+      aiff: 'Audio', alac: 'Audio',
+      pdf: 'Document', epub: 'Document', mobi: 'Document',
+      txt: 'Document', doc: 'Document', docx: 'Document',
+    };
+
+    const getGroup = (ext) => EXTENSION_GROUPS[(ext || '').toLowerCase()] || 'Other';
+
+    try {
+      const timelineByMonth = this.db.prepare(`
+        SELECT strftime('%Y-%m', datetime(COALESCE(btime, mtime))) as month, COUNT(*) as count
+        FROM photos
+        WHERE COALESCE(btime, mtime) IS NOT NULL
+        GROUP BY month
+        ORDER BY month
+      `).all();
+
+      const topTags = this.db.prepare(`
+        SELECT tag, COUNT(*) as count
+        FROM tags
+        GROUP BY tag
+        ORDER BY count DESC
+        LIMIT 12
+      `).all();
+
+      const topFolders = this.db.prepare(`
+        SELECT folder_id as folderId, COUNT(*) as count
+        FROM photo_folders
+        GROUP BY folder_id
+        ORDER BY count DESC
+        LIMIT 12
+      `).all();
+
+      const orientationRow = this.db.prepare(`
+        SELECT
+          SUM(CASE WHEN width IS NOT NULL AND height IS NOT NULL AND width > height THEN 1 ELSE 0 END) as landscape,
+          SUM(CASE WHEN width IS NOT NULL AND height IS NOT NULL AND width < height THEN 1 ELSE 0 END) as portrait,
+          SUM(CASE WHEN width IS NOT NULL AND height IS NOT NULL AND width = height THEN 1 ELSE 0 END) as square
+        FROM photos
+      `).get();
+
+      const resolutionBuckets = this.db.prepare(`
+        SELECT
+          CASE
+            WHEN width IS NULL OR height IS NULL THEN 'Unknown'
+            WHEN (width * height) < 1000000 THEN '< 1 MP'
+            WHEN (width * height) < 4000000 THEN '1–4 MP'
+            WHEN (width * height) < 12000000 THEN '4–12 MP'
+            WHEN (width * height) < 24000000 THEN '12–24 MP'
+            ELSE '24+ MP'
+          END as bucket,
+          COUNT(*) as count
+        FROM photos
+        WHERE width IS NOT NULL AND height IS NOT NULL
+        GROUP BY bucket
+      `).all();
+
+      const bucketOrder = ['< 1 MP', '1–4 MP', '4–12 MP', '12–24 MP', '24+ MP', 'Unknown'];
+      resolutionBuckets.sort((a, b) => bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket));
+
+      const extensionStats = this.db.prepare(`
+        SELECT ext, COUNT(*) as count, AVG(size) as avgSize, SUM(size) as totalSize
+        FROM photos
+        GROUP BY ext
+      `).all();
+
+      const storageByGroupMap = {};
+      const countByGroupMap = {};
+      for (const item of extensionStats) {
+        const group = getGroup(item.ext);
+        storageByGroupMap[group] = (storageByGroupMap[group] || 0) + (item.totalSize || 0);
+        countByGroupMap[group] = (countByGroupMap[group] || 0) + item.count;
+      }
+
+      const storageByGroup = Object.entries(storageByGroupMap)
+        .map(([group, totalSize]) => ({
+          group,
+          totalSize,
+          count: countByGroupMap[group] || 0,
+        }))
+        .sort((a, b) => b.totalSize - a.totalSize);
+
+      const totalPhotos = this.db.prepare('SELECT COUNT(*) as count FROM photos').get().count;
+      const taggedPhotos = this.db.prepare('SELECT COUNT(DISTINCT photo_id) as count FROM tags').get().count;
+      const imageCount = this.db.prepare("SELECT COUNT(*) as count FROM photos WHERE type = 'image'").get().count;
+      const avgFileSize = totalPhotos > 0
+        ? Math.round((this.db.prepare('SELECT SUM(size) as total FROM photos').get().total || 0) / totalPhotos)
+        : 0;
+
+      return {
+        timelineByMonth,
+        storageByGroup,
+        topTags,
+        topFolders,
+        resolutionBuckets,
+        orientationStats: {
+          landscape: orientationRow.landscape || 0,
+          portrait: orientationRow.portrait || 0,
+          square: orientationRow.square || 0,
+        },
+        summary: {
+          avgFileSize,
+          taggedPhotos,
+          untaggedPhotos: Math.max(0, totalPhotos - taggedPhotos),
+          imageCount,
+        },
+      };
+    } catch (error) {
+      console.error('❌ Failed to get dashboard analytics:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get database file size
    */
   async getDatabaseSize() {
@@ -1456,7 +1582,6 @@ class PhotoLibraryDatabase {
       });
 
       transaction(relationships);
-      console.log(`✅ Inserted ${relationships.length} photo-folder relationships`);
       return true;
     } catch (error) {
       console.error('❌ Failed to insert photo-folder relationships:', error.message);
@@ -1481,7 +1606,6 @@ class PhotoLibraryDatabase {
       });
 
       transaction(relationships);
-      console.log(`✅ Inserted ${relationships.length} photo-tag relationships`);
       return true;
     } catch (error) {
       console.error('❌ Failed to insert photo-tag relationships:', error.message);

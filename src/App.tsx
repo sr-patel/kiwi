@@ -4,7 +4,6 @@ import { Sidebar } from '@/components/Layout/Sidebar';
 import { PhotoGrid } from '@/components/PhotoGrid/PhotoGrid';
 import SettingsPage from '@/pages/SettingsPage';
 import DashboardPage from '@/pages/DashboardPage';
-import { AdminDatabaseStatus } from '@/pages/AdminDatabaseStatus';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
 import { Moon, Sun, Settings as SettingsIcon } from 'lucide-react';
@@ -20,6 +19,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary/ErrorBoundary';
 import { RouteWrapper } from '@/components/Layout/RouteWrapper';
 import { SplashScreen } from '@/components/SplashScreen/SplashScreen';
 import { SetupWizard } from '@/components/SetupWizard/SetupWizard';
+import { ServerConnectionScreen } from '@/components/SetupWizard/ServerConnectionScreen';
 import './App.css';
 
 // ─── Route components ───
@@ -132,42 +132,45 @@ function App() {
 
   const navigate = useNavigate();
   const [showSplash, setShowSplash] = useState(true);
-  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null); // null = checking
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+  const [serverUnreachable, setServerUnreachable] = useState(false);
+  const [configRetrying, setConfigRetrying] = useState(false);
   const { folderTree } = useAppStore();
+
+  const fetchConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/config');
+      if (!res.ok) {
+        setServerUnreachable(true);
+        setNeedsSetup(null);
+        return;
+      }
+      const data = await res.json();
+      setServerUnreachable(false);
+      setNeedsSetup(!data._configured);
+      if (data._configured && !currentLibraryPath) {
+        setCurrentLibraryPath(data.libraryPath);
+      }
+    } catch {
+      setServerUnreachable(true);
+      setNeedsSetup(null);
+    }
+  }, [currentLibraryPath, setCurrentLibraryPath]);
+
+  const handleConfigRetry = useCallback(async () => {
+    setConfigRetrying(true);
+    await fetchConfig();
+    setConfigRetrying(false);
+  }, [fetchConfig]);
 
   // ── First-run detection: ask server if library is configured ──
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/config');
-        if (!res.ok) { setNeedsSetup(false); return; }
-        const data = await res.json();
-        if (!cancelled) {
-          setNeedsSetup(!data._configured);
-          // If already configured, seed the store with the server's libraryPath
-          if (data._configured && !currentLibraryPath) {
-            setCurrentLibraryPath(data.libraryPath);
-          }
-        }
-      } catch {
-        // Server unreachable – fall through to normal flow
-        if (!cancelled) setNeedsSetup(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    fetchConfig();
+  }, [fetchConfig]);
 
   const handleSetupComplete = useCallback(() => {
-    setNeedsSetup(false);
-    // Re-fetch config to seed the store
-    fetch('/api/config')
-      .then(r => r.json())
-      .then(data => {
-        if (data.libraryPath) setCurrentLibraryPath(data.libraryPath);
-      })
-      .catch(() => {});
-  }, [setCurrentLibraryPath]);
+    fetchConfig();
+  }, [fetchConfig]);
 
   // ── Detect mobile ──
   useEffect(() => {
@@ -244,8 +247,16 @@ function App() {
   // ── Render ──
 
   // Still checking config
-  if (needsSetup === null) {
+  if (needsSetup === null && !serverUnreachable) {
     return <SplashScreen visible onClose={() => {}} />;
+  }
+
+  if (serverUnreachable) {
+    return (
+      <div className={theme === 'dark' ? 'dark' : ''}>
+        <ServerConnectionScreen onRetry={handleConfigRetry} retrying={configRetrying} />
+      </div>
+    );
   }
 
   // Show setup wizard for first-run
@@ -318,15 +329,7 @@ function App() {
                       </div>
                     </div>
                   )}
-                  <button
-                    onClick={() => navigate('/admin')}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                    title="Database Admin"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                    </svg>
-                  </button>
+
                   <button
                     onClick={() => navigate('/settings')}
                     className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
@@ -362,7 +365,6 @@ function App() {
                   <Route path="/" element={<HomeRedirect />} />
                   <Route path="/dashboard" element={<RouteWrapper><DashboardPage /></RouteWrapper>} />
                   <Route path="/all" element={<AllFilesRoute isMobile={isMobile} />} />
-                  <Route path="/admin" element={<RouteWrapper><AdminDatabaseStatus /></RouteWrapper>} />
                   <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
                   <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
                   <Route path="/settings" element={<RouteWrapper><SettingsPage /></RouteWrapper>} />
