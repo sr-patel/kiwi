@@ -1,6 +1,6 @@
 {
   "libraryPath": "",
-  "browseRoots": [],
+  "browseRoots": ["/app/data/libraries"],
   "requestPageSize": 50,
   "defaultTheme": "dark",
   "defaultAccentColor": "kiwi",

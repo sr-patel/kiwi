@@ -5,8 +5,11 @@ const path = require('path');
 let cachedConfig = null;
 const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
 
+const os = require('os');
+
 const DEFAULT_CONFIG = {
   libraryPath: '',
+  browseRoots: [],
   requestPageSize: 50,
   defaultTheme: 'dark',
   defaultAccentColor: 'kiwi',
@@ -73,30 +76,162 @@ function updateConfig(updates) {
 /**
  * Validate that a given library path points to a valid Eagle-style library.
  * @param {string} libraryPath
- * @returns {{ valid: boolean, reason?: string }}
+ * @returns {{ valid: boolean, reason?: string, hint?: string }}
  */
 function validateLibraryPath(libraryPath) {
   if (!libraryPath || typeof libraryPath !== 'string') {
-    return { valid: false, reason: 'Library path is empty' };
+    return {
+      valid: false,
+      reason: 'Please choose or enter a library folder.',
+      hint: 'In Eagle, open Library → Manage library to see where your library folder is stored.',
+    };
   }
 
-  if (!fs.existsSync(libraryPath)) {
-    return { valid: false, reason: 'Path does not exist' };
+  const trimmed = libraryPath.trim();
+  if (!trimmed) {
+    return {
+      valid: false,
+      reason: 'Please choose or enter a library folder.',
+      hint: 'In Eagle, open Library → Manage library to see where your library folder is stored.',
+    };
   }
 
-  // Check for expected Eagle library structure
-  const metadataPath = path.join(libraryPath, 'metadata.json');
-  const imagesDir = path.join(libraryPath, 'images');
+  if (!fs.existsSync(trimmed)) {
+    return {
+      valid: false,
+      reason: 'We could not find that folder.',
+      hint: 'Check the path is correct, or use Browse to pick your .library folder. If you use Docker, select the folder inside the container (under /app/data/libraries).',
+    };
+  }
+
+  const metadataPath = path.join(trimmed, 'metadata.json');
+  const imagesDir = path.join(trimmed, 'images');
 
   if (!fs.existsSync(metadataPath)) {
-    return { valid: false, reason: 'No metadata.json found – not a valid Eagle library' };
+    return {
+      valid: false,
+      reason: 'This folder does not look like an Eagle library.',
+      hint: 'Pick the folder that ends in .library — the same one shown in Eagle under Library → Manage library.',
+    };
   }
 
   if (!fs.existsSync(imagesDir)) {
-    return { valid: false, reason: 'No images/ directory found – not a valid Eagle library' };
+    return {
+      valid: false,
+      reason: 'This library folder is missing its photos.',
+      hint: 'Try opening the library in Eagle first. If the problem continues, your library folder may be incomplete.',
+    };
   }
 
   return { valid: true };
+}
+
+/**
+ * Default directory browse roots for the setup folder picker.
+ */
+function getBrowseRoots() {
+  const config = loadConfig();
+  if (Array.isArray(config.browseRoots) && config.browseRoots.length > 0) {
+    return config.browseRoots.filter((p) => p && fs.existsSync(p));
+  }
+
+  const roots = [];
+  const dockerLib = '/app/data/libraries';
+  if (fs.existsSync(dockerLib)) {
+    roots.push(dockerLib);
+  }
+  const home = os.homedir();
+  if (home && fs.existsSync(home)) {
+    roots.push(home);
+  }
+  return roots.length > 0 ? roots : [process.cwd()];
+}
+
+function resolveSafePath(inputPath) {
+  if (!inputPath || typeof inputPath !== 'string') return null;
+  const resolved = path.resolve(inputPath);
+  const roots = getBrowseRoots().map((r) => path.resolve(r));
+
+  for (const root of roots) {
+    if (resolved === root || resolved.startsWith(root + path.sep)) {
+      return resolved;
+    }
+  }
+  return null;
+}
+
+/**
+ * List subdirectories at a path (must be under browse roots).
+ * @returns {{ path: string, name: string, isLibrary: boolean, libraryValid: boolean }[]}
+ */
+function browseDirectories(requestedPath) {
+  const roots = getBrowseRoots();
+  let targetPath;
+
+  if (!requestedPath) {
+    // Return virtual root listing of browse roots
+    return {
+      path: null,
+      parent: null,
+      entries: roots.map((root) => {
+        const name = path.basename(root) || root;
+        const validation = validateLibraryPath(root);
+        return {
+          name,
+          path: root,
+          isLibrary: root.endsWith('.library') || validation.valid,
+          libraryValid: validation.valid,
+        };
+      }),
+    };
+  }
+
+  targetPath = resolveSafePath(requestedPath);
+  if (!targetPath) {
+    return { error: 'Path is not accessible', path: requestedPath, parent: null, entries: [] };
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(targetPath);
+  } catch {
+    return { error: 'Cannot read folder', path: targetPath, parent: null, entries: [] };
+  }
+
+  if (!stat.isDirectory()) {
+    return { error: 'Not a folder', path: targetPath, parent: null, entries: [] };
+  }
+
+  const parent = path.dirname(targetPath);
+  const parentResolved = resolveSafePath(parent);
+  const parentPath = parentResolved && parentResolved !== targetPath ? parentResolved : null;
+
+  let names;
+  try {
+    names = fs.readdirSync(targetPath, { withFileTypes: true });
+  } catch {
+    return { error: 'Cannot read folder contents', path: targetPath, parent: parentPath, entries: [] };
+  }
+
+  const entries = names
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+    .map((d) => {
+      const fullPath = path.join(targetPath, d.name);
+      const validation = validateLibraryPath(fullPath);
+      return {
+        name: d.name,
+        path: fullPath,
+        isLibrary: d.name.endsWith('.library') || validation.valid,
+        libraryValid: validation.valid,
+      };
+    })
+    .sort((a, b) => {
+      if (a.libraryValid !== b.libraryValid) return a.libraryValid ? -1 : 1;
+      if (a.isLibrary !== b.isLibrary) return a.isLibrary ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  return { path: targetPath, parent: parentPath, entries };
 }
 
 /**
@@ -141,6 +276,9 @@ module.exports = {
   isConfigured,
   updateConfig,
   validateLibraryPath,
+  getBrowseRoots,
+  browseDirectories,
+  resolveSafePath,
   getDatabasePath,
   getLibraryPath,
   getMetadataCachePath,

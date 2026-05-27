@@ -8,6 +8,8 @@ const {
   isConfigured,
   updateConfig,
   validateLibraryPath,
+  getBrowseRoots,
+  browseDirectories,
   getLibraryPath,
   getDatabasePath,
   reloadConfig,
@@ -327,6 +329,23 @@ app.post('/api/config/validate', (req, res) => {
   const { libraryPath } = req.body;
   const result = validateLibraryPath(libraryPath);
   res.json(result);
+});
+
+/** GET /api/config/browse – list directories for setup folder picker */
+app.get('/api/config/browse', (req, res) => {
+  try {
+    const requestedPath = req.query.path || null;
+    const result = browseDirectories(requestedPath);
+    res.json(result);
+  } catch (error) {
+    console.error('Error browsing directories:', error);
+    res.status(500).json({ error: 'Failed to browse directories' });
+  }
+});
+
+/** GET /api/config/browse-roots – available browse entry points */
+app.get('/api/config/browse-roots', (req, res) => {
+  res.json({ roots: getBrowseRoots() });
 });
 
 // ─── Library-dependent routes (guarded) ───

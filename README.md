@@ -1,214 +1,193 @@
 # Kiwi Photo Library
 
 <div align="center">
-  <img src="kiwi.png" alt="Kiwi Photo Library" width="200"/>
+  <img src="kiwi.png" alt="Kiwi Photo Library" width="160"/>
+  <p>A simple web app to browse your <strong>Eagle</strong> photo library.</p>
 </div>
 
-<div align="center">
-A modern web client for browsing and managing Eagle photo libraries, built with React and TypeScript.
-</div>
+---
 
-## 
+## What is Kiwi?
 
-<div align="center">
+Kiwi lets you browse folders, tags, and photos from an existing **Eagle** library (a `.library` folder) in your web browser. After the first setup, you do not need to use the command line for everyday use.
 
-[![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
-[![Express](https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
-[![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+---
 
-[![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
-[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Docker](https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+## What you need
 
-</div>
+- **[Docker](https://docs.docker.com/get-docker/)** with **Docker Compose** — the recommended way to run Kiwi (Windows, Mac, or Linux)
+- An **Eagle library** already created in Eagle (a folder ending in `.library`)
+- Eagle can stay installed on your computer; Kiwi reads the same files
 
-## Screenshots
+---
 
-<div align="center" style="display: flex; justify-content: center; align-items: center; gap: 40px; flex-wrap: wrap;">
+## Quick start (Docker)
 
-<div style="text-align: center; max-width: 500px;">
-  <img src="sample/gridView.png" alt="Grid View" width="320"/><br>
-  <span style="font-weight: normal;">Grid View</span><br>
-  <em>Browse photos in a clean, organized grid layout.</em>
-</div>
+### 1. Install Docker
 
-<div style="text-align: center; max-width: 500px;">
-  <img src="sample/detailedView.png" alt="Detailed View" width="320"/><br>
-  <span style="font-weight: normal;">Detailed View</span><br>
-  <em>Full-screen photo viewing with metadata and controls.</em>
-</div>
+Install Docker for your system:
 
-<div style="text-align: center; max-width: 200px;">
-  <img src="sample/tagMetadata.png" alt="Tag Management" width="320"/><br>
-  <span style="font-weight: normal;">Tag Management</span><br>
-  <em>Organize and filter photos using tags and metadata.</em>
-</div>
+- **Windows / Mac:** [Docker Desktop](https://docs.docker.com/get-docker/) is the usual installer
+- **Linux:** Docker Engine + Compose plugin ([install guide](https://docs.docker.com/engine/install/))
 
-</div>
+Make sure Docker is running before you continue.
+
+### 2. Get Kiwi
+
+Download or clone this project to a folder on your computer.
+
+### 3. Copy the config file (first time only)
+
+**Windows:**
+```text
+copy config.example.json config.json
+```
+
+**Mac / Linux:**
+```bash
+cp config.example.json config.json
+```
+
+### 4. Point Kiwi at your Eagle library
+
+Open `docker-compose.yml` and edit the library volume to your `.library` folder.
+
+**Windows** (use forward slashes):
+
+```yaml
+volumes:
+  - C:/Users/YourName/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
+  - ./config.json:/app/config.json:rw
+```
+
+**Mac:**
+
+```yaml
+volumes:
+  - /Users/YourName/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
+  - ./config.json:/app/config.json:rw
+```
+
+**Linux:**
+
+```yaml
+volumes:
+  - /home/yourname/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
+  - ./config.json:/app/config.json:rw
+```
+
+To find your library path in Eagle: **Library → Manage library** — the folder shown there is what you need.
+
+### 5. Start Kiwi
+
+**Windows:** double-click **`docker-start.bat`**
+
+**Mac / Linux:** from the Kiwi folder:
+
+```bash
+docker compose up -d --build
+```
+
+### 6. Open the app
+
+Go to **http://localhost:3000** and follow the setup wizard.
+
+---
+
+## First-time setup in the browser
+
+1. The setup wizard opens automatically.
+2. Choose your Eagle library folder (use **Browse** — it appears under the libraries path you mounted in Docker).
+3. Wait while Kiwi indexes your photos (a progress message is shown).
+4. When finished, browse folders in the sidebar on the left.
+
+**Important:** In the wizard, pick the path **inside the container** (for example `/app/data/libraries/MyPhotos.library`), not your host path like `C:\...` or `/Users/...`.
+
+---
+
+## Daily use
+
+| Action | What to do |
+|--------|------------|
+| **Start Kiwi** | Ensure Docker is running, then `docker-start.bat` (Windows) or `docker compose up -d` |
+| **Browse photos** | Open http://localhost:3000 |
+| **Stop Kiwi** | `docker compose down` in the Kiwi folder |
+
+Kiwi keeps your library in sync automatically when you add or change photos in Eagle.
+
+---
+
+## Help & troubleshooting
+
+**The page will not load**
+- Is Docker running? (`docker info` should succeed)
+- Did you start Kiwi? (`docker-start.bat` or `docker compose up -d`)
+- Try http://localhost:3000 after waiting 30 seconds
+
+**I cannot find my library in the setup wizard**
+- In Eagle: **Library → Manage library** to see where your `.library` folder lives
+- Make sure that folder is mounted in `docker-compose.yml`
+- Restart containers after editing `docker-compose.yml`
+
+**Photos are missing or out of date**
+- Kiwi syncs changes from Eagle automatically
+- For a full refresh: open **Dashboard → Database Maintenance → Run Full Rebuild**
+
+**I changed the library path in Docker**
+- Update the volume in `docker-compose.yml`
+- Restart: `docker compose down` then start again
+
+---
 
 ## Features
 
-### Modern UI and User Experience
+- Browse photos by **folders** and **tags**
+- **Search** across your library
+- **Full-screen** photo view with metadata
+- **Dashboard** with library stats and sync activity
+- **Dark mode** and customizable accent colors
+- Works on desktop and mobile browsers
 
-- **Responsive design**: Optimized for both desktop and mobile devices.
-- **Progressive Web App (PWA)**: Install as a native-like app with offline capabilities.
-- **Intuitive navigation**: Sidebar with folder tree and breadcrumb navigation.
+---
 
-### Photo Management
+## Screenshots
 
-- **Folder organization**: Navigate your photo library using a familiar folder structure.
-- **Tag-based filtering**: Browse photos by tags and metadata.
-- **Detailed photo modal**: Full-screen photo viewing with metadata and playback controls.
+<div align="center">
 
-### Advanced Capabilities
+| Grid view | Detail view | Tags |
+|-----------|-------------|------|
+| <img src="sample/gridView.png" alt="Grid View" width="280"/> | <img src="sample/detailedView.png" alt="Detailed View" width="280"/> | <img src="sample/tagMetadata.png" alt="Tags" width="280"/> |
 
-- **Fast search**: Quickly search through large photo collections.
-- **Caching system**: Intelligent caching for improved performance.
-- **Image preloading**: Predictive loading for smooth browsing.
-- **Audio player**: Built-in audio playback for supported formats.
+</div>
 
-### Performance and Scalability
+---
 
-- **Incremental updates**: Efficient database updates without full rebuilds.
-- **Memory optimization**: Smart memory management for smooth operation on large libraries.
-- **Background processing**: Non-blocking operations for a responsive UI.
+## For developers
 
-## Quick Start
+If you want to hack on Kiwi locally without Docker:
 
-### Prerequisites
-
-- **Node.js** v16 or higher.
-- An **Eagle Photo Library** (or a compatible photo library structure).
-
-### Installation
-
-1. **Clone the repository**
-
-   ```bash
-   git clone <repository-url>
-   cd kiwi
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server**
-
-   ```bash
-   npm run dev
-   ```
-
-The application will be available at `http://localhost:5173`.
-
-## Database Management
-
-### Initial Setup
-
-On first run, Kiwi automatically detects an empty database and builds it from your Eagle library. No manual CLI commands are required.
-
-You can also trigger a full rebuild or incremental update from the **Admin** page (`/admin`) in the web UI.
-
-### Updating the Database
-
-For subsequent updates when you have added new photos or modified your library:
+**Requirements:** Node.js 18+
 
 ```bash
-cd server
-node incrementalUpdateDatabase.js
+npm install
+cd server && npm install && cd ..
+npm start
 ```
 
-### Database Maintenance Guidelines
+Open http://localhost:3000. The backend runs on port 3001; Vite proxies API requests.
 
-- **Performance impact**: The full rebuild process can take significant time for large libraries (for example, hours for 300k+ photos).
-- **Resource usage**: Monitor system resources during database operations, especially for large libraries.
-- **Backups**: Consider backing up your database before running update scripts.
-
-## Docker Deployment
-
-Docker provides an easy way to run Kiwi Photo Library without installing Node.js or other dependencies directly on your system.
-
-### Quick Start with Docker
-
-1. **Install Docker Desktop**
-   - **Windows/macOS**: Download from `https://www.docker.com/products/docker-desktop`.
-   - **Linux**: Install via your distribution, for example:
-
-     ```bash
-     sudo apt-get install docker.io docker-compose
-     ```
-
-2. **Configure your photo library** in `docker-compose.yml`:
-
-   ```yaml
-   volumes:
-     - /path/to/your/photo/library:/app/data/libraries:rw  # Change this path
-   ```
-
-3. **Start the application**
-
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **Access your library**
-   - **Web interface**: `http://localhost` (port 3000).
-   - **Stop containers**: `docker-compose down`.
-
-### Container Architecture
-
-The Docker setup uses two containers:
-
-- **Backend**: Processes photos and exposes the API (port 3001).
-- **Frontend**: Serves the web interface (port 3000).
-
-## Architecture
-
-### Frontend (React/TypeScript)
-
-- **Framework**: React 18 with TypeScript.
-- **Styling**: Tailwind CSS with dark mode support.
-- **State management**: Zustand for global state.
-- **Routing**: React Router v6.
-- **Virtual scrolling**: React Window for high-performance grid rendering.
-- **PWA**: Vite PWA plugin with Workbox.
-
-### Backend (Node.js/Express)
-
-- **Runtime**: Node.js with Express.
-- **Database**: SQLite with `better-sqlite3`.
-- **Media processing**: `sharp` for image operations.
-- **Metadata**: EXIF reader for photo metadata extraction.
-- **File system**: `fs-extra` for enhanced file operations.
-
-## Project Structure
+**Project layout:**
 
 ```text
 kiwi/
-├── src/                    # Frontend source code
-│   ├── components/         # React components
-│   │   ├── AudioPlayer/    # Audio playback functionality
-│   │   ├── PhotoGrid/      # Photo grid and virtual scrolling
-│   │   ├── DetailedView/   # Photo detail modal
-│   │   └── ...
-│   ├── hooks/             # Custom React hooks
-│   ├── services/          # API and utility services
-│   ├── types/             # TypeScript type definitions
-│   └── utils/             # Utility functions
-├── server/                # Backend server code
-│   ├── database.js        # Database operations
-│   ├── index.js           # Express server
-│   └── mediaMetadata.js   # Media file processing
-├── public/                # Static assets
-├── dist/                  # Production build output
-└── sample/                # Example screenshots
+├── src/           React frontend
+├── server/        Express API + SQLite sync
+├── config.json    Library path and preferences
+└── docker-compose.yml
 ```
+
+---
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+MIT License — see [LICENSE](LICENSE).

@@ -1910,7 +1910,7 @@ export const DetailedPhotoModal: React.FC = () => {
       {/* Image container */}
       <div 
         ref={imageContainerRef}
-        className={`relative flex overscroll-contain w-full h-full ${
+        className={`relative z-0 flex overscroll-contain w-full h-full ${
           viewMode === 'horizontal'
             ? `${hasVerticalOverflow ? 'items-start' : 'items-center'} justify-center p-0 ${zoom <= 1 && hasVerticalOverflow ? 'overflow-y-auto' : 'overflow-y-hidden'} overflow-x-hidden`
             : viewMode === 'vertical'
@@ -1986,7 +1986,7 @@ export const DetailedPhotoModal: React.FC = () => {
       {/* Metadata Corner Overlay */}
       {isInfoBoxVisible && (
         <div 
-          className="absolute bottom-4 left-4 bg-black/30 backdrop-blur-lg rounded-lg p-4 text-white"
+          className="absolute bottom-4 left-4 z-10 bg-black/30 backdrop-blur-lg rounded-lg p-4 text-white"
           style={{ 
             maxWidth: `${Math.min(infoBoxSize * 0.25, 35)}%`, // More aggressive width limit, cap at 35%
             transform: `scale(${infoBoxSize / 100})`,

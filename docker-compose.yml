@@ -10,10 +10,21 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      # Mount your photo libraries
-      - /mnt/tank/photo-libraries:/app/data/libraries
-      # Mount config file
-      - ./config.json:/app/config.json:ro
+      # Mount your Eagle library folder (edit the left side to your path):
+      #
+      # Windows example (forward slashes):
+      # - C:/Users/YourName/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
+      #
+      # Mac example:
+      # - /Users/YourName/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
+      #
+      # Linux example:
+      # - /home/YourName/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
+      #
+      # Default dev example (relative to this repo):
+      - ./example.library:/app/data/libraries/example.library:ro
+      # Config must be writable so the setup wizard can save your library path
+      - ./config.json:/app/config.json:rw
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -43,7 +54,3 @@ services:
 networks:
   kiwi-network:
     driver: bridge
-
-volumes:
-  databases:
-    driver: local

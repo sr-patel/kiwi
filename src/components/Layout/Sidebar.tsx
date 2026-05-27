@@ -98,10 +98,11 @@ export const Sidebar = () => {
             onTagSelect={handleTagSelect}
           />
         ) : (
-          <div className="flex items-center justify-center h-32 text-gray-500 dark:text-gray-400">
-            <div className="text-center">
-              <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)} mx-auto mb-2`}></div>
-              <p className="text-sm">Loading folders...</p>
+          <div className="flex items-center justify-center h-32 text-gray-500 dark:text-gray-400 px-4">
+            <div className="text-center space-y-2">
+              <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)} mx-auto`} />
+              <p className="text-sm">Loading your library…</p>
+              <p className="text-xs text-gray-400">Large libraries can take a moment on first open</p>
             </div>
           </div>
         )}

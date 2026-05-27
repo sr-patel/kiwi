@@ -7,6 +7,7 @@ import { DashboardStatCards, DashboardSecondaryStats } from './DashboardStatCard
 import { DashboardCharts } from './DashboardCharts';
 import { DashboardMaintenance } from './DashboardMaintenance';
 import { WatcherActivityPanel } from './WatcherActivityPanel';
+import { WelcomeBanner } from '@/components/WelcomeBanner/WelcomeBanner';
 
 export const DashboardPage: React.FC = () => {
   const { accentColor, theme } = useAppStore();
@@ -61,6 +62,8 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       <DashboardStatCards stats={stats} syncStatus={syncStatus} accentHex={accentHex} />
+
+      <WelcomeBanner />
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(380px,42%)] gap-6 items-stretch">
         <DashboardCharts stats={stats} theme={theme} accentHex={accentHex} />
