@@ -20,11 +20,26 @@ function hashMetadata(metadata) {
   return crypto.createHash('sha1').update(JSON.stringify(metadata)).digest('hex');
 }
 
+/** Fields Eagle rewrites often without meaningful content changes */
+const HASH_IGNORE_FIELDS = ['lastModified', 'modificationTime', 'palettes'];
+
+function metadataForHash(metadata, photoId, mtimeData = {}) {
+  const copy = { ...metadata };
+  if (!copy.id) copy.id = photoId;
+  if (mtimeData[photoId] !== undefined) copy.mtime = mtimeData[photoId];
+  for (const field of HASH_IGNORE_FIELDS) delete copy[field];
+  return copy;
+}
+
+function computeMetadataHash(metadata, photoId, mtimeData = {}) {
+  return hashMetadata(metadataForHash(metadata, photoId, mtimeData));
+}
+
 function normalizeMetadataForDb(metadata, photoId, mtimeData = {}) {
   if (!metadata.id) metadata.id = photoId;
-  if (mtimeData[photoId]) metadata.mtime = mtimeData[photoId];
+  if (mtimeData[photoId] !== undefined) metadata.mtime = mtimeData[photoId];
 
-  const metadataHash = hashMetadata(metadata);
+  const metadataHash = computeMetadataHash(metadata, photoId, mtimeData);
 
   return {
     cleanMetadata: {
@@ -81,6 +96,20 @@ async function upsertPhotoFromMetadata(db, photoId, metadataPath, options = {}) 
   }
 
   const metadata = JSON.parse(raw);
+
+  if (metadata.isDeleted) {
+    const hadPhoto = await db.getPhotoById(photoId);
+    if (hadPhoto) {
+      await deletePhotoById(db, photoId);
+    }
+    return {
+      photoId,
+      deleted: true,
+      name: metadata.name || photoId,
+      hadPhoto: Boolean(hadPhoto),
+    };
+  }
+
   const { cleanMetadata, folders, tags } = normalizeMetadataForDb(metadata, photoId, mtimeData);
 
   await db.removePhotoTagRelationships(photoId);
@@ -99,7 +128,7 @@ async function upsertPhotoFromMetadata(db, photoId, metadataPath, options = {}) 
     );
   }
 
-  return { photoId, metadataHash: cleanMetadata.metadata_hash };
+  return { photoId, deleted: false, metadataHash: cleanMetadata.metadata_hash, name: metadata.name };
 }
 
 async function deletePhotoById(db, photoId) {
@@ -134,6 +163,8 @@ async function reconcileLibrary(db, libraryPath) {
   let deleted = 0;
   let unchanged = 0;
   let errors = 0;
+  const upsertedPhotos = [];
+  const deletedPhotos = [];
 
   for (const entry of photoDirs) {
     const photoId = photoIdFromInfoDirName(entry.name);
@@ -142,7 +173,17 @@ async function reconcileLibrary(db, libraryPath) {
     try {
       const raw = await fs.readFile(metadataPath, 'utf8');
       const metadata = JSON.parse(raw);
-      const currentHash = hashMetadata(metadata);
+
+      if (metadata.isDeleted) {
+        if (existingIds.has(photoId)) {
+          await deletePhotoById(db, photoId);
+          deleted++;
+          deletedPhotos.push({ id: photoId, name: metadata.name || photoId });
+        }
+        continue;
+      }
+
+      const currentHash = computeMetadataHash(metadata, photoId, mtimeData);
       const storedHash = photoIdToHash.get(photoId);
       const isNew = !existingIds.has(photoId);
       const isChanged = storedHash !== currentHash;
@@ -150,6 +191,11 @@ async function reconcileLibrary(db, libraryPath) {
       if (isNew || isChanged) {
         await upsertPhotoFromMetadata(db, photoId, metadataPath, { mtimeData });
         upserted++;
+        upsertedPhotos.push({
+          id: photoId,
+          name: metadata.name || photoId,
+          isNew,
+        });
       } else {
         unchanged++;
       }
@@ -160,7 +206,11 @@ async function reconcileLibrary(db, libraryPath) {
   }
 
   const deletedIds = [...existingIds].filter((id) => !diskIds.has(id));
+  const existingNameById = new Map(existingPhotos.map((p) => [p.id, p.name]));
   if (deletedIds.length > 0) {
+    for (const id of deletedIds) {
+      deletedPhotos.push({ id, name: existingNameById.get(id) || id });
+    }
     await db.removePhotoTagRelationshipsBatch(deletedIds);
     await db.removePhotoFolderRelationshipsBatch(deletedIds);
     await db.removePhotosBatch(deletedIds);
@@ -176,12 +226,13 @@ async function reconcileLibrary(db, libraryPath) {
     `✅ Library reconcile complete in ${elapsed}ms — upserted: ${upserted}, deleted: ${deleted}, unchanged: ${unchanged}, errors: ${errors}`
   );
 
-  return { upserted, deleted, unchanged, errors, elapsed, totalPhotos };
+  return { upserted, deleted, unchanged, errors, elapsed, totalPhotos, upsertedPhotos, deletedPhotos };
 }
 
 module.exports = {
   determineTypeFromExt,
   hashMetadata,
+  computeMetadataHash,
   normalizeMetadataForDb,
   upsertPhotoFromMetadata,
   deletePhotoById,

@@ -5,8 +5,30 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
-import { HardDrive, Image, Folder, Tag, Database, Clock } from 'lucide-react';
+import { HardDrive, Image, Folder, Tag, Database, Clock, Eye, RefreshCw, AlertCircle, FileImage, FolderPlus } from 'lucide-react';
 import { formatBytes } from '@/utils/formatBytes';
+
+interface WatcherActivityEntry {
+  id: number;
+  timestamp: string;
+  type: string;
+  message: string;
+  photoId?: string;
+  photoName?: string;
+  details?: Record<string, unknown>;
+}
+
+interface WatcherStatus {
+  running: boolean;
+  libraryPath: string | null;
+  lastEvent: string | null;
+  lastEventTime: string | null;
+  lastError: string | null;
+  pendingCount: number;
+  processedCount: number;
+  lastReconcileTime: string | null;
+  activityLog: WatcherActivityEntry[];
+}
 
 interface DatabaseStats {
   totalPhotos: number;
@@ -46,9 +68,48 @@ const EXTENSION_GROUPS: Record<string, string> = {
 
 const getGroup = (ext: string) => EXTENSION_GROUPS[ext.toLowerCase()] || 'Other';
 
+const ACTIVITY_ICONS: Record<string, typeof Image> = {
+  photo_added: FileImage,
+  photo_updated: Image,
+  photo_removed: Image,
+  folder_detected: FolderPlus,
+  library_updated: Folder,
+  reconcile: RefreshCw,
+  watcher_started: Eye,
+  watcher_stopped: Eye,
+  error: AlertCircle,
+};
+
+function formatActivityTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function getActivityStyle(type: string) {
+  switch (type) {
+    case 'photo_added':
+      return 'text-green-600 dark:text-green-400';
+    case 'photo_removed':
+      return 'text-red-600 dark:text-red-400';
+    case 'error':
+      return 'text-red-600 dark:text-red-400';
+    case 'library_updated':
+    case 'folder_detected':
+      return 'text-blue-600 dark:text-blue-400';
+    default:
+      return 'text-gray-600 dark:text-gray-300';
+  }
+}
+
 export const DashboardPage: React.FC = () => {
   const { accentColor, theme } = useAppStore();
   const [stats, setStats] = useState<DatabaseStats | null>(null);
+  const [watcherStatus, setWatcherStatus] = useState<WatcherStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +144,23 @@ export const DashboardPage: React.FC = () => {
     };
 
     fetchStats();
+  }, []);
+
+  useEffect(() => {
+    const fetchWatcherStatus = async () => {
+      try {
+        const res = await fetch('/api/sync/status');
+        if (res.ok) {
+          setWatcherStatus(await res.json());
+        }
+      } catch {
+        // Watcher status is non-critical for dashboard stats
+      }
+    };
+
+    fetchWatcherStatus();
+    const interval = setInterval(fetchWatcherStatus, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) {
@@ -236,6 +314,62 @@ export const DashboardPage: React.FC = () => {
           value={stats.lastRefresh ? new Date(stats.lastRefresh).toLocaleDateString() : 'Never'}
           subtext={stats.lastRefresh ? new Date(stats.lastRefresh).toLocaleTimeString() : undefined}
         />
+      </div>
+
+      {/* File Watcher Activity */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">File Watcher Activity</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">New files and folders detected in chronological order</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              className={`inline-block w-2.5 h-2.5 rounded-full ${
+                watcherStatus?.running ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+              }`}
+            />
+            <span className="text-gray-600 dark:text-gray-300">
+              {watcherStatus?.running ? 'Watching' : 'Not running'}
+            </span>
+          </div>
+        </div>
+
+        <div className="max-h-[420px] overflow-y-auto">
+          {!watcherStatus?.activityLog?.length ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <Eye className="w-10 h-10 mb-3 opacity-50" />
+              <p>No watcher activity yet.</p>
+              <p className="text-sm mt-1">Import or edit files in Eagle to see events here.</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+              {[...watcherStatus.activityLog].reverse().map((entry) => {
+                const Icon = ACTIVITY_ICONS[entry.type] || RefreshCw;
+                return (
+                  <li key={entry.id} className="px-6 py-3 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${getActivityStyle(entry.type)}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm ${getActivityStyle(entry.type)}`}>{entry.message}</p>
+                      {entry.photoName && entry.photoName !== entry.message && (
+                        <p className="text-xs text-gray-400 truncate mt-0.5">{entry.photoName}</p>
+                      )}
+                    </div>
+                    <time className="text-xs text-gray-400 whitespace-nowrap shrink-0 tabular-nums">
+                      {formatActivityTime(entry.timestamp)}
+                    </time>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {watcherStatus?.lastError && (
+          <div className="px-6 py-3 border-t border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-sm text-red-700 dark:text-red-300">
+            Last error: {watcherStatus.lastError}
+          </div>
+        )}
       </div>
 
       {/* Charts Grid */}

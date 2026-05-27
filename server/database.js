@@ -1456,7 +1456,6 @@ class PhotoLibraryDatabase {
       });
 
       transaction(relationships);
-      console.log(`✅ Inserted ${relationships.length} photo-folder relationships`);
       return true;
     } catch (error) {
       console.error('❌ Failed to insert photo-folder relationships:', error.message);
@@ -1481,7 +1480,6 @@ class PhotoLibraryDatabase {
       });
 
       transaction(relationships);
-      console.log(`✅ Inserted ${relationships.length} photo-tag relationships`);
       return true;
     } catch (error) {
       console.error('❌ Failed to insert photo-tag relationships:', error.message);
