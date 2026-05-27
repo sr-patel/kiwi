@@ -1,10 +1,10 @@
-version: '3.8'
+# Pre-built images: https://github.com/sr-patel/kiwi/pkgs/container/kiwi-backend
+# To build locally instead: docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 services:
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: ghcr.io/sr-patel/kiwi-backend:latest
+    pull_policy: always
     container_name: kiwi-backend
     restart: unless-stopped
     ports:
@@ -38,9 +38,8 @@ services:
       start_period: 40s
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: ghcr.io/sr-patel/kiwi-frontend:latest
+    pull_policy: always
     container_name: kiwi-frontend
     restart: unless-stopped
     ports:
