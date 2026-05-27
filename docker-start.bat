@@ -22,8 +22,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo  Pulling latest images from GitHub Container Registry...
+docker compose pull
+if errorlevel 1 (
+  echo  Failed to pull images. Check your network connection.
+  pause
+  exit /b 1
+)
+
 echo  Starting Kiwi containers...
-docker compose up -d --build
+docker compose up -d
 if errorlevel 1 (
   echo  Failed to start containers.
   pause

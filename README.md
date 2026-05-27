@@ -9,7 +9,7 @@
 
 ## What is Kiwi?
 
-Kiwi lets you browse folders, tags, and photos from an existing **Eagle** library (a `.library` folder) in your web browser. After the first setup, you do not need to use the command line for everyday use.
+Kiwi lets you browse folders, tags, and photos from an existing **Eagle** library (a `.library` folder) in your web browser. 
 
 ---
 
@@ -68,12 +68,15 @@ To find your library path in Eagle: **Library → Manage library** — the folde
 
 ### 4. Start Kiwi
 
+Kiwi runs from pre-built images on [GitHub Container Registry](https://github.com/sr-patel/kiwi/pkgs/container/kiwi-backend) (`ghcr.io/sr-patel/kiwi-backend` and `kiwi-frontend`). No local build is required.
+
 **Windows:** double-click **`docker-start.bat`**
 
 **Mac / Linux:** from the Kiwi folder:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ### 5. Open the app
@@ -90,20 +93,6 @@ Go to **http://localhost:3000** and follow the setup wizard.
 4. When finished, browse folders in the sidebar on the left.
 
 **Important:** In the wizard, pick the path **inside the container** (for example `/app/data/libraries/MyPhotos.library`), not your host path like `C:\...` or `/Users/...`.
-
----
-
-## Daily use
-
-| Action | What to do |
-|--------|------------|
-| **Start Kiwi** | Ensure Docker is running, then `docker-start.bat` (Windows) or `docker compose up -d` |
-| **Browse photos** | Open http://localhost:3000 |
-| **Stop Kiwi** | `docker compose down` in the Kiwi folder |
-
-Kiwi keeps your library in sync automatically when you add or change photos in Eagle.
-
----
 
 ## Help & troubleshooting
 
@@ -124,6 +113,10 @@ Kiwi keeps your library in sync automatically when you add or change photos in E
 **I changed the library path in Docker**
 - Update the volume in `docker-compose.yml`
 - Restart: `docker compose down` then start again
+
+**`docker compose pull` fails or image not found**
+- Images are published when changes land on the `main` branch (see [Packages](https://github.com/sr-patel/kiwi/pkgs/container/kiwi-backend))
+- First-time maintainers: run the publish workflow once, then set each package to **Public** under **Package settings** on GitHub
 
 ---
 
@@ -150,22 +143,6 @@ Kiwi keeps your library in sync automatically when you add or change photos in E
 
 ---
 
-## For developers
-
-If you want to hack on Kiwi locally without Docker:
-
-**Requirements:** Node.js 18+
-
-```bash
-npm install
-cd server && npm install && cd ..
-npm start
-```
-
-Open http://localhost:3000. The backend runs on port 3001; Vite proxies API requests.
-
-**Windows shortcut:** run `scripts/dev-start.bat` to install deps and start both servers.
-
 **Project layout:**
 
 ```text
@@ -174,12 +151,13 @@ kiwi/
 ├── server/              Express API + SQLite sync
 ├── public/              Static assets (logo, icons)
 ├── scripts/             Dev helpers (start.js, dev-start.bat)
-├── config.json          Library path and preferences
-└── docker-compose.yml
+├── config.json              Library path and preferences
+├── docker-compose.yml       Run Kiwi (pulls images from GHCR)
+└── docker-compose.build.yml   Optional local image build override
 ```
 
 ---
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+GNU General Public License 3.0 — see [LICENSE](LICENSE).
