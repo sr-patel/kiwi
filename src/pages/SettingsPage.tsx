@@ -12,7 +12,6 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { PWADebugger } from '@/components/PWA/PWADebugger';
 import {
   getAccentColor,
   getAccentRing,
@@ -158,22 +157,9 @@ export const SettingsPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source: 'library' }),
       });
-      setLibraryMessage('Database rebuild requested. Check Admin page for progress.');
+      setLibraryMessage('Database rebuild completed. The file watcher keeps the index in sync automatically.');
     } catch {
       setLibraryMessage('Failed to start database rebuild. Check server logs.');
-    }
-  }, []);
-
-  const triggerIncrementalUpdate = useCallback(async () => {
-    setLibraryMessage('Starting incremental update...');
-    try {
-      await fetch('/api/database/incremental-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      setLibraryMessage('Incremental update started. Check Admin page for progress.');
-    } catch {
-      setLibraryMessage('Failed to start incremental update. Check server logs.');
     }
   }, []);
 
@@ -281,14 +267,11 @@ export const SettingsPage: React.FC = () => {
                   <HardDrive className="w-4 h-4" />
                   <span className="font-medium">Database maintenance</span>
                 </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 w-full">
+                  The server watches your Eagle library and updates the database automatically.
+                  Use full rebuild only if the index is corrupt or out of sync.
+                </p>
                 <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    onClick={triggerIncrementalUpdate}
-                    className="px-3 py-2 rounded-lg text-xs font-medium text-white"
-                    style={{ backgroundColor: accentHex }}
-                  >
-                    Incremental update
-                  </button>
                   <button
                     onClick={triggerFullRebuild}
                     className="px-3 py-2 rounded-lg text-xs font-medium border border-red-500/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-1"
@@ -575,8 +558,6 @@ export const SettingsPage: React.FC = () => {
               </div>
             </label>
           </section>
-
-          {process.env.NODE_ENV === 'development' && <PWADebugger />}
         </div>
       </div>
     </div>

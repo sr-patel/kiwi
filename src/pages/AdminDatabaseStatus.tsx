@@ -1,9 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Database, HardDrive, FileText, Image, Video, Music, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
-import { useAppStore } from '@/store';
-import { getAccentHex } from '@/utils/accentColors';
+import { ArrowLeft, Database, HardDrive, FileText, Image, Video, Music, RefreshCw, CheckCircle, Clock, Eye } from 'lucide-react';
 
 interface DatabaseStats {
   totalPhotos: number;
@@ -13,89 +11,84 @@ interface DatabaseStats {
   fileTypes?: { [type: string]: number };
 }
 
-interface UpdateProgress {
-  status: string;
-  totalFiles: number;
-  processedFiles: number;
-  percent: number;
-  eta: string | null;
-  startTime: string | null;
-  elapsed: number;
-  logs: string[];
-  error: string | null;
+interface SyncStatus {
+  running: boolean;
+  libraryPath: string | null;
+  lastEvent: string | null;
+  lastEventTime: string | null;
+  lastError: string | null;
+  pendingCount: number;
+  processedCount: number;
+  lastReconcileTime: string | null;
 }
 
 export const AdminDatabaseStatus: React.FC = () => {
-  const { accentColor } = useAppStore();
   const [stats, setStats] = useState<DatabaseStats | null>(null);
-  const [progress, setProgress] = useState<UpdateProgress | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuildError, setRebuildError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const pollingRef = useRef<any>(null);
   const navigate = useNavigate();
 
-  // Fetch stats
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true);
-        const response = await axios.get('/api/database/stats');
-        setStats(response.data);
+        const [statsRes, syncRes] = await Promise.all([
+          axios.get('/api/database/stats'),
+          axios.get('/api/sync/status'),
+        ]);
+        setStats(statsRes.data);
+        setSyncStatus(syncRes.data);
       } catch (error) {
-        console.error('Failed to fetch database stats:', error);
+        console.error('Failed to fetch admin data:', error);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchStats();
+
+    fetchData();
+    const interval = setInterval(async () => {
+      try {
+        const syncRes = await axios.get('/api/sync/status');
+        setSyncStatus(syncRes.data);
+      } catch {
+        // ignore polling errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  // Poll update progress
-  useEffect(() => {
-    if (!isUpdating) return;
-    const poll = () => {
-      axios.get('/api/database/update-status').then(res => setProgress(res.data));
-    };
-    poll();
-    pollingRef.current = setInterval(poll, 2000);
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-  }, [isUpdating]);
-
-  // Trigger update
-  const handleUpdate = async () => {
-    setIsUpdating(true);
-    setUpdateError(null);
+  const handleFullRebuild = async () => {
+    setIsRebuilding(true);
+    setRebuildError(null);
     try {
-      await axios.post('/api/database/incremental-update');
-    } catch (err: any) {
-      setUpdateError(err?.response?.data?.error || err?.response?.data?.message || 'Failed to start incremental update');
-      setIsUpdating(false);
+      await axios.post('/api/database/refresh', { source: 'library' });
+      const [statsRes, syncRes] = await Promise.all([
+        axios.get('/api/database/stats'),
+        axios.get('/api/sync/status'),
+      ]);
+      setStats(statsRes.data);
+      setSyncStatus(syncRes.data);
+    } catch (err: unknown) {
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || err.message
+        : 'Failed to rebuild database';
+      setRebuildError(message);
+    } finally {
+      setIsRebuilding(false);
     }
   };
 
-  // Stop polling when update is done
-  useEffect(() => {
-    if (progress && (progress.status === 'done' || progress.status === 'idle' || progress.status === 'error')) {
-      setIsUpdating(false);
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      // Refresh stats after update
-      if (progress.status === 'done') {
-        axios.get('/api/database/stats').then(res => setStats(res.data));
-      }
-    }
-  }, [progress]);
-
-  // Helper function to format file size
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
-  // Helper function to get file type icon
   const getFileTypeIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case 'image': return <Image className="w-4 h-4" />;
@@ -105,7 +98,6 @@ export const AdminDatabaseStatus: React.FC = () => {
     }
   };
 
-  // Helper function to get file type color
   const getFileTypeColor = (type: string) => {
     switch (type.toLowerCase()) {
       case 'image': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
@@ -121,7 +113,7 @@ export const AdminDatabaseStatus: React.FC = () => {
         <div className="max-w-6xl mx-auto p-8">
           <div className="flex items-center justify-center h-64">
             <div className="flex items-center gap-3">
-              <div className="w-6 h-6 border-2 border-blue-200 dark:border-blue-700 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin"></div>
+              <div className="w-6 h-6 border-2 border-blue-200 dark:border-blue-700 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin" />
               <span className="text-gray-600 dark:text-gray-400">Loading database statistics...</span>
             </div>
           </div>
@@ -133,7 +125,6 @@ export const AdminDatabaseStatus: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black">
       <div className="w-full px-6 py-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <button
@@ -149,10 +140,8 @@ export const AdminDatabaseStatus: React.FC = () => {
           </div>
         </div>
 
-        {/* Main Statistics Grid */}
         {stats && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
-            {/* Total Files */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
@@ -165,7 +154,6 @@ export const AdminDatabaseStatus: React.FC = () => {
               </div>
             </div>
 
-            {/* Total Photo Size */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
@@ -178,7 +166,6 @@ export const AdminDatabaseStatus: React.FC = () => {
               </div>
             </div>
 
-            {/* Last Updated */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
@@ -196,23 +183,23 @@ export const AdminDatabaseStatus: React.FC = () => {
               </div>
             </div>
 
-            {/* Status */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">Status</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">Watcher</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">Healthy</p>
+                    <CheckCircle className={`w-4 h-4 flex-shrink-0 ${syncStatus?.running ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`} />
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                      {syncStatus?.running ? 'Active' : 'Stopped'}
+                    </p>
                   </div>
                 </div>
                 <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg flex-shrink-0 ml-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <Eye className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
               </div>
             </div>
 
-            {/* Database File Size */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
@@ -227,7 +214,6 @@ export const AdminDatabaseStatus: React.FC = () => {
           </div>
         )}
 
-        {/* File Type Breakdown */}
         {stats?.fileTypes && Object.keys(stats.fileTypes).length > 0 && (
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 mb-8">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">File Type Breakdown</h2>
@@ -254,84 +240,64 @@ export const AdminDatabaseStatus: React.FC = () => {
           </div>
         )}
 
-        {/* Update Controls */}
-        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div className="flex-1">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Database Updates</h2>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Run an incremental update to scan for new, modified, or deleted files in your photo library.
-              </p>
-            </div>
-            <button
-              onClick={handleUpdate}
-              disabled={isUpdating}
-              className="flex items-center gap-2 px-6 py-3 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed flex-shrink-0"
-              style={{ backgroundColor: getAccentHex(accentColor), opacity: isUpdating ? 0.7 : 1 }}
-            >
-              {isUpdating ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Running Update...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  Run Incremental Update
-                </>
-              )}
-            </button>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">File Watcher</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Changes to Eagle metadata files are synced to SQLite automatically in real time.
+            </p>
+            {syncStatus && (
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500 dark:text-gray-400">Status</dt>
+                  <dd className="text-gray-900 dark:text-gray-100">{syncStatus.running ? 'Running' : 'Stopped'}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500 dark:text-gray-400">Pending</dt>
+                  <dd className="text-gray-900 dark:text-gray-100">{syncStatus.pendingCount}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500 dark:text-gray-400">Processed</dt>
+                  <dd className="text-gray-900 dark:text-gray-100">{syncStatus.processedCount.toLocaleString()}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500 dark:text-gray-400">Last event</dt>
+                  <dd className="text-gray-900 dark:text-gray-100 text-right">{syncStatus.lastEvent || '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500 dark:text-gray-400">Last reconcile</dt>
+                  <dd className="text-gray-900 dark:text-gray-100 text-right">
+                    {syncStatus.lastReconcileTime
+                      ? new Date(syncStatus.lastReconcileTime).toLocaleString()
+                      : '—'}
+                  </dd>
+                </div>
+                {syncStatus.lastError && (
+                  <div className="pt-2 text-red-600 dark:text-red-400">{syncStatus.lastError}</div>
+                )}
+              </dl>
+            )}
           </div>
 
-          {updateError && (
-            <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg mb-4">
-              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-              <span className="text-red-700 dark:text-red-300">{updateError}</span>
-            </div>
-          )}
-
-          {/* Progress Section */}
-          {progress && progress.status !== 'idle' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {progress.processedFiles.toLocaleString()} / {progress.totalFiles.toLocaleString()} files
-                </span>
-              </div>
-              
-              <div className="w-full rounded-full h-3 overflow-hidden" style={{ backgroundColor: `${getAccentHex(accentColor)}30` }}>
-                <div
-                  className="h-3 rounded-full transition-all duration-300 ease-out"
-                  style={{ 
-                    width: `${Math.max(0, Math.min(100, progress.percent))}%`,
-                    background: `linear-gradient(to right, ${getAccentHex(accentColor)}, ${getAccentHex(accentColor)}CC)`
-                  }}
-                />
-              </div>
-              
-              <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-                <span>{progress.percent.toFixed(1)}% complete</span>
-                <span>ETA: {progress.eta || 'Calculating...'}</span>
-              </div>
-
-              {/* Logs */}
-              {progress.logs.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Recent Logs</h3>
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 h-48 overflow-y-auto">
-                    <div className="space-y-1 text-xs font-mono text-gray-700 dark:text-gray-300">
-                      {progress.logs.slice(-50).map((line, i) => (
-                        <div key={i} className="whitespace-pre-wrap">{line}</div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Full Rebuild</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Wipe and rebuild the database from all library metadata. Use only when the index is corrupt.
+            </p>
+            {rebuildError && (
+              <p className="text-sm text-red-600 dark:text-red-400 mb-4">{rebuildError}</p>
+            )}
+            <button
+              onClick={handleFullRebuild}
+              disabled={isRebuilding}
+              className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRebuilding ? 'animate-spin' : ''}`} />
+              {isRebuilding ? 'Rebuilding...' : 'Run Full Rebuild'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
-}; 
+};

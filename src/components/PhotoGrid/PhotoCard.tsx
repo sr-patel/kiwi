@@ -50,6 +50,7 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({
     sequentialImageLoader.addToQueue(
       photo.id,
       photo.name,
+      photo.ext,
       (url: string) => {
         setImageSrc(url);
         // Keep isLoading true until media onload to retain placeholder

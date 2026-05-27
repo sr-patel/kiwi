@@ -50,6 +50,7 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
     sequentialImageLoader.addToQueue(
       photo.id,
       photo.name,
+      photo.ext,
       (url: string) => {
         setImageSrc(url);
         // Keep isLoading true until <img> onLoad fires to show placeholder
@@ -205,7 +206,7 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
           height={photo.height}
           decoding="async"
           loading={isAboveFold ? "eager" : "lazy"}
-          fetchPriority={isAboveFold ? "high" : "auto"}
+          fetchpriority={isAboveFold ? "high" : "auto"}
           onError={handleImageError}
           onLoad={handleImageLoad}
           style={{ display: isLoading ? 'none' : 'block' }}

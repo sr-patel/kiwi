@@ -31,7 +31,7 @@ export const DetailedPhotoModal: React.FC = () => {
   const [dragStart, setDragStart] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [fetchingPhotoId, setFetchingPhotoId] = React.useState<string | null>(null);
   const modalRef = React.useRef<HTMLDivElement>(null);
-  const imageRef = React.useRef<HTMLImageElement>(null);
+  const imageRef = React.useRef<HTMLDivElement>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const imageContainerRef = React.useRef<HTMLDivElement>(null);
   const [hasVerticalOverflow, setHasVerticalOverflow] = React.useState<boolean>(false);
@@ -47,6 +47,9 @@ export const DetailedPhotoModal: React.FC = () => {
   const [videoDuration, setVideoDuration] = React.useState<number>(0);
   const [isSeeking, setIsSeeking] = React.useState<boolean>(false);
   const [pendingNavigation, setPendingNavigation] = React.useState<{ direction: 'next'; anchorId: string } | null>(null);
+  const [isFullResReady, setIsFullResReady] = React.useState(false);
+  const [isLoadingFullRes, setIsLoadingFullRes] = React.useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = React.useState(false);
   
   // Touch/swipe support for mobile navigation with animations
   const [touchStart, setTouchStart] = React.useState<{ x: number; y: number } | null>(null);
@@ -644,6 +647,30 @@ export const DetailedPhotoModal: React.FC = () => {
     }
   };
 
+  /** Wrapper for layered thumbnail + full-res; must match single-image layout sizing */
+  const getImageStackWrapperClasses = () => {
+    switch (viewMode) {
+      case 'vertical':
+        return 'relative inline-block h-full max-h-full';
+      case 'horizontal':
+        return 'relative block w-full max-w-full';
+      default:
+        return 'relative block w-full h-full';
+    }
+  };
+
+  /** Full-res overlay positioned to match the in-flow thumbnail layer */
+  const getImageOverlayClasses = () => {
+    switch (viewMode) {
+      case 'vertical':
+        return 'absolute top-0 left-0 block h-full w-auto max-w-none';
+      case 'horizontal':
+        return 'absolute top-0 left-0 block w-full h-auto max-h-none';
+      default:
+        return 'absolute inset-0 block w-full h-full object-contain';
+    }
+  };
+
   const getImageStyle = () => {
     const baseStyle = {}; // Removed black background
     
@@ -1192,26 +1219,86 @@ export const DetailedPhotoModal: React.FC = () => {
           />
         );
       } else {
-        // Render image content
+        const thumbnailUrl = libraryService.getPhotoThumbnailUrl(photo.id, photo.name);
+        const fullUrl = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
+        const showFull = isFullResReady;
+        const imageHandlers = {
+          onClick: handleImageClick,
+          onMouseDown: handleMouseDown,
+          onMouseMove: handleMouseMove,
+          onMouseUp: handleMouseUp,
+        };
+
+        const handleFullResLoad = async (e: React.SyntheticEvent<HTMLImageElement>) => {
+          const img = e.currentTarget;
+          const photoId = photo.id;
+          try {
+            await img.decode();
+          } catch {
+            // decode() can reject for unsupported formats; onLoad is enough
+          }
+          if (detailedPhotoRef.current !== photoId) return;
+          // Wait for the decoded frame to be composited before revealing
+          await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          });
+          if (detailedPhotoRef.current !== photoId) return;
+          img.style.visibility = 'visible';
+          setIsFullResReady(true);
+          setIsLoadingFullRes(false);
+        };
+
+        // Layered images: thumbnail in-flow for layout, full-res overlays until crossfade completes
         return (
-          <img
-            ref={imageRef}
-            src={libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name)}
-            alt={photo.name}
-            className={getImageClasses()}
-            draggable={false}
-            style={getImageStyle()}
-            width={photo.width}
-            height={photo.height}
-            decoding="async"
-            fetchPriority="high"
-            loading="eager"
-            sizes="(max-width: 768px) 100vw, 80vw"
-            onClick={handleImageClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-          />
+          <>
+            {isLoadingFullRes && !showFull && (
+              <div className="absolute top-3 right-3 z-10 rounded-full bg-black/40 p-1.5 pointer-events-none">
+                <Loader2 className="w-4 h-4 animate-spin text-white/80" />
+              </div>
+            )}
+            <div
+              ref={imageRef}
+              className={getImageStackWrapperClasses()}
+              style={getImageStyle()}
+              {...(showFull || thumbnailFailed ? imageHandlers : {})}
+            >
+              {!thumbnailFailed && (
+                <img
+                  src={thumbnailUrl}
+                  alt=""
+                  aria-hidden
+                  className={getImageClasses()}
+                  draggable={false}
+                  width={photo.width}
+                  height={photo.height}
+                  decoding="async"
+                  loading="eager"
+                  onError={() => setThumbnailFailed(true)}
+                  {...(!showFull ? imageHandlers : {})}
+                />
+              )}
+              <img
+                src={fullUrl}
+                alt={photo.name}
+                className={thumbnailFailed ? getImageClasses() : getImageOverlayClasses()}
+                draggable={false}
+                style={{
+                  visibility: showFull || thumbnailFailed ? 'visible' : 'hidden',
+                  opacity: 1,
+                  zIndex: 1,
+                  pointerEvents: 'none',
+                }}
+                width={photo.width}
+                height={photo.height}
+                decoding="async"
+                fetchpriority="high"
+                loading="eager"
+                sizes="(max-width: 768px) 100vw, 80vw"
+                onLoad={handleFullResLoad}
+                onError={() => setIsLoadingFullRes(false)}
+              />
+            </div>
+          </>
         );
       }
     }
@@ -1328,7 +1415,20 @@ export const DetailedPhotoModal: React.FC = () => {
     setVideoDimensions(null); // Reset video dimensions for new video
     setVideoProgress(0);
     setVideoDuration(0);
+    setIsFullResReady(false);
+    setIsLoadingFullRes(false);
+    setThumbnailFailed(false);
   }, [photo]);
+
+  // Begin full-resolution load when a new image is shown
+  useEffect(() => {
+    if (!photo) return;
+
+    const fileType = getFileTypeInfo(photo.ext);
+    if (fileType.category === 'video' || shouldUseFileCard(photo.ext)) return;
+
+    setIsLoadingFullRes(true);
+  }, [photo?.id, photo?.ext]);
 
   // Preload next images and trigger pagination when needed
   useEffect(() => {

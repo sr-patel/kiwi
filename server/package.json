@@ -5,20 +5,13 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "migrate": "node migrate.js"
+    "dev": "nodemon index.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
+    "chokidar": "^4.0.3",
     "cors": "^2.8.5",
-    "exif-reader": "^1.0.3",
-    "express": "^4.18.2",
-    "fluent-ffmpeg": "^2.1.2",
-    "fs-extra": "^11.1.1",
-    "mime-types": "^2.1.35",
-    "path": "^0.12.7",
-    "sharp": "^0.32.6",
-    "sqlite3": "^5.1.7"
+    "express": "^4.18.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
@@ -32,4 +25,3 @@
   "author": "Kiwi Photo Library",
   "license": "MIT"
 }
- 
