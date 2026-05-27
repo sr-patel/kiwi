@@ -1,7 +1,7 @@
 # Kiwi Photo Library
 
 <div align="center">
-  <img src="kiwi.png" alt="Kiwi Photo Library" width="160"/>
+  <img src="public/kiwi.png" alt="Kiwi Photo Library" width="160"/>
   <p>A simple web app to browse your <strong>Eagle</strong> photo library.</p>
 </div>
 
@@ -36,19 +36,7 @@ Make sure Docker is running before you continue.
 
 Download or clone this project to a folder on your computer.
 
-### 3. Copy the config file (first time only)
-
-**Windows:**
-```text
-copy config.example.json config.json
-```
-
-**Mac / Linux:**
-```bash
-cp config.example.json config.json
-```
-
-### 4. Point Kiwi at your Eagle library
+### 3. Point Kiwi at your Eagle library
 
 Open `docker-compose.yml` and edit the library volume to your `.library` folder.
 
@@ -78,7 +66,7 @@ volumes:
 
 To find your library path in Eagle: **Library → Manage library** — the folder shown there is what you need.
 
-### 5. Start Kiwi
+### 4. Start Kiwi
 
 **Windows:** double-click **`docker-start.bat`**
 
@@ -88,7 +76,7 @@ To find your library path in Eagle: **Library → Manage library** — the folde
 docker compose up -d --build
 ```
 
-### 6. Open the app
+### 5. Open the app
 
 Go to **http://localhost:3000** and follow the setup wizard.
 
@@ -176,13 +164,17 @@ npm start
 
 Open http://localhost:3000. The backend runs on port 3001; Vite proxies API requests.
 
+**Windows shortcut:** run `scripts/dev-start.bat` to install deps and start both servers.
+
 **Project layout:**
 
 ```text
 kiwi/
-├── src/           React frontend
-├── server/        Express API + SQLite sync
-├── config.json    Library path and preferences
+├── src/                 React frontend
+├── server/              Express API + SQLite sync
+├── public/              Static assets (logo, icons)
+├── scripts/             Dev helpers (start.js, dev-start.bat)
+├── config.json          Library path and preferences
 └── docker-compose.yml
 ```
 

@@ -22,17 +22,6 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist config.json (
-  if exist config.example.json (
-    echo  Creating config.json from config.example.json...
-    copy config.example.json config.json >nul
-  ) else (
-    echo  config.json not found. Copy config.example.json to config.json first.
-    pause
-    exit /b 1
-  )
-)
-
 echo  Starting Kiwi containers...
 docker compose up -d --build
 if errorlevel 1 (

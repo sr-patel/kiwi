@@ -1,4 +1,13 @@
 node_modules
-example
+server/node_modules
 dist
 example.library
+
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
