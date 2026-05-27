@@ -1,11 +1,72 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const os = require('os');
 
 // Cached config - read once, updated via API
 let cachedConfig = null;
-const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
 
-const os = require('os');
+/**
+ * Writable Kiwi data root (config + database).
+ * Docker: /app/data  →  host ./data
+ * Local dev: project/data
+ */
+function getDataRoot() {
+  if (process.env.KIWI_DATA_DIR) return process.env.KIWI_DATA_DIR;
+  if (fs.existsSync('/app/data') && path.basename(__dirname) !== 'server') {
+    return '/app/data';
+  }
+  return path.join(__dirname, '..', 'data');
+}
+
+/** SQLite and cache files live under data/databases/ */
+function getDatabaseDir() {
+  return path.join(getDataRoot(), 'databases');
+}
+
+function ensureDataDirs() {
+  fs.mkdirSync(getDatabaseDir(), { recursive: true });
+}
+
+/**
+ * Resolve config.json for reading (unified data dir first, then legacy paths).
+ */
+function getConfigReadPath() {
+  if (process.env.CONFIG_PATH) return process.env.CONFIG_PATH;
+
+  const candidates = [
+    path.join(getDataRoot(), 'config.json'),
+    path.join(__dirname, '..', 'config.json'),
+    path.join(__dirname, 'config.json'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  return path.join(getDataRoot(), 'config.json');
+}
+
+/** Config is always written into the unified data directory. */
+function getConfigWritePath() {
+  if (process.env.CONFIG_PATH) return process.env.CONFIG_PATH;
+  return path.join(getDataRoot(), 'config.json');
+}
+
+function librarySlug(libraryPath) {
+  const base = path.basename(libraryPath, '.library') || 'library';
+  const hash = crypto.createHash('sha256').update(path.resolve(libraryPath)).digest('hex').slice(0, 8);
+  return `${base}-${hash}`;
+}
+
+function isDirectoryWritable(dir) {
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const DEFAULT_CONFIG = {
   libraryPath: '',
@@ -33,14 +94,16 @@ const DEFAULT_CONFIG = {
 function loadConfig() {
   if (cachedConfig) return cachedConfig;
 
-  if (!fs.existsSync(CONFIG_PATH)) {
+  const configPath = getConfigReadPath();
+
+  if (!fs.existsSync(configPath)) {
     console.warn('⚠️  config.json not found – running in setup mode');
     cachedConfig = { ...DEFAULT_CONFIG };
     return cachedConfig;
   }
 
   try {
-    const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+    const raw = fs.readFileSync(configPath, 'utf8');
     cachedConfig = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
     return cachedConfig;
   } catch (error) {
@@ -68,7 +131,8 @@ function updateConfig(updates) {
   const current = loadConfig();
   const merged = { ...current, ...updates };
 
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(merged, null, 2), 'utf8');
+  ensureDataDirs();
+  fs.writeFileSync(getConfigWritePath(), JSON.stringify(merged, null, 2), 'utf8');
   cachedConfig = merged;
   return merged;
 }
@@ -236,12 +300,36 @@ function browseDirectories(requestedPath) {
 
 /**
  * Get the database path derived from the library path.
- * Returns the path string, or null if library is not configured.
+ * Uses a writable data directory when the library folder is read-only (Docker :ro mounts).
  */
 function getDatabasePath() {
   const config = loadConfig();
   if (!config.libraryPath) return null;
-  return path.join(config.libraryPath, 'photo-library.db');
+  if (config.databasePath) return config.databasePath;
+
+  const legacyPath = path.join(config.libraryPath, 'photo-library.db');
+  if (isDirectoryWritable(config.libraryPath)) {
+    return legacyPath;
+  }
+
+  return path.join(getDatabaseDir(), `${librarySlug(config.libraryPath)}.db`);
+}
+
+/**
+ * Get the metadata cache path from the library path.
+ * Mirrors getDatabasePath() — keeps caches out of read-only library mounts.
+ */
+function getMetadataCachePath() {
+  const config = loadConfig();
+  if (!config.libraryPath) return null;
+  if (config.metadataCachePath) return config.metadataCachePath;
+
+  const legacyPath = path.join(config.libraryPath, 'server-metadata-cache.json');
+  if (isDirectoryWritable(config.libraryPath)) {
+    return legacyPath;
+  }
+
+  return path.join(getDatabaseDir(), `${librarySlug(config.libraryPath)}-metadata.json`);
 }
 
 /**
@@ -251,16 +339,6 @@ function getDatabasePath() {
 function getLibraryPath() {
   const config = loadConfig();
   return config.libraryPath || null;
-}
-
-/**
- * Get the metadata cache path from the library path.
- * Returns the path string, or null if library is not configured.
- */
-function getMetadataCachePath() {
-  const config = loadConfig();
-  if (!config.libraryPath) return null;
-  return path.join(config.libraryPath, 'server-metadata-cache.json');
 }
 
 /**

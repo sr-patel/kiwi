@@ -22,6 +22,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if not exist data mkdir data
+if not exist data\databases mkdir data\databases
+if not exist data\config.json (
+  if exist config.json (
+    echo  Creating data\config.json from config.json...
+    copy config.json data\config.json >nul
+  )
+)
+
 echo  Pulling latest images from GitHub Container Registry...
 docker compose pull
 if errorlevel 1 (
