@@ -94,7 +94,7 @@ export const PreloadedPhotoCard: React.FC<PreloadedPhotoCardProps> = ({
     if (!imageError) {
       console.log('Thumbnail failed, falling back to full image:', { photoId: photo.id, photoName: photo.name });
       setImageError(true);
-      setImageSrc(libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name));
+      setImageSrc(libraryService.getPhotoDisplayUrl(photo.id, photo.ext, photo.name));
     }
     setIsLoading(false);
   }, [imageError, photo.id, photo.ext, photo.name]);
@@ -188,7 +188,7 @@ export const PreloadedPhotoCard: React.FC<PreloadedPhotoCardProps> = ({
       return (
         <video
           ref={videoRef}
-          src={libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name)}
+          src={libraryService.getPhotoDisplayUrl(photo.id, photo.ext, photo.name)}
           className="w-full h-full object-cover"
           preload="metadata"
           muted

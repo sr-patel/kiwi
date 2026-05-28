@@ -5,10 +5,8 @@ import { FolderNode } from '@/types';
 import { useAppStore } from '@/store';
 import { getAccentText, getAccentSelected, getAccentHover, getAccentBorder } from '@/utils/accentColors';
 import { useRecursiveFolderCounts, useTotalPhotoCount } from '@/hooks/useInfinitePhotos';
-import { useTags } from '@/hooks/useTags';
-import { useTagCounts } from '@/hooks/useTagCounts';
+import { TagSearch } from '@/components/TagSearch/TagSearch';
 import { generateFolderUrl } from '@/utils/folderUrls';
-import { generateTagUrl } from '@/utils/tagUrls';
 
 interface FolderTreeProps {
   folders: FolderNode[];
@@ -138,8 +136,6 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
 
   const { data: folderCounts = {}, isLoading: isLoadingCounts } = useRecursiveFolderCounts();
   const { data: totalPhotoCount = 0, isLoading: isLoadingTotalCount } = useTotalPhotoCount();
-  const { data: tags = [], isLoading: isLoadingTags } = useTags();
-  const { data: tagCounts = {}, isLoading: isLoadingTagCounts } = useTagCounts();
   
   return (
     <div className="w-full">
@@ -220,42 +216,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
           />
         ))}
       </div>
-      {/* Tags group */}
-      <div>
-        <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Tags</div>
-        {isLoadingTags ? (
-          <div className="px-3 py-2 text-sm text-gray-400">Loading...</div>
-        ) : tags.length === 0 ? (
-          <div className="px-3 py-2 text-sm text-gray-400">No tags</div>
-        ) : tags.map(tag => (
-          <div
-            key={tag}
-            className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors
-              ${currentTag === tag
-                ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
-                : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200'
-              }
-            `}
-            onClick={(e) => { 
-              e.stopPropagation();
-              console.log('FolderTree: Tag clicked:', tag);
-              setCurrentTag(tag);
-              setCurrentFolder(null);
-              const tagUrl = generateTagUrl(tag);
-              navigate(tagUrl);
-              onTagSelect(tag); 
-            }}
-          >
-            <span className={`w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs font-bold ${currentTag === tag ? getAccentText(accentColor) : 'text-gray-500 dark:text-gray-400'}`}>#</span>
-            <span className="truncate font-medium">{tag}</span>
-            {!isLoadingTagCounts && tagCounts[tag] > 0 && (
-              <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
-                {tagCounts[tag]}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
+      <TagSearch currentTag={currentTag} onTagSelect={onTagSelect} />
     </div>
   );
 };

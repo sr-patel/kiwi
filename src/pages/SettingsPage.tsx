@@ -38,8 +38,6 @@ export const SettingsPage: React.FC = () => {
     setRequestPageSize,
     infoBoxSize,
     setInfoBoxSize,
-    hideControlsWithInfoBox,
-    setHideControlsWithInfoBox,
     autoplayGifsInGrid,
     setAutoplayGifsInGrid,
     transitionEffect,
@@ -486,27 +484,6 @@ export const SettingsPage: React.FC = () => {
               Detailed View
             </h2>
             <div className="space-y-4">
-              <label className="flex items-start gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={!!hideControlsWithInfoBox}
-                  onChange={(e) =>
-                    setHideControlsWithInfoBox(e.target.checked)
-                  }
-                  className="w-4 h-4 mt-1"
-                  style={{ accentColor: accentHex }}
-                />
-                <div>
-                  <div className="text-gray-800 dark:text-gray-200 font-medium">
-                    Hide Top Controls with Info Box
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    When hiding the info box (I key), also hide zoom and view
-                    mode controls for a minimal, distraction-free UI
-                  </div>
-                </div>
-              </label>
-
               <div className="p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
                 <div className="text-gray-800 dark:text-gray-200 font-medium mb-2">
                   Image Transition Effect

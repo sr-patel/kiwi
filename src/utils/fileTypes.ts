@@ -17,7 +17,9 @@ const fileTypeMap: { [key: string]: FileTypeInfo } = {
   'bmp': { category: 'image', icon: '🖼️', displayName: 'BMP Image', canPreview: true },
   'tiff': { category: 'image', icon: '🖼️', displayName: 'TIFF Image', canPreview: true },
   'svg': { category: 'image', icon: '🖼️', displayName: 'SVG Image', canPreview: true },
-  
+  'jxl': { category: 'image', icon: '🖼️', displayName: 'JPEG XL Image', canPreview: true },
+  'heic': { category: 'image', icon: '🖼️', displayName: 'HEIC Image', canPreview: true },
+  'heif': { category: 'image', icon: '🖼️', displayName: 'HEIF Image', canPreview: true },
   // Videos
   'mp4': { category: 'video', icon: '🎥', displayName: 'MP4 Video', canPreview: true },
   'avi': { category: 'video', icon: '🎥', displayName: 'AVI Video', canPreview: true },

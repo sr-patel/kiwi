@@ -1,6 +1,8 @@
 import { PhotoMetadata, LibraryMetadata, FolderCache, FolderNode, FolderMetadata, MTimeData } from '@/types';
 import { fetchWithRetry } from '@/utils/fetchWithTimeout';
 
+import { needsServerPreview } from '@/utils/imageFormats';
+
 class LibraryService {
   private baseUrl = '';
 
@@ -8,6 +10,14 @@ class LibraryService {
 
   getPhotoFileUrl(photoId: string, ext: string, name: string): string {
     return `${this.baseUrl}/api/photos/${photoId}/file?ext=${ext}&name=${encodeURIComponent(name)}`;
+  }
+
+  /** URL for displaying an image in the browser (transcodes JXL/HEIC via server when needed). */
+  getPhotoDisplayUrl(photoId: string, ext: string, name: string): string {
+    if (needsServerPreview(ext)) {
+      return `${this.baseUrl}/api/photos/${photoId}/preview?ext=${ext}&name=${encodeURIComponent(name)}`;
+    }
+    return this.getPhotoFileUrl(photoId, ext, name);
   }
 
   getPhotoThumbnailUrl(photoId: string, name: string): string {

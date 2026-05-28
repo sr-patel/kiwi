@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
-import { X, ArrowLeft, ArrowRight, Camera, MapPin, Calendar, FileText, Tag, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Play, Pause, BookOpen, Download, Folder, Volume2, VolumeX, Repeat, Rewind, FastForward, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { X, ArrowLeft, ArrowRight, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Play, Pause, BookOpen, Download, FileText, Volume2, VolumeX, Repeat, Rewind, FastForward, Loader2 } from 'lucide-react';
 import { useInfinitePhotos } from '@/hooks/useInfinitePhotos';
 import { usePhotosByTag } from '@/hooks/usePhotosByTag';
 import { useFastSearch } from '@/hooks/useFastSearch';
@@ -10,17 +10,16 @@ import { useAllPhotos } from '@/hooks/useAllPhotos';
 import { useAllPhotosByTag } from '@/hooks/useAllPhotosByTag';
 import { imagePreloadingService } from '@/services/imagePreloadingService';
 import { getFileTypeInfo, shouldUseFileCard } from '@/utils/fileTypes';
-import { getAccentColor, getAccentHover } from '@/utils/accentColors';
 import { generateTagUrl } from '@/utils/tagUrls';
 import { generateFolderUrl } from '@/utils/folderUrls';
 import { useNavigate } from 'react-router-dom';
-import { renderClickableUrl, linkifyText } from '@/utils/linkify';
 import { fetchWithRetry } from '@/utils/fetchWithTimeout';
 import { EpubViewer } from './EpubViewer';
+import { PhotoInfoBox } from './PhotoInfoBox';
 
 export const DetailedPhotoModal: React.FC = () => {
   const navigate = useNavigate();
-  const { detailedPhoto, setDetailedPhoto, currentFolder, currentTag, sortOptions, restoreScrollPosition, folderTree, setCurrentFolder, setCurrentTag, saveScrollPosition, filters, searchQuery, navigationList, infoBoxSize, hideControlsWithInfoBox, transitionEffect = 'slide' } = useAppStore();
+  const { detailedPhoto, setDetailedPhoto, currentFolder, currentTag, sortOptions, restoreScrollPosition, folderTree, setCurrentFolder, setCurrentTag, saveScrollPosition, filters, searchQuery, navigationList, infoBoxSize, transitionEffect = 'slide' } = useAppStore();
   const { accentColor } = useAppStore();
   const [photo, setPhoto] = React.useState<any>(null);
   const [currentIndex, setCurrentIndex] = React.useState<number>(-1);
@@ -60,15 +59,6 @@ export const DetailedPhotoModal: React.FC = () => {
 
   // Preload cache for next/previous images
   const preloadCacheRef = React.useRef<Set<string>>(new Set());
-
-  // Treat only real external URLs as metadata URLs (exclude internal file API links)
-  const isExternalUrl = (value: string | undefined | null) => {
-    if (!value) return false;
-    if (/^https?:\/\//i.test(value)) return true;
-    // Exclude internal API/file URLs like /api/photos/...
-    if (value.startsWith('/api/')) return false;
-    return false;
-  };
 
   // Edge arrow visibility based on mouse proximity
   const [isNearLeftEdge, setIsNearLeftEdge] = React.useState<boolean>(false);
@@ -1548,30 +1538,6 @@ export const DetailedPhotoModal: React.FC = () => {
     return null;
   }
 
-  // Helper function to get folder names from folder IDs
-  const getFolderNames = (folderIds: string[]): string[] => {
-    if (!folderTree || !folderIds.length) {
-      return [];
-    }
-    
-    const findFolderName = (folders: any[], folderId: string): string | null => {
-      for (const folder of folders) {
-        if (folder.id === folderId) {
-          return folder.name;
-        }
-        if (folder.children && folder.children.length > 0) {
-          const found = findFolderName(folder.children, folderId);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-    
-    return folderIds
-      .map(id => findFolderName(folderTree, id))
-      .filter((name): name is string => name !== null);
-  };
-
   const handleFolderClick = (folderId: string) => {
     // Ensure we exit tag view and switch to the selected folder
     setCurrentTag(null);
@@ -1681,7 +1647,7 @@ export const DetailedPhotoModal: React.FC = () => {
       )}
 
       {/* View mode controls - only for images */}
-      {photo && getFileTypeInfo(photo.ext).category !== 'video' && !shouldUseFileCard(photo.ext) && (!hideControlsWithInfoBox || isInfoBoxVisible) && (
+      {photo && getFileTypeInfo(photo.ext).category !== 'video' && !shouldUseFileCard(photo.ext) && (
         <div className="absolute top-4 right-4 flex gap-2 z-10">
           {/* Vertical expand button */}
           <button
@@ -1726,15 +1692,6 @@ export const DetailedPhotoModal: React.FC = () => {
             <Minimize2 className="w-6 h-6" />
           </button>
 
-          {/* Toggle info box button */}
-          <button
-            className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors touch-manipulation"
-            onClick={(e) => { e.stopPropagation(); setIsInfoBoxVisible(!isInfoBoxVisible); }}
-            title={isInfoBoxVisible ? "Hide info box (I)" : "Show info box (I)"}
-          >
-            {isInfoBoxVisible ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
-          </button>
-
           {/* Exit button */}
           <button
             className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
@@ -1746,31 +1703,9 @@ export const DetailedPhotoModal: React.FC = () => {
         </div>
       )}
 
-      {/* Persistent eye button - shown when controls are hidden due to hideControlsWithInfoBox setting */}
-      {hideControlsWithInfoBox && !isInfoBoxVisible && (
-        <div className="absolute top-4 right-4 z-10">
-          <button
-            className="p-2 rounded-full bg-black/30 hover:bg-black/50 text-white transition-colors touch-manipulation"
-            onClick={(e) => { e.stopPropagation(); setIsInfoBoxVisible(true); }}
-            title="Show info box and controls (I)"
-          >
-            <Eye className="w-5 h-5" />
-          </button>
-        </div>
-      )}
-
       {/* Controls for non-image content (videos, files) */}
-      {(!photo || getFileTypeInfo(photo.ext).category === 'video' || shouldUseFileCard(photo.ext)) && (!hideControlsWithInfoBox || isInfoBoxVisible) && (
+      {(!photo || getFileTypeInfo(photo.ext).category === 'video' || shouldUseFileCard(photo.ext)) && (
         <div className="absolute top-4 right-4 flex gap-2 z-10">
-          {/* Toggle info box button */}
-          <button
-            className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors touch-manipulation"
-            onClick={(e) => { e.stopPropagation(); setIsInfoBoxVisible(!isInfoBoxVisible); }}
-            title={isInfoBoxVisible ? "Hide info box (I)" : "Show info box (I)"}
-          >
-            {isInfoBoxVisible ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
-          </button>
-
           {/* Exit button */}
           <button
             className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
@@ -1849,7 +1784,7 @@ export const DetailedPhotoModal: React.FC = () => {
       )}
 
       {/* Zoom controls - only for images */}
-      {photo && getFileTypeInfo(photo.ext).category !== 'video' && !shouldUseFileCard(photo.ext) && (!hideControlsWithInfoBox || isInfoBoxVisible) && (
+      {photo && getFileTypeInfo(photo.ext).category !== 'video' && !shouldUseFileCard(photo.ext) && (
         <div className="absolute top-4 left-4 flex gap-2 z-10">
           {/* Zoom out button */}
           <button
@@ -1983,198 +1918,23 @@ export const DetailedPhotoModal: React.FC = () => {
         {renderFileContent()}
       </div>
 
-      {/* Metadata Corner Overlay */}
-      {isInfoBoxVisible && (
-        <div 
-          className="absolute bottom-4 left-4 z-10 bg-black/30 backdrop-blur-lg rounded-lg p-4 text-white"
-          style={{ 
-            maxWidth: `${Math.min(infoBoxSize * 0.25, 35)}%`, // More aggressive width limit, cap at 35%
-            transform: `scale(${infoBoxSize / 100})`,
-            transformOrigin: 'bottom left'
+      {photo && (
+        <PhotoInfoBox
+          photo={photo}
+          infoBoxSize={infoBoxSize}
+          visible={isInfoBoxVisible}
+          onVisibleChange={setIsInfoBoxVisible}
+          tagCounts={tagCounts}
+          accentColor={accentColor}
+          folderTree={folderTree}
+          onFolderClick={handleFolderClick}
+          onTagClick={(tag) => {
+            setDetailedPhoto(null);
+            setCurrentTag(tag);
+            setCurrentFolder(null);
+            window.location.href = generateTagUrl(tag);
           }}
-          onClick={e => e.stopPropagation()}
-        >
-        <div className="space-y-3">
-          {/* File Info */}
-          <div>
-            <h3 className="font-semibold text-lg break-words">{photo.name}</h3>
-            <div className="text-sm text-gray-300">
-              <div className="flex items-center gap-2 mb-1">
-                <FileText className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">File Info:</span>
-              </div>
-              <div className="break-words">
-                {shouldUseFileCard(photo.ext) ? (
-                  <>
-                    {getFileTypeInfo(photo.ext).displayName} • {libraryService.formatFileSize(photo.size)} • {photo.ext.toUpperCase()}
-                    {getFileTypeInfo(photo.ext).category === 'video' && photo.duration && (
-                      <> • {Math.round(photo.duration)}s</>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {photo.width}×{photo.height} • {libraryService.formatFileSize(photo.size)} • {photo.ext.toUpperCase()}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Folders */}
-          {photo.folders && photo.folders.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium mb-2">
-                <Folder className="w-4 h-4" />
-                Folders:
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {getFolderNames(photo.folders).map((folderName, index) => {
-                  const folderId = photo.folders[index];
-                  return (
-                    <button
-                      key={folderId}
-                      onClick={() => handleFolderClick(folderId)}
-                      className={`px-2 py-1 text-xs ${getAccentColor(accentColor)} hover:${getAccentHover(accentColor)} text-white rounded-full transition-colors cursor-pointer`}
-                      title={`Go to ${folderName}`}
-                    >
-                      {folderName}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Tags - only show if there are tags */}
-          {photo.tags && photo.tags.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium mb-2">
-                <Tag className="w-4 h-4" />
-                Tags:
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {photo.tags.map((tag: string, i: number) => {
-                  const tagCount = tagCounts[tag] || 0;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        // Navigate to tag view
-                        setDetailedPhoto(null); // Close modal
-                        setCurrentTag(tag);
-                        setCurrentFolder(null);
-                        const tagUrl = generateTagUrl(tag);
-                        window.location.href = tagUrl;
-                      }}
-                      className="px-2 py-1 text-xs bg-white/20 hover:bg-white/30 rounded-full transition-colors cursor-pointer"
-                      title={`View all ${tagCount} files with tag: ${tag}`}
-                    >
-                      {tag}
-                      {tagCount > 0 && (
-                        <span className="ml-1 text-gray-300">({tagCount})</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Camera Info - only for images */}
-          {!shouldUseFileCard(photo.ext) && photo.camera && (
-            <div className="text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <Camera className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">Camera:</span>
-              </div>
-              <div className="break-words">
-                {photo.camera}
-              </div>
-            </div>
-          )}
-
-          {/* Date/Time */}
-          {photo.dateTime && (
-            <div className="text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <Calendar className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">Date/Time:</span>
-              </div>
-              <div className="break-words">
-                {new Date(photo.dateTime).toLocaleString()}
-              </div>
-            </div>
-          )}
-
-          {/* Date Imported */}
-          {photo.btime && (
-            <div className="text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <Calendar className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">Date Imported:</span>
-              </div>
-              <div className="break-words">
-                {new Date(photo.btime).toLocaleString()}
-              </div>
-            </div>
-          )}
-
-          {/* URL - show only for true external links */}
-          {isExternalUrl(photo.url) && (
-            <div className="text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <BookOpen className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">URL:</span>
-              </div>
-              <div className="break-all">
-                {renderClickableUrl(photo.url, undefined, "text-blue-400 hover:text-blue-300 underline break-all")}
-              </div>
-            </div>
-          )}
-
-          {/* Notes */}
-          {photo.annotation && (
-            <div className="text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <FileText className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">Notes:</span>
-              </div>
-              <div className="break-words">
-                {linkifyText(photo.annotation, "text-blue-400 hover:text-blue-300 underline break-words")}
-              </div>
-            </div>
-          )}
-
-          {/* GPS Location - only for images */}
-          {!shouldUseFileCard(photo.ext) && photo.gps_latitude && photo.gps_longitude && (
-            <div className="text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <MapPin className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">GPS Location:</span>
-              </div>
-              <div className="break-words">
-                {photo.gps_latitude.toFixed(6)}, {photo.gps_longitude.toFixed(6)}
-                {photo.gps_altitude && <span> ({photo.gps_altitude}m)</span>}
-              </div>
-            </div>
-          )}
-
-          {/* EXIF Data - only for images */}
-          {!shouldUseFileCard(photo.ext) && photo.exif_data && (
-            <div className="text-sm">
-              <div className="font-medium mb-1">EXIF Data:</div>
-              <div className="text-gray-300 space-y-1">
-                {Object.entries(JSON.parse(photo.exif_data)).slice(0, 5).map(([key, value]) => (
-                  <div key={key} className="flex flex-col sm:flex-row sm:justify-between gap-1">
-                    <span className="text-gray-400 flex-shrink-0">{key}:</span>
-                    <span className="break-words">{String(value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+        />
       )}
     </div>
   );
