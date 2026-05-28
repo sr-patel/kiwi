@@ -6,16 +6,16 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
-
 env:
   REGISTRY: ghcr.io
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      actions: write
     strategy:
       matrix:
         include:
@@ -26,6 +26,13 @@ jobs:
             dockerfile: Dockerfile.frontend
             image: kiwi-frontend
     steps:
+      - name: Require GHCR token
+        run: |
+          if [ -z "${{ secrets.GHCR_TOKEN }}" ]; then
+            echo "::error::Missing GHCR_TOKEN repository secret. Create a PAT with write:packages and add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -37,7 +44,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Extract metadata
         id: meta

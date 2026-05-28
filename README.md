@@ -96,17 +96,6 @@ Go to **http://localhost:3000** and follow the setup wizard.
 
 **Important:** In the wizard, pick the path **inside the container** (for example `/app/data/libraries/MyPhotos.library`), not your host path like `C:\...` or `/Users/...`.
 
----
-
-## Daily use
-
-| Action | What to do |
-|--------|------------|
-| **Start Kiwi** | Ensure Docker is running, then `docker-start.bat` (Windows) or `docker compose up -d` |
-| **Browse photos** | Open http://localhost:3000 |
-| **Stop Kiwi** | `docker compose down` in the Kiwi folder |
-
-Kiwi keeps your library in sync automatically when you add or change photos in Eagle.
 
 ---
 
@@ -164,7 +153,7 @@ Kiwi keeps your library in sync automatically when you add or change photos in E
 ---
 
 
-**Project layout:**
+### Project layout:
 
 ```text
 kiwi/
