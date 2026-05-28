@@ -55,10 +55,10 @@ function InfoRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-1.5 text-xs leading-snug text-gray-300">
-      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/60" />
+    <div className="flex items-start gap-2 text-sm leading-snug text-gray-300">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-white/70" />
       <div className="min-w-0 flex-1">
-        {label && <span className="font-medium text-white/90">{label}: </span>}
+        {label && <span className="font-medium text-white">{label}: </span>}
         {children}
       </div>
     </div>
@@ -94,6 +94,9 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
   const hiddenTagCount = Math.max(0, tags.length - COLLAPSED_TAG_COUNT);
   const visibleTags = tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT);
 
+  // Narrow fixed width scaled by user preference — avoids a wide shallow strip on large screens.
+  const panelWidthPx = Math.round(300 * (infoBoxSize / 100));
+
   const renderTagPill = (tag: string) => {
     const tagCount = tagCounts[tag] || 0;
     return (
@@ -101,11 +104,11 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
         key={tag}
         type="button"
         onClick={() => onTagClick(tag)}
-        className="max-w-full truncate rounded-full bg-white/20 px-1.5 py-0.5 text-[11px] leading-tight transition-colors hover:bg-white/30 cursor-pointer"
+        className="max-w-full truncate rounded-full bg-white/20 px-2 py-1 text-sm transition-colors hover:bg-white/30 cursor-pointer"
         title={`View all ${tagCount} files with tag: ${tag}`}
       >
         <span className="truncate">{tag}</span>
-        {tagCount > 0 && <span className="ml-0.5 text-gray-400">({tagCount})</span>}
+        {tagCount > 0 && <span className="ml-1 text-gray-300">({tagCount})</span>}
       </button>
     );
   };
@@ -143,7 +146,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
         aria-hidden={visible}
         tabIndex={visible ? -1 : 0}
       >
-        <ChevronUp className="h-3.5 w-3.5" />
+        <ChevronUp className="h-4 w-4" />
       </button>
 
       <div
@@ -151,38 +154,39 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
           visible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
         style={{
-          maxWidth: `${Math.min(infoBoxSize * 0.25, 35)}%`,
-          transform: visible
-            ? `scale(${infoBoxSize / 100})`
-            : `scale(${(infoBoxSize / 100) * 0.97}) translateY(12px)`,
+          width: `min(${panelWidthPx}px, 42vh, calc(100vw - 2rem))`,
+          transform: visible ? undefined : 'translateY(12px)',
           transformOrigin: 'bottom left',
         }}
         aria-hidden={!visible}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex max-h-[70vh] flex-col rounded-lg bg-black/30 text-white backdrop-blur-lg">
-          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-3 py-1.5">
-            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug">
+        <div className="flex max-h-[70vh] w-full flex-col rounded-lg bg-black/30 text-white backdrop-blur-lg">
+          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-3 py-2">
+            <h3 className="min-w-0 flex-1 break-words text-base font-semibold leading-snug">
               {photo.name}
             </h3>
             <button
               type="button"
               onClick={() => onVisibleChange(false)}
-              className="shrink-0 rounded-md p-0.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+              className="shrink-0 rounded-md p-1 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               title="Hide info (I)"
               aria-label="Hide photo info"
             >
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDown className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="space-y-1.5 overflow-y-auto px-3 py-2">
+          <div className="space-y-2 overflow-y-auto px-3 py-2.5">
             <InfoRow icon={FileText}>{fileInfoLine}</InfoRow>
 
             {photo.folders?.length > 0 && (
-              <div className="flex items-start gap-1.5">
-                <Folder className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/60" />
-                <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-white">
+                  <Folder className="h-4 w-4 shrink-0 text-white/70" />
+                  Folders
+                </div>
+                <div className="flex flex-wrap gap-1 pl-6">
                   {getFolderNames(folderTree, photo.folders).map((folderName, index) => {
                     const folderId = photo.folders[index];
                     return (
@@ -190,7 +194,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
                         key={folderId}
                         type="button"
                         onClick={() => onFolderClick(folderId)}
-                        className={`rounded-full px-1.5 py-0.5 text-[11px] leading-tight text-white transition-colors cursor-pointer ${getAccentColor(accentColor)} hover:${getAccentHover(accentColor)}`}
+                        className={`rounded-full px-2 py-1 text-sm text-white transition-colors cursor-pointer ${getAccentColor(accentColor)} hover:${getAccentHover(accentColor)}`}
                         title={`Go to ${folderName}`}
                       >
                         {folderName}
@@ -202,42 +206,40 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
             )}
 
             {tags.length > 0 && (
-              <div className="flex items-start gap-1.5">
-                <Tag className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/60" />
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={`flex flex-wrap gap-1 transition-all duration-200 ease-out ${
-                      tagsExpanded ? 'max-h-40 overflow-y-auto' : ''
-                    }`}
-                  >
-                    <span className="self-center text-[11px] font-medium text-white/90">
-                      Tags ({tags.length})
-                    </span>
-                    {visibleTags.map(renderTagPill)}
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-white">
+                  <Tag className="h-4 w-4 shrink-0 text-white/70" />
+                  Tags ({tags.length})
+                </div>
+                <div
+                  className={`flex flex-wrap gap-1 pl-6 transition-all duration-200 ease-out ${
+                    tagsExpanded ? 'max-h-48 overflow-y-auto' : ''
+                  }`}
+                >
+                  {visibleTags.map(renderTagPill)}
 
-                    {!tagsExpanded && hiddenTagCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setTagsExpanded(true)}
-                        className="inline-flex items-center gap-0.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] transition-colors hover:bg-white/20"
-                        title={`Show ${hiddenTagCount} more tags`}
-                      >
-                        +{hiddenTagCount}
-                        <ChevronDown className="h-2.5 w-2.5" />
-                      </button>
-                    )}
+                  {!tagsExpanded && hiddenTagCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setTagsExpanded(true)}
+                      className="inline-flex items-center gap-0.5 rounded-full bg-white/10 px-2 py-1 text-sm transition-colors hover:bg-white/20"
+                      title={`Show ${hiddenTagCount} more tags`}
+                    >
+                      +{hiddenTagCount}
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  )}
 
-                    {tagsExpanded && hiddenTagCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setTagsExpanded(false)}
-                        className="inline-flex items-center gap-0.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-white/20 hover:text-white"
-                      >
-                        less
-                        <ChevronUp className="h-2.5 w-2.5" />
-                      </button>
-                    )}
-                  </div>
+                  {tagsExpanded && hiddenTagCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setTagsExpanded(false)}
+                      className="inline-flex items-center gap-0.5 rounded-full bg-white/10 px-2 py-1 text-sm text-gray-400 transition-colors hover:bg-white/20 hover:text-white"
+                    >
+                      less
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -280,11 +282,11 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
             )}
 
             {!shouldUseFileCard(photo.ext) && photo.exif_data && (
-              <div className="text-xs leading-snug text-gray-300">
-                <div className="mb-0.5 font-medium text-white/90">EXIF</div>
-                <div className="space-y-0.5 pl-5">
+              <div className="text-sm leading-snug text-gray-300">
+                <div className="mb-1 font-medium text-white">EXIF</div>
+                <div className="space-y-1 pl-6">
                   {Object.entries(JSON.parse(photo.exif_data)).slice(0, 5).map(([key, value]) => (
-                    <div key={key} className="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
+                    <div key={key} className="flex flex-col gap-0.5">
                       <span className="shrink-0 text-gray-400">{key}:</span>
                       <span className="break-words">{String(value)}</span>
                     </div>
