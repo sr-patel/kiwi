@@ -7,6 +7,8 @@ const {
   photoIdFromInfoDirName,
   loadMtimeData,
   reconcileLibrary,
+  isPhotoMtimeKey,
+  photoInfoDirExists,
 } = require('./librarySync');
 
 const DEBOUNCE_MS = 200;
@@ -106,33 +108,61 @@ async function removePhotoFromDb(photoId) {
 }
 
 async function syncMtimeChanges(libraryPath) {
-  const newMtime = await loadMtimeData(libraryPath);
-  const newPhotoIds = [];
-  const removedPhotoIds = [];
-
-  for (const photoId of Object.keys(newMtime)) {
-    if (!(photoId in mtimeSnapshot)) {
-      newPhotoIds.push(photoId);
+  let newMtime;
+  try {
+    const mtimePath = path.join(libraryPath, 'mtime.json');
+    const raw = await fs.readFile(mtimePath, 'utf8');
+    newMtime = JSON.parse(raw);
+    if (!newMtime || typeof newMtime !== 'object' || Array.isArray(newMtime)) {
+      throw new Error('mtime.json is not an object');
     }
+  } catch (error) {
+    appendActivity({
+      type: 'error',
+      message: `mtime.json read failed — skipping sync: ${error.message}`,
+    });
+    return;
   }
 
-  for (const photoId of Object.keys(mtimeSnapshot)) {
-    if (!(photoId in newMtime)) {
-      removedPhotoIds.push(photoId);
-    }
+  const prevIds = Object.keys(mtimeSnapshot).filter(isPhotoMtimeKey);
+  const newIdSet = new Set(Object.keys(newMtime).filter(isPhotoMtimeKey));
+  const newPhotoIds = [...newIdSet].filter((photoId) => !prevIds.includes(photoId));
+  const removedPhotoIds = prevIds.filter((photoId) => !newIdSet.has(photoId));
+
+  // A failed/partial mtime write can look like every photo was removed — bail out.
+  if (
+    removedPhotoIds.length > 0 &&
+    prevIds.length > 2 &&
+    removedPhotoIds.length >= prevIds.length * 0.5
+  ) {
+    appendActivity({
+      type: 'error',
+      message: `mtime.json dropped ${removedPhotoIds.length}/${prevIds.length} ids — running reconcile instead of bulk delete`,
+    });
+    scheduleReconcile();
+    return;
   }
 
   mtimeData = newMtime;
   mtimeSnapshot = { ...newMtime };
 
   if (removedPhotoIds.length > 0) {
-    appendActivity({
-      type: 'library_updated',
-      message: `mtime.json — ${removedPhotoIds.length} photo(s) removed`,
-      details: { photoIds: removedPhotoIds },
-    });
+    const confirmedRemoved = [];
     for (const photoId of removedPhotoIds) {
-      await removePhotoFromDb(photoId);
+      if (!(await photoInfoDirExists(libraryPath, photoId))) {
+        confirmedRemoved.push(photoId);
+      }
+    }
+
+    if (confirmedRemoved.length > 0) {
+      appendActivity({
+        type: 'library_updated',
+        message: `mtime.json — ${confirmedRemoved.length} photo(s) removed`,
+        details: { photoIds: confirmedRemoved },
+      });
+      for (const photoId of confirmedRemoved) {
+        await removePhotoFromDb(photoId);
+      }
     }
   }
 

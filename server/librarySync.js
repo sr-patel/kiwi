@@ -85,6 +85,21 @@ async function loadMtimeData(libraryPath) {
   }
 }
 
+const MTIME_RESERVED_KEYS = new Set(['all']);
+
+function isPhotoMtimeKey(key) {
+  return typeof key === 'string' && key.length > 0 && !MTIME_RESERVED_KEYS.has(key);
+}
+
+async function photoInfoDirExists(libraryPath, photoId) {
+  try {
+    await fs.access(path.join(libraryPath, 'images', `${photoId}.info`));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function upsertPhotoFromMetadata(db, photoId, metadataPath, options = {}) {
   const { mtimeData = {} } = options;
 
@@ -240,4 +255,6 @@ module.exports = {
   listPhotoDirs,
   photoIdFromInfoDirName,
   loadMtimeData,
+  isPhotoMtimeKey,
+  photoInfoDirExists,
 };
