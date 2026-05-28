@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Camera,
   MapPin,
@@ -10,13 +10,14 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { libraryService } from '@/services/libraryService';
 import { getAccentColor, getAccentHover } from '@/utils/accentColors';
 import { shouldUseFileCard, getFileTypeInfo } from '@/utils/fileTypes';
 import { renderClickableUrl, linkifyText } from '@/utils/linkify';
 import { FolderNode } from '@/types';
 
-const COLLAPSED_TAG_COUNT = 4;
+const COLLAPSED_TAG_COUNT = 8;
 
 function isExternalUrl(value: string | undefined | null) {
   if (!value) return false;
@@ -44,6 +45,26 @@ function getFolderNames(folderTree: FolderNode[] | null, folderIds: string[]): s
     .filter((name): name is string => name !== null);
 }
 
+function InfoRow({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: LucideIcon;
+  label?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-1.5 text-xs leading-snug text-gray-300">
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/60" />
+      <div className="min-w-0 flex-1">
+        {label && <span className="font-medium text-white/90">{label}: </span>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
 interface PhotoInfoBoxProps {
   photo: Record<string, any>;
   infoBoxSize: number;
@@ -69,10 +90,6 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
 }) => {
   const [tagsExpanded, setTagsExpanded] = useState(false);
 
-  useEffect(() => {
-    setTagsExpanded(false);
-  }, [photo.id]);
-
   const tags: string[] = photo.tags ?? [];
   const hiddenTagCount = Math.max(0, tags.length - COLLAPSED_TAG_COUNT);
   const visibleTags = tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT);
@@ -84,18 +101,32 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
         key={tag}
         type="button"
         onClick={() => onTagClick(tag)}
-        className="max-w-full truncate px-2 py-1 text-xs bg-white/20 hover:bg-white/30 rounded-full transition-colors cursor-pointer"
+        className="max-w-full truncate rounded-full bg-white/20 px-1.5 py-0.5 text-[11px] leading-tight transition-colors hover:bg-white/30 cursor-pointer"
         title={`View all ${tagCount} files with tag: ${tag}`}
       >
         <span className="truncate">{tag}</span>
-        {tagCount > 0 && <span className="ml-1 text-gray-300">({tagCount})</span>}
+        {tagCount > 0 && <span className="ml-0.5 text-gray-400">({tagCount})</span>}
       </button>
     );
   };
 
+  const fileInfoLine = shouldUseFileCard(photo.ext) ? (
+    <>
+      {getFileTypeInfo(photo.ext).displayName} • {libraryService.formatFileSize(photo.size)} •{' '}
+      {photo.ext.toUpperCase()}
+      {getFileTypeInfo(photo.ext).category === 'video' && photo.duration && (
+        <> • {Math.round(photo.duration)}s</>
+      )}
+    </>
+  ) : (
+    <>
+      {photo.width}×{photo.height} • {libraryService.formatFileSize(photo.size)} •{' '}
+      {photo.ext.toUpperCase()}
+    </>
+  );
+
   return (
     <>
-      {/* Subtle reveal control when hidden */}
       <button
         type="button"
         onClick={(e) => {
@@ -115,7 +146,6 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
         <ChevronUp className="h-3.5 w-3.5" />
       </button>
 
-      {/* Info panel */}
       <div
         className={`absolute bottom-4 left-4 z-10 max-h-[70vh] origin-bottom-left overflow-hidden transition-[opacity,transform] duration-300 ease-out ${
           visible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
@@ -131,55 +161,28 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex max-h-[70vh] flex-col rounded-lg bg-black/30 text-white backdrop-blur-lg">
-          {/* Header with hide control */}
-          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-4 py-3">
-            <h3 className="min-w-0 flex-1 break-words text-base font-semibold leading-snug">
+          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-3 py-1.5">
+            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug">
               {photo.name}
             </h3>
             <button
               type="button"
               onClick={() => onVisibleChange(false)}
-              className="shrink-0 rounded-md p-1 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+              className="shrink-0 rounded-md p-0.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               title="Hide info (I)"
               aria-label="Hide photo info"
             >
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          <div className="space-y-3 overflow-y-auto px-4 py-3">
-            {/* File Info */}
-            <div className="text-sm text-gray-300">
-              <div className="mb-1 flex items-center gap-2">
-                <FileText className="h-4 w-4 shrink-0" />
-                <span className="font-medium text-white">File Info</span>
-              </div>
-              <div className="break-words pl-6">
-                {shouldUseFileCard(photo.ext) ? (
-                  <>
-                    {getFileTypeInfo(photo.ext).displayName} • {libraryService.formatFileSize(photo.size)} •{' '}
-                    {photo.ext.toUpperCase()}
-                    {getFileTypeInfo(photo.ext).category === 'video' && photo.duration && (
-                      <> • {Math.round(photo.duration)}s</>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {photo.width}×{photo.height} • {libraryService.formatFileSize(photo.size)} •{' '}
-                    {photo.ext.toUpperCase()}
-                  </>
-                )}
-              </div>
-            </div>
+          <div className="space-y-1.5 overflow-y-auto px-3 py-2">
+            <InfoRow icon={FileText}>{fileInfoLine}</InfoRow>
 
-            {/* Folders */}
             {photo.folders?.length > 0 && (
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-                  <Folder className="h-4 w-4" />
-                  Folders
-                </div>
-                <div className="flex flex-wrap gap-1 pl-6">
+              <div className="flex items-start gap-1.5">
+                <Folder className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/60" />
+                <div className="flex min-w-0 flex-1 flex-wrap gap-1">
                   {getFolderNames(folderTree, photo.folders).map((folderName, index) => {
                     const folderId = photo.folders[index];
                     return (
@@ -187,7 +190,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
                         key={folderId}
                         type="button"
                         onClick={() => onFolderClick(folderId)}
-                        className={`px-2 py-1 text-xs ${getAccentColor(accentColor)} hover:${getAccentHover(accentColor)} rounded-full text-white transition-colors cursor-pointer`}
+                        className={`rounded-full px-1.5 py-0.5 text-[11px] leading-tight text-white transition-colors cursor-pointer ${getAccentColor(accentColor)} hover:${getAccentHover(accentColor)}`}
                         title={`Go to ${folderName}`}
                       >
                         {folderName}
@@ -198,120 +201,90 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
               </div>
             )}
 
-            {/* Tags — collapsed by default for large lists */}
             {tags.length > 0 && (
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-                  <Tag className="h-4 w-4" />
-                  Tags
-                  <span className="text-xs font-normal text-gray-400">({tags.length})</span>
-                </div>
-                <div
-                  className={`flex flex-wrap gap-1 pl-6 transition-all duration-200 ease-out ${
-                    tagsExpanded ? 'max-h-48 overflow-y-auto' : ''
-                  }`}
-                >
-                  {visibleTags.map(renderTagPill)}
+              <div className="flex items-start gap-1.5">
+                <Tag className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/60" />
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`flex flex-wrap gap-1 transition-all duration-200 ease-out ${
+                      tagsExpanded ? 'max-h-40 overflow-y-auto' : ''
+                    }`}
+                  >
+                    <span className="self-center text-[11px] font-medium text-white/90">
+                      Tags ({tags.length})
+                    </span>
+                    {visibleTags.map(renderTagPill)}
 
-                  {!tagsExpanded && hiddenTagCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setTagsExpanded(true)}
-                      className="inline-flex items-center gap-0.5 px-2 py-1 text-xs bg-white/10 hover:bg-white/20 rounded-full transition-colors"
-                      title={`Show ${hiddenTagCount} more tags`}
-                    >
-                      +{hiddenTagCount}
-                      <ChevronDown className="h-3 w-3" />
-                    </button>
-                  )}
+                    {!tagsExpanded && hiddenTagCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTagsExpanded(true)}
+                        className="inline-flex items-center gap-0.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] transition-colors hover:bg-white/20"
+                        title={`Show ${hiddenTagCount} more tags`}
+                      >
+                        +{hiddenTagCount}
+                        <ChevronDown className="h-2.5 w-2.5" />
+                      </button>
+                    )}
 
-                  {tagsExpanded && hiddenTagCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setTagsExpanded(false)}
-                      className="inline-flex w-full items-center gap-1 px-1 py-1 text-xs text-gray-400 transition-colors hover:text-white"
-                    >
-                      Show less
-                      <ChevronUp className="h-3 w-3" />
-                    </button>
-                  )}
+                    {tagsExpanded && hiddenTagCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTagsExpanded(false)}
+                        className="inline-flex items-center gap-0.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-white/20 hover:text-white"
+                      >
+                        less
+                        <ChevronUp className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
             {!shouldUseFileCard(photo.ext) && photo.camera && (
-              <div className="text-sm">
-                <div className="mb-1 flex items-center gap-2">
-                  <Camera className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">Camera</span>
-                </div>
-                <div className="break-words pl-6">{photo.camera}</div>
-              </div>
+              <InfoRow icon={Camera} label="Camera">
+                {photo.camera}
+              </InfoRow>
             )}
 
             {photo.dateTime && (
-              <div className="text-sm">
-                <div className="mb-1 flex items-center gap-2">
-                  <Calendar className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">Date/Time</span>
-                </div>
-                <div className="break-words pl-6">{new Date(photo.dateTime).toLocaleString()}</div>
-              </div>
+              <InfoRow icon={Calendar} label="Taken">
+                {new Date(photo.dateTime).toLocaleString()}
+              </InfoRow>
             )}
 
             {photo.btime && (
-              <div className="text-sm">
-                <div className="mb-1 flex items-center gap-2">
-                  <Calendar className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">Date Imported</span>
-                </div>
-                <div className="break-words pl-6">{new Date(photo.btime).toLocaleString()}</div>
-              </div>
+              <InfoRow icon={Calendar} label="Imported">
+                {new Date(photo.btime).toLocaleString()}
+              </InfoRow>
             )}
 
             {isExternalUrl(photo.url) && (
-              <div className="text-sm">
-                <div className="mb-1 flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">URL</span>
-                </div>
-                <div className="break-all pl-6">
-                  {renderClickableUrl(photo.url, undefined, 'text-blue-400 hover:text-blue-300 underline break-all')}
-                </div>
-              </div>
+              <InfoRow icon={BookOpen} label="URL">
+                {renderClickableUrl(photo.url, undefined, 'text-blue-400 hover:text-blue-300 underline break-all')}
+              </InfoRow>
             )}
 
             {photo.annotation && (
-              <div className="text-sm">
-                <div className="mb-1 flex items-center gap-2">
-                  <FileText className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">Notes</span>
-                </div>
-                <div className="break-words pl-6">
-                  {linkifyText(photo.annotation, 'text-blue-400 hover:text-blue-300 underline break-words')}
-                </div>
-              </div>
+              <InfoRow icon={FileText} label="Notes">
+                {linkifyText(photo.annotation, 'text-blue-400 hover:text-blue-300 underline break-words')}
+              </InfoRow>
             )}
 
             {!shouldUseFileCard(photo.ext) && photo.gps_latitude && photo.gps_longitude && (
-              <div className="text-sm">
-                <div className="mb-1 flex items-center gap-2">
-                  <MapPin className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">GPS Location</span>
-                </div>
-                <div className="break-words pl-6">
-                  {photo.gps_latitude.toFixed(6)}, {photo.gps_longitude.toFixed(6)}
-                  {photo.gps_altitude && <span> ({photo.gps_altitude}m)</span>}
-                </div>
-              </div>
+              <InfoRow icon={MapPin}>
+                {photo.gps_latitude.toFixed(6)}, {photo.gps_longitude.toFixed(6)}
+                {photo.gps_altitude && <span> ({photo.gps_altitude}m)</span>}
+              </InfoRow>
             )}
 
             {!shouldUseFileCard(photo.ext) && photo.exif_data && (
-              <div className="text-sm">
-                <div className="mb-1 font-medium">EXIF Data</div>
-                <div className="space-y-1 pl-6 text-gray-300">
+              <div className="text-xs leading-snug text-gray-300">
+                <div className="mb-0.5 font-medium text-white/90">EXIF</div>
+                <div className="space-y-0.5 pl-5">
                   {Object.entries(JSON.parse(photo.exif_data)).slice(0, 5).map(([key, value]) => (
-                    <div key={key} className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                    <div key={key} className="flex flex-col gap-0.5 sm:flex-row sm:justify-between">
                       <span className="shrink-0 text-gray-400">{key}:</span>
                       <span className="break-words">{String(value)}</span>
                     </div>
