@@ -10,6 +10,8 @@ services:
     ports:
       - "3001:3001"
     volumes:
+      # Kiwi settings + index (config.json and SQLite live here)
+      - ./data:/app/data:rw
       # Mount your Eagle library folder (edit the left side to your path):
       #
       # Windows example (forward slashes):
@@ -23,11 +25,10 @@ services:
       #
       # Default dev example (relative to this repo):
       - ./example.library:/app/data/libraries/example.library:ro
-      # Config must be writable so the setup wizard can save your library path
-      - ./config.json:/app/config.json:rw
     environment:
       - NODE_ENV=production
       - PORT=3001
+      - KIWI_DATA_DIR=/app/data
     networks:
       - kiwi-network
     healthcheck:

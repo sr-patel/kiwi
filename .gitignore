@@ -2,6 +2,7 @@ node_modules
 server/node_modules
 dist
 example.library
+data
 
 # OS / editor
 .DS_Store

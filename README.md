@@ -44,25 +44,27 @@ Open `docker-compose.yml` and edit the library volume to your `.library` folder.
 
 ```yaml
 volumes:
+  - ./data:/app/data:rw
   - C:/Users/YourName/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
-  - ./config.json:/app/config.json:rw
 ```
 
 **Mac:**
 
 ```yaml
 volumes:
+  - ./data:/app/data:rw
   - /Users/YourName/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
-  - ./config.json:/app/config.json:rw
 ```
 
 **Linux:**
 
 ```yaml
 volumes:
+  - ./data:/app/data:rw
   - /home/yourname/Pictures/MyPhotos.library:/app/data/libraries/MyPhotos.library:ro
-  - ./config.json:/app/config.json:rw
 ```
+
+`./data` holds your settings (`config.json`) and photo index. The Eagle library stays a separate read-only mount under `data/libraries/`.
 
 To find your library path in Eagle: **Library → Manage library** — the folder shown there is what you need.
 
@@ -94,6 +96,20 @@ Go to **http://localhost:3000** and follow the setup wizard.
 
 **Important:** In the wizard, pick the path **inside the container** (for example `/app/data/libraries/MyPhotos.library`), not your host path like `C:\...` or `/Users/...`.
 
+---
+
+## Daily use
+
+| Action | What to do |
+|--------|------------|
+| **Start Kiwi** | Ensure Docker is running, then `docker-start.bat` (Windows) or `docker compose up -d` |
+| **Browse photos** | Open http://localhost:3000 |
+| **Stop Kiwi** | `docker compose down` in the Kiwi folder |
+
+Kiwi keeps your library in sync automatically when you add or change photos in Eagle.
+
+---
+
 ## Help & troubleshooting
 
 **The page will not load**
@@ -116,7 +132,11 @@ Go to **http://localhost:3000** and follow the setup wizard.
 
 **`docker compose pull` fails or image not found**
 - Images are published when changes land on the `main` branch (see [Packages](https://github.com/sr-patel/kiwi/pkgs/container/kiwi-backend))
-- First-time maintainers: run the publish workflow once, then set each package to **Public** under **Package settings** on GitHub
+
+**Database error: "unable to open database file"**
+- Ensure `./data` exists and is writable (`docker-start.bat` creates it automatically)
+- Restart: `docker compose down` then `docker compose up -d`
+- Pull the latest backend image if you recently updated Kiwi
 
 ---
 
@@ -143,15 +163,17 @@ Go to **http://localhost:3000** and follow the setup wizard.
 
 ---
 
+
 **Project layout:**
 
 ```text
 kiwi/
-├── src/                 React frontend
-├── server/              Express API + SQLite sync
-├── public/              Static assets (logo, icons)
-├── scripts/             Dev helpers (start.js, dev-start.bat)
-├── config.json              Library path and preferences
+├── data/                    Your settings + index (config.json, databases/)
+├── src/                     React frontend
+├── server/                  Express API + SQLite sync
+├── public/                  Static assets (logo, icons)
+├── scripts/                 Dev helpers (start.js, dev-start.bat)
+├── config.json              Default settings template (copied to data/ on first Docker run)
 ├── docker-compose.yml       Run Kiwi (pulls images from GHCR)
 └── docker-compose.build.yml   Optional local image build override
 ```
@@ -160,4 +182,4 @@ kiwi/
 
 ## License
 
-GNU General Public License 3.0 — see [LICENSE](LICENSE).
+MIT License — see [LICENSE](LICENSE).
