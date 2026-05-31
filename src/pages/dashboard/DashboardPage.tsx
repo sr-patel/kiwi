@@ -1,19 +1,18 @@
-import React, { useState } from 'react';
-import { Database, RefreshCw } from 'lucide-react';
+import React from 'react';
+import { Database, RefreshCw, Settings } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
 import { useDashboardData } from './useDashboardData';
-import { DashboardStatCards, DashboardSecondaryStats } from './DashboardStatCards';
+import { DashboardStatCards } from './DashboardStatCards';
 import { DashboardCharts } from './DashboardCharts';
-import { DashboardMaintenance } from './DashboardMaintenance';
-import { WatcherActivityPanel } from './WatcherActivityPanel';
+import { DashboardFileTypes } from './DashboardFileTypes';
 import { WelcomeBanner } from '@/components/WelcomeBanner/WelcomeBanner';
 
 export const DashboardPage: React.FC = () => {
   const { accentColor, theme } = useAppStore();
   const accentHex = getAccentHex(accentColor);
-  const { stats, syncStatus, loading, refreshing, error, lastUpdated, refresh } = useDashboardData();
-  const [watcherExpanded, setWatcherExpanded] = useState(false);
+  const { stats, loading, refreshing, error, lastUpdated, refresh } = useDashboardData();
 
   if (loading) {
     return (
@@ -39,12 +38,12 @@ export const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-6 animate-fade-in pb-20">
+    <div className="p-6 max-w-[1800px] mx-auto space-y-6 animate-fade-in pb-20">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-zinc-100 mb-1">Dashboard</h1>
           <p className="text-gray-500 dark:text-zinc-400">
-            Library statistics and live sync overview
+            Library statistics and analytics
             {lastUpdated && (
               <span className="ml-2 text-xs text-gray-400 dark:text-zinc-500">
                 · Updated {lastUpdated.toLocaleTimeString()}
@@ -52,33 +51,32 @@ export const DashboardPage: React.FC = () => {
             )}
           </p>
         </div>
-        <button
-          onClick={() => refresh()}
-          disabled={refreshing}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-medium text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/settings"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-medium text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Settings
+          </Link>
+          <button
+            onClick={() => refresh()}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-medium text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      <DashboardStatCards stats={stats} syncStatus={syncStatus} accentHex={accentHex} />
+      <DashboardStatCards stats={stats} accentHex={accentHex} />
 
       <WelcomeBanner />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(380px,42%)] gap-6 items-start">
-        <DashboardCharts stats={stats} theme={theme} accentHex={accentHex} />
-        <WatcherActivityPanel
-          syncStatus={syncStatus}
-          expanded={watcherExpanded}
-          onExpandedChange={setWatcherExpanded}
-          className={watcherExpanded ? 'xl:sticky xl:top-6' : undefined}
-        />
-      </div>
+      <DashboardFileTypes stats={stats} />
 
-      <DashboardSecondaryStats stats={stats} accentHex={accentHex} />
-
-      <DashboardMaintenance stats={stats} onRebuildComplete={refresh} />
+      <DashboardCharts stats={stats} theme={theme} accentHex={accentHex} />
     </div>
   );
 };

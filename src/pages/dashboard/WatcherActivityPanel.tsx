@@ -64,6 +64,7 @@ interface WatcherActivityPanelProps {
   className?: string;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  defaultExpanded?: boolean;
 }
 
 export function WatcherActivityPanel({
@@ -71,8 +72,9 @@ export function WatcherActivityPanel({
   className = '',
   expanded: expandedProp,
   onExpandedChange,
+  defaultExpanded = false,
 }: WatcherActivityPanelProps) {
-  const [expandedInternal, setExpandedInternal] = useState(false);
+  const [expandedInternal, setExpandedInternal] = useState(defaultExpanded);
   const expanded = expandedProp ?? expandedInternal;
   const setExpanded = onExpandedChange ?? setExpandedInternal;
 

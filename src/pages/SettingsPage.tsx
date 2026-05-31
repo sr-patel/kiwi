@@ -1,28 +1,51 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useAppStore } from '@/store';
-import {
-  Moon,
-  Sun,
-  ArrowLeft,
-  Eye,
-  Database,
-  HardDrive,
-  Loader,
-  CheckCircle,
-  AlertCircle,
-} from 'lucide-react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ArrowLeft,
+  Eye,
+  Moon,
+  Palette,
+  Settings2,
+  Sun,
+  Zap,
+} from 'lucide-react';
+import { useAppStore } from '@/store';
+import {
   getAccentColor,
-  getAccentRing,
   getAccentHex,
+  getAccentRing,
 } from '@/utils/accentColors';
-import { libraryService } from '@/services/libraryService';
+import { SettingsCard, SettingsSlider, SettingsToggle } from '@/pages/settings/SettingsCard';
+import { SettingsLibraryAdmin } from '@/pages/settings/SettingsLibraryAdmin';
 
-type LibraryStatus = 'idle' | 'loading' | 'valid' | 'invalid' | 'saving' | 'error';
+type SettingsTab = 'general' | 'appearance' | 'view' | 'library';
+
+const TABS: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
+  { id: 'general', label: 'General', icon: Settings2, description: 'Navigation and loading' },
+  { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme and colors' },
+  { id: 'view', label: 'View', icon: Eye, description: 'Grid and detail view' },
+  { id: 'library', label: 'Library & Sync', icon: Zap, description: 'Path, watcher, and database' },
+];
+
+const ACCENT_OPTIONS = [
+  { name: 'Kiwi', value: 'kiwi' },
+  { name: 'Orange', value: 'orange' },
+  { name: 'Blue', value: 'blue' },
+  { name: 'Green', value: 'green' },
+  { name: 'Purple', value: 'purple' },
+  { name: 'Red', value: 'red' },
+  { name: 'Pink', value: 'pink' },
+  { name: 'Teal', value: 'teal' },
+  { name: 'Indigo', value: 'indigo' },
+  { name: 'Cyan', value: 'cyan' },
+  { name: 'Lime', value: 'lime' },
+  { name: 'Amber', value: 'amber' },
+] as const;
 
 export const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+
   const {
     theme,
     toggleTheme,
@@ -44,516 +67,216 @@ export const SettingsPage: React.FC = () => {
     setTransitionEffect,
     defaultLandingPage,
     setDefaultLandingPage,
-    setCurrentLibraryPath,
-    setFolderTree,
-    setAllPhotos,
-    clearCache,
   } = useAppStore();
 
-  // Accent helpers
-  const accentOptions: { name: string; value: typeof accentColor }[] = [
-    { name: 'Kiwi', value: 'kiwi' },
-    { name: 'Orange', value: 'orange' },
-    { name: 'Blue', value: 'blue' },
-    { name: 'Green', value: 'green' },
-    { name: 'Purple', value: 'purple' },
-    { name: 'Red', value: 'red' },
-    { name: 'Pink', value: 'pink' },
-    { name: 'Teal', value: 'teal' },
-    { name: 'Indigo', value: 'indigo' },
-    { name: 'Cyan', value: 'cyan' },
-    { name: 'Lime', value: 'lime' },
-    { name: 'Amber', value: 'amber' },
-  ];
-
   const accentHex = getAccentHex(accentColor);
-
-  // Library path settings (server-backed)
-  const [libraryPath, setLibraryPath] = useState('');
-  const [libraryStatus, setLibraryStatus] = useState<LibraryStatus>('idle');
-  const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
-  const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/config');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setLibraryPath(data.libraryPath || '');
-        setIsConfigured(!!data._configured);
-        if (!data._configured && data._validation?.reason) {
-          setLibraryMessage(data._validation.reason);
-        }
-      } catch {
-        // If backend isn't up, keep UI neutral
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const validateLibraryPath = useCallback(async () => {
-    if (!libraryPath.trim()) {
-      setLibraryStatus('invalid');
-      setLibraryMessage('Please enter a library path.');
-      return;
-    }
-
-    setLibraryStatus('loading');
-    setLibraryMessage(null);
-
-    try {
-      const res = await fetch('/api/config/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ libraryPath: libraryPath.trim() }),
-      });
-      const data = await res.json();
-      if (data.valid) {
-        setLibraryStatus('valid');
-        setLibraryMessage('Valid Eagle library detected.');
-      } else {
-        setLibraryStatus('invalid');
-        setLibraryMessage(data.hint ? `${data.reason} ${data.hint}` : (data.reason || 'Invalid library path.'));
-      }
-    } catch {
-      setLibraryStatus('error');
-      setLibraryMessage('Could not reach the backend. Is the server running?');
-    }
-  }, [libraryPath]);
-
-  const saveLibraryPath = useCallback(async () => {
-    if (!libraryPath.trim()) return;
-    setLibraryStatus('saving');
-    setLibraryMessage(null);
-
-    try {
-      const res = await fetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ libraryPath: libraryPath.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setLibraryStatus('error');
-        setLibraryMessage(data.error || 'Failed to save configuration.');
-        return;
-      }
-      setLibraryStatus('valid');
-      setIsConfigured(true);
-      setLibraryMessage('Configuration saved. Reloading your library…');
-
-      const savedPath = libraryPath.trim();
-      setCurrentLibraryPath(savedPath);
-      try {
-        await clearCache();
-        const result = await libraryService.initializeLibrary();
-        if (result) {
-          await setFolderTree(result.folderTree);
-          await setAllPhotos(result.allPhotos);
-        }
-        setLibraryMessage('Library path saved and reloaded.');
-      } catch {
-        setLibraryMessage('Path saved. Refresh the page if folders do not update.');
-      }
-    } catch {
-      setLibraryStatus('error');
-      setLibraryMessage('Failed to save configuration. Check server connection.');
-    }
-  }, [libraryPath, setCurrentLibraryPath, setFolderTree, setAllPhotos, clearCache]);
-
-  const triggerFullRebuild = useCallback(async () => {
-    setLibraryMessage('Starting full database rebuild...');
-    try {
-      await fetch('/api/database/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: 'library' }),
-      });
-      setLibraryMessage('Database rebuild completed. The file watcher keeps the index in sync automatically.');
-    } catch {
-      setLibraryMessage('Failed to start database rebuild. Check server logs.');
-    }
-  }, []);
-
-  const renderLibraryStatusIcon = () => {
-    if (libraryStatus === 'loading' || libraryStatus === 'saving') {
-      return <Loader className="w-4 h-4 animate-spin text-gray-400" />;
-    }
-    if (libraryStatus === 'valid' && libraryPath) {
-      return <CheckCircle className="w-4 h-4 text-green-500" />;
-    }
-    if (libraryStatus === 'invalid' || libraryStatus === 'error') {
-      return <AlertCircle className="w-4 h-4 text-red-500" />;
-    }
-    return null;
-  };
+  const activeMeta = TABS.find((t) => t.id === activeTab)!;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-black">
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate(-1)}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-              Settings
-            </h1>
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-950">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <div className="mb-8 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-white hover:text-gray-700 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Settings</h1>
+            <p className="text-sm text-gray-500 dark:text-zinc-400">
+              Customize Kiwi and manage your library
+            </p>
           </div>
         </div>
 
-        <div className="space-y-8">
-          {/* Library section */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <Database className="w-5 h-5" />
-              Library &amp; Database
-            </h2>
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-3">
-                <label className="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">
-                  Library path
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      value={libraryPath}
-                      onChange={(e) => {
-                        setLibraryPath(e.target.value);
-                        setLibraryStatus('idle');
-                        setLibraryMessage(null);
-                      }}
-                      placeholder="C:\Photos\myLibrary.library"
-                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-1"
-                      style={{
-                        boxShadow: 'none',
-                      }}
-                    />
-                    <div className="absolute left-2 top-1/2 -translate-y-1/2">
-                      {renderLibraryStatusIcon()}
-                    </div>
-                  </div>
-                  <button
-                    onClick={validateLibraryPath}
-                    disabled={!libraryPath.trim() || libraryStatus === 'loading'}
-                    className="px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
-                    style={{ backgroundColor: accentHex }}
-                  >
-                    Validate
-                  </button>
-                  <button
-                    onClick={saveLibraryPath}
-                    disabled={!libraryPath.trim() || libraryStatus === 'loading'}
-                    className="px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
-                    style={{ backgroundColor: accentHex }}
-                  >
-                    Save
-                  </button>
-                </div>
-                {isConfigured === false && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    Library is not configured yet. Set the path to your Eagle
-                    library to finish setup.
-                  </p>
-                )}
-                {libraryMessage && (
-                  <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                    {libraryStatus === 'valid' && (
-                      <CheckCircle className="w-3 h-3 text-green-500" />
-                    )}
-                    {libraryStatus !== 'valid' && (
-                      <AlertCircle className="w-3 h-3 text-red-500" />
-                    )}
-                    {libraryMessage}
-                  </p>
-                )}
-              </div>
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          {/* Sidebar nav */}
+          <nav className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:w-56 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
+            {TABS.map(({ id, label, icon: Icon }) => {
+              const isActive = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  className={`flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-100'
+                      : 'text-gray-600 hover:bg-white/60 dark:text-zinc-400 dark:hover:bg-zinc-900/60'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" style={isActive ? { color: accentHex } : undefined} />
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
 
-              <div className="p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 text-gray-800 dark:text-gray-200">
-                  <HardDrive className="w-4 h-4" />
-                  <span className="font-medium">Database maintenance</span>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 w-full">
-                  The server watches your Eagle library and updates the database automatically.
-                  Use full rebuild only if the index is corrupt or out of sync.
-                </p>
-                <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    onClick={triggerFullRebuild}
-                    className="px-3 py-2 rounded-lg text-xs font-medium border border-red-500/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-1"
-                  >
-                    <Loader className="w-3 h-3" />
-                    Full rebuild
-                  </button>
-                </div>
-              </div>
+          {/* Content */}
+          <div className="min-w-0 flex-1">
+            <div className="mb-5">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">{activeMeta.label}</h2>
+              <p className="text-sm text-gray-500 dark:text-zinc-400">{activeMeta.description}</p>
             </div>
-          </section>
 
-          {/* Requests */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              Requests
-            </h2>
-            <div className="p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-gray-800 dark:text-gray-200 font-medium">
-                  Items per request
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Controls how many items load per page (10–500)
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={10}
-                  max={500}
-                  step={10}
-                  value={requestPageSize}
-                  onChange={(e) =>
-                    setRequestPageSize(parseInt(e.target.value || '50', 10))
-                  }
-                  className="w-24 px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100"
-                />
-              </div>
-            </div>
-          </section>
+            {activeTab === 'general' && (
+              <div className="space-y-4">
+                <SettingsCard title="Default page">
+                  <SettingsToggle
+                    label="Start on Dashboard"
+                    description="Open the statistics dashboard instead of the photo grid when launching Kiwi"
+                    checked={defaultLandingPage !== 'all'}
+                    onChange={(checked) => setDefaultLandingPage(checked ? 'dashboard' : 'all')}
+                    accentHex={accentHex}
+                  />
+                </SettingsCard>
 
-          {/* Theme */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              Theme
-            </h2>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={toggleTheme}
-                className="px-4 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2 text-gray-900 dark:text-gray-100"
-              >
-                {theme === 'dark' ? (
-                  <Sun className="w-5 h-5" />
-                ) : (
-                  <Moon className="w-5 h-5" />
-                )}
-                Toggle Theme
-              </button>
-            </div>
-          </section>
-
-          {/* Accent color */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              Accent Color
-            </h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {accentOptions.map(({ name, value }) => {
-                const isSelected = accentColor === value;
-                const base = getAccentColor(value);
-                const ring = isSelected ? getAccentRing(value) : '';
-                return (
-                  <button
-                    key={value}
-                    onClick={() => setAccentColor(value)}
-                    className={`h-10 rounded-lg flex items-center justify-center text-white text-sm ${base} ${
-                      isSelected ? `ring-2 ring-offset-2 ${ring}` : ''
-                    }`}
-                    title={name}
-                  >
-                    {name}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Navigation */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              Navigation
-            </h2>
-            <label className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-              <input
-                type="checkbox"
-                checked={defaultLandingPage !== 'all'}
-                onChange={(e) => setDefaultLandingPage(e.target.checked ? 'dashboard' : 'all')}
-                className="w-4 h-4"
-                style={{ accentColor: accentHex }}
-              />
-              <div>
-                <div className="text-gray-800 dark:text-gray-200 font-medium">
-                  Start on Dashboard
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Show the dashboard statistics page when opening the app instead of the photo grid
-                </div>
-              </div>
-            </label>
-          </section>
-
-          {/* Appearance */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              Appearance
-            </h2>
-            <div className="space-y-4">
-              <label className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-                <input
-                  type="checkbox"
-                  checked={!!enableColorIntegration}
-                  onChange={(e) => setEnableColorIntegration(e.target.checked)}
-                  className="w-4 h-4"
-                  style={{ accentColor: accentHex }}
-                />
-                <div>
-                  <div className="text-gray-800 dark:text-gray-200 font-medium">
-                    Enhanced Color Integration
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Apply accent colors throughout the interface
-                  </div>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-                <input
-                  type="checkbox"
-                  checked={!!autoplayGifsInGrid}
-                  onChange={(e) => setAutoplayGifsInGrid(e.target.checked)}
-                  className="w-4 h-4"
-                  style={{ accentColor: accentHex }}
-                />
-                <div>
-                  <div className="text-gray-800 dark:text-gray-200 font-medium">
-                    Autoplay GIFs in Grid
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Animate GIFs/WebPs in grid view instead of showing a static
-                    first frame
-                  </div>
-                </div>
-              </label>
-
-              <div className="p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="text-gray-800 dark:text-gray-200 font-medium">
-                      Info Box Size
-                    </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      Size of the information box in detailed view (50% -
-                      150%)
-                    </div>
-                  </div>
+                <SettingsCard
+                  title="Items per request"
+                  description="How many items load per page when browsing folders and tags"
+                >
                   <div className="flex items-center gap-3">
                     <input
-                      type="range"
-                      min="50"
-                      max="150"
-                      step="10"
-                      value={infoBoxSize}
-                      onChange={(e) =>
-                        setInfoBoxSize(parseInt(e.target.value, 10))
-                      }
-                      className="w-24"
-                      style={{ accentColor: accentHex }}
+                      type="number"
+                      min={10}
+                      max={500}
+                      step={10}
+                      value={requestPageSize}
+                      onChange={(e) => setRequestPageSize(parseInt(e.target.value || '50', 10))}
+                      className="w-28 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
                     />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[40px] text-right">
-                      {infoBoxSize}%
-                    </span>
+                    <span className="text-sm text-gray-500 dark:text-zinc-400">items (10–500)</span>
                   </div>
-                </div>
-              </div>
-            </div>
-          </section>
+                </SettingsCard>
 
-          {/* Detailed view */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <Eye className="w-5 h-5" />
-              Detailed View
-            </h2>
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-                <div className="text-gray-800 dark:text-gray-200 font-medium mb-2">
-                  Image Transition Effect
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {(['none', 'slide', 'fade', 'zoom'] as const).map((effect) => (
-                    <button
-                      key={effect}
-                      onClick={() => setTransitionEffect(effect)}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
-                        transitionEffect === effect
-                          ? 'text-white'
-                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                      }`}
-                      style={
-                        transitionEffect === effect
-                          ? { backgroundColor: accentHex }
-                          : {}
-                      }
-                    >
-                      {effect}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
+                <SettingsCard title="Folders">
+                  <SettingsToggle
+                    label="Folder thumbnails"
+                    description="Use the first A–Z thumbnail as each folder's icon"
+                    checked={!!useFolderThumbnails}
+                    onChange={setUseFolderThumbnails}
+                    accentHex={accentHex}
+                  />
+                </SettingsCard>
 
-          {/* Folders */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              Folders
-            </h2>
-            <label className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-              <input
-                type="checkbox"
-                checked={!!useFolderThumbnails}
-                onChange={(e) => setUseFolderThumbnails(e.target.checked)}
-                className="w-4 h-4"
-                style={{ accentColor: accentHex }}
-              />
-              <span className="text-gray-800 dark:text-gray-200">
-                Use first A–Z thumbnail as folder icon
-              </span>
-            </label>
-          </section>
-
-          {/* Audio */}
-          <section>
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              Audio
-            </h2>
-            <label className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-              <input
-                type="checkbox"
-                checked={!!enablePodcastMode}
-                onChange={(e) => setEnablePodcastMode(e.target.checked)}
-                className="w-4 h-4"
-                style={{ accentColor: accentHex }}
-              />
-              <div>
-                <div className="text-gray-800 dark:text-gray-200 font-medium">
-                  Podcast Mode
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Remember playback position for audio files
-                </div>
+                <SettingsCard title="Audio">
+                  <SettingsToggle
+                    label="Podcast mode"
+                    description="Remember playback position for audio files"
+                    checked={!!enablePodcastMode}
+                    onChange={setEnablePodcastMode}
+                    accentHex={accentHex}
+                  />
+                </SettingsCard>
               </div>
-            </label>
-          </section>
+            )}
+
+            {activeTab === 'appearance' && (
+              <div className="space-y-4">
+                <SettingsCard title="Theme">
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                  >
+                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    Switch to {theme === 'dark' ? 'light' : 'dark'} mode
+                  </button>
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Accent color"
+                  description="Used for highlights, buttons, and chart accents"
+                >
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                    {ACCENT_OPTIONS.map(({ name, value }) => {
+                      const isSelected = accentColor === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setAccentColor(value)}
+                          className={`flex h-10 items-center justify-center rounded-lg text-xs font-medium text-white ${getAccentColor(value)} ${
+                            isSelected ? `ring-2 ring-offset-2 ${getAccentRing(value)}` : ''
+                          }`}
+                          title={name}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </SettingsCard>
+
+                <SettingsCard title="Color integration">
+                  <SettingsToggle
+                    label="Enhanced color integration"
+                    description="Apply accent colors throughout the interface"
+                    checked={!!enableColorIntegration}
+                    onChange={setEnableColorIntegration}
+                    accentHex={accentHex}
+                  />
+                </SettingsCard>
+              </div>
+            )}
+
+            {activeTab === 'view' && (
+              <div className="space-y-4">
+                <SettingsCard title="Photo grid">
+                  <SettingsToggle
+                    label="Autoplay GIFs in grid"
+                    description="Animate GIFs and WebPs in the grid instead of showing a static first frame"
+                    checked={!!autoplayGifsInGrid}
+                    onChange={setAutoplayGifsInGrid}
+                    accentHex={accentHex}
+                  />
+                </SettingsCard>
+
+                <SettingsCard title="Detail view">
+                  <SettingsSlider
+                    label="Info box size"
+                    description="Width of the information panel in detailed view"
+                    value={infoBoxSize}
+                    min={50}
+                    max={150}
+                    step={10}
+                    onChange={setInfoBoxSize}
+                    formatValue={(v) => `${v}%`}
+                    accentHex={accentHex}
+                  />
+
+                  <div className="mt-4 border-t border-gray-100 pt-4 dark:border-zinc-800">
+                    <div className="mb-3 font-medium text-gray-900 dark:text-zinc-100">
+                      Image transition
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {(['none', 'slide', 'fade', 'zoom'] as const).map((effect) => (
+                        <button
+                          key={effect}
+                          type="button"
+                          onClick={() => setTransitionEffect(effect)}
+                          className={`rounded-lg px-3 py-2 text-sm font-medium capitalize transition-colors ${
+                            transitionEffect === effect
+                              ? 'text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                          }`}
+                          style={
+                            transitionEffect === effect ? { backgroundColor: accentHex } : undefined
+                          }
+                        >
+                          {effect}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </SettingsCard>
+              </div>
+            )}
+
+            {activeTab === 'library' && <SettingsLibraryAdmin />}
+          </div>
         </div>
       </div>
     </div>
@@ -561,4 +284,3 @@ export const SettingsPage: React.FC = () => {
 };
 
 export default SettingsPage;
-

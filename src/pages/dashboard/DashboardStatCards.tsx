@@ -1,9 +1,7 @@
 import React from 'react';
-import {
-  HardDrive, Image, Folder, Tag, Database, Clock, Eye, Activity,
-} from 'lucide-react';
+import { HardDrive, Image, Folder, Tag, Database, Clock } from 'lucide-react';
 import { formatBytes } from '@/utils/formatBytes';
-import type { DashboardStats, SyncStatus } from './types';
+import type { DashboardStats } from './types';
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -30,13 +28,11 @@ function StatCard({ icon: Icon, label, value, subtext, accentHex }: StatCardProp
 
 interface DashboardStatCardsProps {
   stats: DashboardStats;
-  syncStatus: SyncStatus | null;
   accentHex: string;
 }
 
-export function DashboardStatCards({ stats, syncStatus, accentHex }: DashboardStatCardsProps) {
+export function DashboardStatCards({ stats, accentHex }: DashboardStatCardsProps) {
   const summary = stats.analytics?.summary;
-  const lastActivity = syncStatus?.lastReconcileTime || syncStatus?.lastEventTime || stats.lastRefresh;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -67,27 +63,6 @@ export function DashboardStatCards({ stats, syncStatus, accentHex }: DashboardSt
         subtext={summary ? `${summary.taggedPhotos.toLocaleString()} tagged items` : undefined}
         accentHex={accentHex}
       />
-      <StatCard
-        icon={Eye}
-        label="File Watcher"
-        value={syncStatus?.running ? 'Active' : 'Stopped'}
-        subtext={syncStatus ? `${syncStatus.processedCount.toLocaleString()} events processed` : undefined}
-        accentHex={accentHex}
-      />
-      <StatCard
-        icon={lastActivity ? Activity : Clock}
-        label="Last Activity"
-        value={lastActivity ? new Date(lastActivity).toLocaleDateString() : 'Never'}
-        subtext={lastActivity ? new Date(lastActivity).toLocaleTimeString() : undefined}
-        accentHex={accentHex}
-      />
-    </div>
-  );
-}
-
-export function DashboardSecondaryStats({ stats, accentHex }: { stats: DashboardStats; accentHex: string }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <StatCard
         icon={Database}
         label="Database Size"
