@@ -1434,7 +1434,7 @@ class PhotoLibraryDatabase {
     let query, params;
     
     // Build the ORDER BY clause based on sort parameters
-    const orderByClause = this.getOrderByClause(orderBy);
+    const orderByClause = this.getOrderByClause(orderBy, { randomSeed });
     const validatedDirection = this._validateDirection(orderDirection);
     
     if (folderId) {

@@ -837,6 +837,9 @@ app.get('/api/photos/:id/file', requireLibrary, async (req, res) => {
       'bmp': 'image/bmp',
       'tiff': 'image/tiff',
       'avif': 'image/avif',
+      'jxl': 'image/jxl',
+      'heic': 'image/heic',
+      'heif': 'image/heif',
       // Videos
       'mp4': 'video/mp4',
       'avi': 'video/x-msvideo',
@@ -918,6 +921,54 @@ app.get('/api/photos/:id/thumbnail', requireLibrary, async (req, res) => {
   } catch (error) {
     console.error('Error serving thumbnail:', error);
     res.status(500).json({ error: 'Failed to serve thumbnail' });
+  }
+});
+
+app.get('/api/photos/:id/preview', requireLibrary, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!validatePhotoId(id)) {
+      return res.status(400).json({ error: 'Invalid photo ID' });
+    }
+
+    const { ext, name } = req.query;
+
+    if (!ext || !name) {
+      return res.status(400).json({ error: 'Missing ext or name parameter' });
+    }
+
+    if (!validateFileNameComponent(name) || !validateFileNameComponent(ext)) {
+      return res.status(400).json({ error: 'Invalid file name or extension' });
+    }
+
+    const safeId = path.basename(id);
+    const safeName = path.basename(name);
+    const safeExt = path.basename(ext).toLowerCase();
+    const previewFormats = new Set(['jxl', 'heic', 'heif']);
+
+    if (!previewFormats.has(safeExt)) {
+      const filePath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}.${safeExt}`);
+      try {
+        await fs.access(filePath);
+      } catch {
+        return res.status(404).json({ error: 'Photo file not found' });
+      }
+      return res.sendFile(filePath);
+    }
+
+    const thumbnailPath = path.join(LIBRARY_PATH, 'images', `${safeId}.info`, `${safeName}_thumbnail.png`);
+    try {
+      await fs.access(thumbnailPath);
+    } catch {
+      return res.status(404).json({ error: 'Preview thumbnail not found' });
+    }
+
+    res.setHeader('Content-Type', 'image/png');
+    res.sendFile(thumbnailPath);
+  } catch (error) {
+    console.error('Error serving preview:', error);
+    res.status(500).json({ error: 'Failed to serve preview' });
   }
 });
 

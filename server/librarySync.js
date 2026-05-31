@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 function determineTypeFromExt(ext) {
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp', 'heic', 'heif', 'avif', 'svg'];
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp', 'heic', 'heif', 'avif', 'svg', 'jxl'];
   const videoExts = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv', 'm4v', '3gp'];
   const audioExts = ['mp3', 'wav', 'flac', 'aac', 'ogg', 'opus', 'wma', 'm4a'];
   const documentExts = ['pdf', 'epub', 'mobi', 'doc', 'docx', 'txt'];
