@@ -58,7 +58,10 @@ function requireLibrary(req, res, next) {
 
 // Security middleware
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? ['http://localhost:3000'] : true,
+  // Allow web frontend, mobile apps, and LAN clients (React Native has no fixed origin)
+  origin: process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+    : true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
