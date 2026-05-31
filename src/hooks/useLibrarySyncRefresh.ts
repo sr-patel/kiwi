@@ -94,6 +94,7 @@ export function useLibrarySyncRefresh(enabled: boolean) {
           queryClient.invalidateQueries({ queryKey: ['tags'] });
           queryClient.invalidateQueries({ queryKey: ['tagCounts'] });
           queryClient.invalidateQueries({ queryKey: ['tagCoOccurrences'] });
+          queryClient.invalidateQueries({ queryKey: ['tagNetwork'] });
         }
 
         if (refreshFolders) {

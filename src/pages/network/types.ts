@@ -1,35 +1,42 @@
-export interface TagCoOccurrenceEdge {
-  source: string;
-  target: string;
-  weight: number;
+export interface TagCluster {
+  id: number;
+  color: string;
+  hull: Array<{ x: number; y: number }>;
+  nodeCount: number;
 }
 
-export interface TagGraphNode {
+export interface TagNetworkNode {
   id: string;
   count: number;
   community: number;
-  degree: number;
-  isIsolated: boolean;
+  color: string;
+  val: number;
+  x: number;
+  y: number;
+  fx: number;
+  fy: number;
 }
 
-export interface TagGraphLink {
+export interface TagNetworkLink {
   source: string;
   target: string;
   weight: number;
 }
 
-export interface TagGraphData {
-  nodes: TagGraphNode[];
-  links: TagGraphLink[];
+export interface TagNetworkGraph {
+  nodes: TagNetworkNode[];
+  links: TagNetworkLink[];
+  clusters: TagCluster[];
+  stats: {
+    tags: number;
+    links: number;
+    communities: number;
+  };
 }
 
-export interface ForceGraphNode extends TagGraphNode {
-  val: number;
-  color: string;
-  x?: number;
-  y?: number;
-  fx?: number;
-  fy?: number;
+export interface ForceGraphNode extends TagNetworkNode {
+  degree?: number;
+  isIsolated?: boolean;
 }
 
 export interface ForceGraphLink {
@@ -41,4 +48,5 @@ export interface ForceGraphLink {
 export interface ForceGraphData {
   nodes: ForceGraphNode[];
   links: ForceGraphLink[];
+  clusters: TagCluster[];
 }

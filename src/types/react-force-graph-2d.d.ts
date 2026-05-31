@@ -47,7 +47,11 @@ declare module 'react-force-graph-2d' {
     onNodeHover?: (node: GraphNode | null, previous: GraphNode | null) => void;
     onBackgroundClick?: () => void;
     onZoom?: (transform: { k: number; x: number; y: number }) => void;
-    onEngineStop?: () => void;
+    onRenderFramePre?: (
+      ctx: CanvasRenderingContext2D,
+      globalScale: number,
+    ) => void;
+    d3AlphaMin?: number;
     nodeCanvasObject?: (
       node: GraphNode,
       ctx: CanvasRenderingContext2D,

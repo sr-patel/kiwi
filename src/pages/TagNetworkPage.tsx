@@ -19,26 +19,13 @@ export const TagNetworkPage: React.FC = () => {
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [detailLevel, setDetailLevel] = useState(DEFAULT_DETAIL_LEVEL);
-  const { graphData, minTagCount, isLoading, isError, error, refetch } = useTagCoOccurrences(
-    isDark,
-    detailLevel,
-  );
+  const { graphData, stats, minTagCount, maxNodes, isLoading, isError, error, refetch } =
+    useTagCoOccurrences(detailLevel);
 
   const selectedTagCount = useMemo(() => {
     if (!selectedTag || !graphData) return 0;
     return graphData.nodes.find((node) => node.id === selectedTag)?.count ?? 0;
   }, [selectedTag, graphData]);
-
-  const stats = useMemo(() => {
-    if (!graphData) return null;
-    const isolated = graphData.nodes.filter((node) => node.isIsolated).length;
-    return {
-      tags: graphData.nodes.length,
-      links: graphData.links.length,
-      isolated,
-      communities: new Set(graphData.nodes.map((node) => node.community)).size,
-    };
-  }, [graphData]);
 
   return (
     <div className="flex h-[calc(100vh-8.5rem)] min-h-[520px] flex-col bg-zinc-950 text-zinc-100">
@@ -57,7 +44,7 @@ export const TagNetworkPage: React.FC = () => {
               <h1 className="truncate text-lg font-semibold sm:text-xl">Tag Network</h1>
             </div>
             <p className="truncate text-sm text-zinc-500">
-              Tags with more than {minTagCount} items · drag detail to show more or fewer
+              Server-computed clusters · min {minTagCount}+ items · up to {maxNodes} tags
             </p>
           </div>
         </div>
@@ -93,7 +80,6 @@ export const TagNetworkPage: React.FC = () => {
               <span>{stats.tags} tags</span>
               <span>{stats.links} links</span>
               <span>{stats.communities} clusters</span>
-              {stats.isolated > 0 && <span>{stats.isolated} isolated</span>}
             </div>
           )}
           <button
@@ -172,7 +158,7 @@ export const TagNetworkPage: React.FC = () => {
 
           {!isLoading && !isError && graphData && graphData.nodes.length > 0 && (
             <TagForceGraph
-              graphData={graphData.forceGraph}
+              graphData={graphData}
               selectedTag={selectedTag}
               onSelectTag={setSelectedTag}
               accentHex={accentHex}

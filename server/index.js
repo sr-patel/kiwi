@@ -17,6 +17,7 @@ const {
 const { reconcileLibrary } = require('./librarySync');
 const { startWatcher, stopWatcher, getWatcherStatus, setLastReconcileTime } = require('./watcher');
 const { generateDatabaseFromLibrary } = require('./regenerateFromLibrary');
+const { getTagNetworkGraph, invalidateTagNetworkCache } = require('./tagNetwork');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1120,6 +1121,20 @@ app.get('/api/tags/counts', requireLibrary, async (req, res) => {
   } catch (error) {
     console.error('❌ Error getting tag counts:', error);
     res.status(500).json({ error: 'Failed to get tag counts' });
+  }
+});
+
+// Pre-computed tag network graph (must be before /api/tags/:tag/photos)
+app.get('/api/tags/network', requireLibrary, async (req, res) => {
+  try {
+    const minTagCount = req.query.minTagCount ? parseInt(req.query.minTagCount, 10) : 10;
+    const minWeight = req.query.minWeight ? parseInt(req.query.minWeight, 10) : 2;
+    const maxNodes = req.query.maxNodes ? parseInt(req.query.maxNodes, 10) : 100;
+    const graph = await getTagNetworkGraph(getDb(), { minTagCount, minWeight, maxNodes });
+    res.json(graph);
+  } catch (error) {
+    console.error('❌ Error building tag network:', error);
+    res.status(500).json({ error: 'Failed to build tag network' });
   }
 });
 
