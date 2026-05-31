@@ -16,10 +16,7 @@ import {
   buildResolutionData,
   buildStorageByExtensionData,
   buildStorageByGroupData,
-  buildTaggedData,
   buildTimelineData,
-  buildTopFoldersData,
-  buildTopTagsData,
   getAxisColor,
   getGridColor,
   getTotalFromPieData,
@@ -28,6 +25,7 @@ import {
   ORIENTATION_COLORS,
 } from './chartUtils';
 import { CHART_ANIMATION, CHART_MARGINS, ChartTooltip, BAR_HOVER, createPieLabelRenderer, formatPercent } from './ChartTooltip';
+import { TagCloud } from './TagCloud';
 
 interface ChartCardProps {
   title: string;
@@ -47,7 +45,7 @@ function ChartCard({ title, subtitle, children, className = '', tall = false }: 
         <h3 className="text-base font-semibold text-gray-900 dark:text-zinc-100">{title}</h3>
         {subtitle && <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">{subtitle}</p>}
       </div>
-      <div className="w-full" style={{ height: chartHeight }}>{children}</div>
+      <div className="w-full flex-1 min-h-0" style={{ height: chartHeight }}>{children}</div>
     </div>
   );
 }
@@ -68,7 +66,6 @@ interface DashboardChartsProps {
 
 export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProps) {
   const colors = buildChartColors(accentHex);
-  const tooltipStyle = getTooltipStyle(theme);
   const axisColor = getAxisColor(theme);
   const gridColor = getGridColor(theme);
 
@@ -76,17 +73,13 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
   const cumulativeData = buildCumulativeTimelineData(stats.analytics);
   const storageData = buildStorageByGroupData(stats.analytics);
   const countByGroup = buildCountByGroupData(stats.analytics);
-  const topFolders = buildTopFoldersData(stats.analytics);
-  const topTags = buildTopTagsData(stats.analytics);
   const extensionPie = buildExtensionPieData(stats);
   const orientationData = buildOrientationData(stats.analytics);
-  const taggedData = buildTaggedData(stats.analytics);
   const storageByExt = buildStorageByExtensionData(stats);
   const resolutionData = buildResolutionData(stats.analytics);
   const avgSizeData = buildAvgSizeData(stats);
 
   const pieTotal = getTotalFromPieData(extensionPie);
-  const taggedTotal = getTotalFromPieData(taggedData);
   const pieLabel = createPieLabelRenderer(theme);
 
   const legendStyle = { color: axisColor, fontSize: 11, paddingTop: 8 };
@@ -211,7 +204,7 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
           )}
         </ChartCard>
 
-        <ChartCard title="Files by Media Type" subtitle="Item count per category">
+        <ChartCard title="Files by Media Type" subtitle="Grouped by extension, falling back to indexed type">
           {countByGroup.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={countByGroup} margin={CHART_MARGINS.vertical}>
@@ -236,69 +229,13 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
         </ChartCard>
       </div>
 
-      {/* Row 3: Folders & tags */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <ChartCard title="Top Folders" subtitle="Most items per folder">
-          {topFolders.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topFolders} layout="vertical" margin={CHART_MARGINS.horizontal}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
-                <XAxis type="number" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} width={88} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    const row = payload?.[0]?.payload as { fullName?: string };
-                    return (
-                      <ChartTooltip
-                        active={active}
-                        payload={payload}
-                        label={row?.fullName}
-                        theme={theme}
-                        valueFormatter={(v) => `${v.toLocaleString()} items`}
-                      />
-                    );
-                  }}
-                />
-                <Bar dataKey="count" name="Items" fill={accentHex} radius={[0, 4, 4, 0]} maxBarSize={18} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyChart />
-          )}
-        </ChartCard>
-
-        <ChartCard title="Top Tags" subtitle="Most used tags">
-          {topTags.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topTags} layout="vertical" margin={CHART_MARGINS.horizontal}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
-                <XAxis type="number" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} width={88} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    const row = payload?.[0]?.payload as { fullName?: string };
-                    return (
-                      <ChartTooltip
-                        active={active}
-                        payload={payload}
-                        label={row?.fullName}
-                        theme={theme}
-                        valueFormatter={(v) => `${v.toLocaleString()} items`}
-                      />
-                    );
-                  }}
-                />
-                <Bar dataKey="count" name="Items" fill="#8b5cf6" radius={[0, 4, 4, 0]} maxBarSize={18} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyChart />
-          )}
-        </ChartCard>
-      </div>
+      {/* Row 3: Tag cloud */}
+      <ChartCard title="Tag Cloud" subtitle="Size reflects how often each tag is used — click to browse" tall className="min-h-[320px]">
+        <TagCloud accentHex={accentHex} theme={theme} />
+      </ChartCard>
 
       {/* Row 4: Distribution donuts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <ChartCard title="File Extensions" subtitle="Count by format">
           {extensionPie.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
@@ -375,43 +312,6 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
             </ResponsiveContainer>
           ) : (
             <EmptyChart message="No dimension data" />
-          )}
-        </ChartCard>
-
-        <ChartCard title="Tag Coverage" subtitle="Tagged vs untagged items">
-          {taggedData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={taggedData}
-                  cx="50%"
-                  cy="42%"
-                  innerRadius="38%"
-                  outerRadius="58%"
-                  paddingAngle={3}
-                  dataKey="value"
-                  animationDuration={CHART_ANIMATION.duration}
-                  label={pieLabel}
-                  labelLine={{ stroke: theme === 'dark' ? '#52525b' : '#a1a1aa', strokeWidth: 1 }}
-                >
-                  <Cell fill="#10b981" stroke="transparent" />
-                  <Cell fill="#71717a" stroke="transparent" />
-                </Pie>
-                <Tooltip
-                  content={({ active, payload }) => (
-                    <ChartTooltip
-                      active={active}
-                      payload={payload}
-                      theme={theme}
-                      valueFormatter={(v) => `${v.toLocaleString()} (${formatPercent(v, taggedTotal)})`}
-                    />
-                  )}
-                />
-                <Legend verticalAlign="bottom" wrapperStyle={legendStyle} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyChart />
           )}
         </ChartCard>
       </div>

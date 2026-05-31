@@ -2,24 +2,29 @@ import { formatBytes } from '@/utils/formatBytes';
 import type { DashboardStats } from './types';
 
 export const EXTENSION_GROUPS: Record<string, string> = {
-  jpg: 'Image', jpeg: 'Image', png: 'Image', gif: 'Image',
-  webp: 'Image', bmp: 'Image', tiff: 'Image', avif: 'Image',
-  svg: 'Image', heic: 'Image', heif: 'Image', raw: 'Image',
-  cr2: 'Image', nef: 'Image', arw: 'Image', dng: 'Image',
-  mp4: 'Video', avi: 'Video', mov: 'Video', mkv: 'Video',
-  webm: 'Video', m4v: 'Video', flv: 'Video', wmv: 'Video',
-  mpg: 'Video', mpeg: 'Video', '3gp': 'Video', ts: 'Video',
-  mp3: 'Audio', wav: 'Audio', flac: 'Audio', aac: 'Audio',
-  ogg: 'Audio', opus: 'Audio', m4a: 'Audio', wma: 'Audio',
-  aiff: 'Audio', alac: 'Audio',
-  pdf: 'Document', epub: 'Document', mobi: 'Document',
-  txt: 'Document', doc: 'Document', docx: 'Document',
+  jpg: 'Image', jpeg: 'Image', png: 'Image', gif: 'Image', webp: 'Image',
+  bmp: 'Image', tiff: 'Image', tif: 'Image', avif: 'Image', svg: 'Image',
+  heic: 'Image', heif: 'Image', jxl: 'Image', ico: 'Image', psd: 'Image',
+  raw: 'Image', cr2: 'Image', cr3: 'Image', nef: 'Image', arw: 'Image',
+  dng: 'Image', orf: 'Image', rw2: 'Image', pef: 'Image', raf: 'Image',
+  srw: 'Image', nrw: 'Image', sr2: 'Image', '3fr': 'Image', mrw: 'Image',
+  mp4: 'Video', avi: 'Video', mov: 'Video', mkv: 'Video', webm: 'Video',
+  m4v: 'Video', flv: 'Video', wmv: 'Video', mpg: 'Video', mpeg: 'Video',
+  '3gp': 'Video', ts: 'Video', m2ts: 'Video', vob: 'Video', ogv: 'Video',
+  mp3: 'Audio', wav: 'Audio', flac: 'Audio', aac: 'Audio', ogg: 'Audio',
+  opus: 'Audio', m4a: 'Audio', wma: 'Audio', aiff: 'Audio', alac: 'Audio',
+  pdf: 'Ebook', epub: 'Ebook', mobi: 'Ebook', azw: 'Ebook', azw3: 'Ebook',
+  cbz: 'Ebook', cbr: 'Ebook', fb2: 'Ebook',
+  txt: 'Document', rtf: 'Document', doc: 'Document', docx: 'Document',
+  xls: 'Document', xlsx: 'Document', ppt: 'Document', pptx: 'Document',
+  odt: 'Document', ods: 'Document', odp: 'Document', md: 'Document',
 };
 
 export const GROUP_COLORS: Record<string, string> = {
   Image: '#3b82f6',
   Video: '#ef4444',
   Audio: '#10b981',
+  Ebook: '#f97316',
   Document: '#f59e0b',
   Other: '#6b7280',
 };
@@ -28,11 +33,6 @@ export const ORIENTATION_COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4'];
 
 export function getGroup(ext: string) {
   return EXTENSION_GROUPS[ext.toLowerCase()] || 'Other';
-}
-
-export function truncateLabel(label: string, max = 18) {
-  if (label.length <= max) return label;
-  return `${label.slice(0, max - 1)}…`;
 }
 
 export function formatMonthLabel(month: string) {
@@ -138,33 +138,6 @@ export function buildStorageByGroupData(analytics: DashboardStats['analytics']) 
     count: row.count,
     prettySize: formatBytes(row.totalSize),
   }));
-}
-
-export function buildTopFoldersData(analytics: DashboardStats['analytics']) {
-  if (!analytics?.topFolders?.length) return [];
-  return analytics.topFolders.map((row) => ({
-    name: truncateLabel(row.name),
-    fullName: row.name,
-    count: row.count,
-  }));
-}
-
-export function buildTopTagsData(analytics: DashboardStats['analytics']) {
-  if (!analytics?.topTags?.length) return [];
-  return analytics.topTags.map((row) => ({
-    name: truncateLabel(row.tag),
-    fullName: row.tag,
-    count: row.count,
-  }));
-}
-
-export function buildTaggedData(analytics: DashboardStats['analytics']) {
-  if (!analytics?.summary) return [];
-  const { taggedPhotos, untaggedPhotos } = analytics.summary;
-  return [
-    { name: 'Tagged', value: taggedPhotos },
-    { name: 'Untagged', value: untaggedPhotos },
-  ].filter((item) => item.value > 0);
 }
 
 export function buildCountByGroupData(analytics: DashboardStats['analytics']) {

@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs').promises;
+const { getMediaGroup } = require('./mediaGroups');
 
 class PhotoLibraryDatabase {
   constructor(dbPath) {
@@ -1206,23 +1207,6 @@ class PhotoLibraryDatabase {
    * Dashboard analytics aggregations
    */
   async getDashboardAnalytics() {
-    const EXTENSION_GROUPS = {
-      jpg: 'Image', jpeg: 'Image', png: 'Image', gif: 'Image',
-      webp: 'Image', bmp: 'Image', tiff: 'Image', avif: 'Image',
-      svg: 'Image', heic: 'Image', heif: 'Image', raw: 'Image',
-      cr2: 'Image', nef: 'Image', arw: 'Image', dng: 'Image',
-      mp4: 'Video', avi: 'Video', mov: 'Video', mkv: 'Video',
-      webm: 'Video', m4v: 'Video', flv: 'Video', wmv: 'Video',
-      mpg: 'Video', mpeg: 'Video', '3gp': 'Video', ts: 'Video',
-      mp3: 'Audio', wav: 'Audio', flac: 'Audio', aac: 'Audio',
-      ogg: 'Audio', opus: 'Audio', m4a: 'Audio', wma: 'Audio',
-      aiff: 'Audio', alac: 'Audio',
-      pdf: 'Document', epub: 'Document', mobi: 'Document',
-      txt: 'Document', doc: 'Document', docx: 'Document',
-    };
-
-    const getGroup = (ext) => EXTENSION_GROUPS[(ext || '').toLowerCase()] || 'Other';
-
     try {
       const timelineByMonth = this.db.prepare(`
         SELECT strftime('%Y-%m', datetime(COALESCE(btime, mtime))) as month, COUNT(*) as count
@@ -1276,15 +1260,15 @@ class PhotoLibraryDatabase {
       resolutionBuckets.sort((a, b) => bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket));
 
       const extensionStats = this.db.prepare(`
-        SELECT ext, COUNT(*) as count, AVG(size) as avgSize, SUM(size) as totalSize
+        SELECT ext, type, COUNT(*) as count, AVG(size) as avgSize, SUM(size) as totalSize
         FROM photos
-        GROUP BY ext
+        GROUP BY ext, type
       `).all();
 
       const storageByGroupMap = {};
       const countByGroupMap = {};
       for (const item of extensionStats) {
-        const group = getGroup(item.ext);
+        const group = getMediaGroup(item.ext, item.type);
         storageByGroupMap[group] = (storageByGroupMap[group] || 0) + (item.totalSize || 0);
         countByGroupMap[group] = (countByGroupMap[group] || 0) + item.count;
       }
