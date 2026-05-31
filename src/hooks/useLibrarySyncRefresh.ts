@@ -93,6 +93,7 @@ export function useLibrarySyncRefresh(enabled: boolean) {
         if (invalidateTags) {
           queryClient.invalidateQueries({ queryKey: ['tags'] });
           queryClient.invalidateQueries({ queryKey: ['tagCounts'] });
+          queryClient.invalidateQueries({ queryKey: ['tagCoOccurrences'] });
         }
 
         if (refreshFolders) {

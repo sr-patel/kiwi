@@ -1123,6 +1123,19 @@ app.get('/api/tags/counts', requireLibrary, async (req, res) => {
   }
 });
 
+// Get tag co-occurrence graph edges (must be before /api/tags/:tag/photos)
+app.get('/api/tags/co-occurrences', requireLibrary, async (req, res) => {
+  try {
+    const minWeight = req.query.minWeight ? parseInt(req.query.minWeight, 10) : 2;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 5000;
+    const edges = await getDb().getTagCoOccurrences({ minWeight, limit });
+    res.json(edges);
+  } catch (error) {
+    console.error('❌ Error getting tag co-occurrences:', error);
+    res.status(500).json({ error: 'Failed to get tag co-occurrences' });
+  }
+});
+
 // Get paginated photos for a tag
 app.get('/api/tags/:tag/photos', requireLibrary, async (req, res) => {
   try {

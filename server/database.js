@@ -1837,6 +1837,38 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Get tag co-occurrence edges (tags that appear together on the same photo)
+   * @param {Object} options
+   * @param {number} options.minWeight - Minimum co-occurrence count (default 2)
+   * @param {number} options.limit - Max edges to return (default 5000)
+   */
+  async getTagCoOccurrences({ minWeight = 2, limit = 5000 } = {}) {
+    try {
+      const stmt = this.getStatement(
+        'getTagCoOccurrences',
+        `
+        SELECT t1.tag AS source, t2.tag AS target, COUNT(*) AS weight
+        FROM tags t1
+        JOIN tags t2 ON t1.photo_id = t2.photo_id AND t1.tag < t2.tag
+        GROUP BY t1.tag, t2.tag
+        HAVING weight >= ?
+        ORDER BY weight DESC
+        LIMIT ?
+        `
+      );
+      const rows = stmt.all(minWeight, limit);
+      return rows.map((row) => ({
+        source: row.source,
+        target: row.target,
+        weight: row.weight,
+      }));
+    } catch (error) {
+      console.error('❌ Failed to get tag co-occurrences:', error.message);
+      return [];
+    }
+  }
+
+  /**
    * Get all unique tags
    */
   async getAllTags() {

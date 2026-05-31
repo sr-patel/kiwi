@@ -4,9 +4,10 @@ import { Sidebar } from '@/components/Layout/Sidebar';
 import { PhotoGrid } from '@/components/PhotoGrid/PhotoGrid';
 import SettingsPage from '@/pages/SettingsPage';
 import DashboardPage from '@/pages/DashboardPage';
+import TagNetworkPage from '@/pages/TagNetworkPage';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
-import { Moon, Sun, Settings as SettingsIcon } from 'lucide-react';
+import { Moon, Sun, Settings as SettingsIcon, Network } from 'lucide-react';
 import { getAccentHex } from '@/utils/accentColors';
 import { DetailedPhotoModal } from '@/components/DetailedView/DetailedPhotoModal';
 import { AudioPlayer } from '@/components/AudioPlayer/AudioPlayer';
@@ -336,6 +337,13 @@ function App() {
                   )}
 
                   <button
+                    onClick={() => navigate('/network')}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                    title="Tag Network"
+                  >
+                    <Network className="w-5 h-5" />
+                  </button>
+                  <button
                     onClick={() => navigate('/settings')}
                     className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
                   >
@@ -372,6 +380,7 @@ function App() {
                   <Route path="/all" element={<AllFilesRoute isMobile={isMobile} />} />
                   <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
                   <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
+                  <Route path="/network" element={<RouteWrapper><TagNetworkPage /></RouteWrapper>} />
                   <Route path="/settings" element={<RouteWrapper><SettingsPage /></RouteWrapper>} />
                   <Route path="*" element={<HomeRedirect />} />
                 </Routes>
