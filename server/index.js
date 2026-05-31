@@ -612,7 +612,8 @@ app.get('/api/search/photos', requireLibrary, async (req, res) => {
     });
     
     console.log(`✅ Found ${photos.length} results for search: "${query}"`);
-    res.json(photos);
+    const total = await getDb().getSearchCount({ query, type, folderId, tagContext: tag });
+    res.json({ photos, total });
   } catch (error) {
     console.error('❌ Error searching photos:', error);
     res.status(500).json({ error: 'Failed to search photos' });

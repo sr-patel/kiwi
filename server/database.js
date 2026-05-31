@@ -1859,12 +1859,18 @@ class PhotoLibraryDatabase {
       const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
       const validatedDirection = this._validateDirection(orderDirection);
 
-      // Use JOIN to get photos with tags and apply sorting properly
+      // Optimized query with JOINs to avoid N+1 problem
       const query = `
-        SELECT DISTINCT p.* 
+        SELECT 
+          p.*,
+          GROUP_CONCAT(DISTINCT pf.folder_id) as folder_ids,
+          GROUP_CONCAT(DISTINCT t2.tag) as tags
         FROM photos p
         INNER JOIN tags t ON p.id = t.photo_id
+        LEFT JOIN photo_folders pf ON p.id = pf.photo_id
+        LEFT JOIN tags t2 ON p.id = t2.photo_id
         WHERE t.tag = ?
+        GROUP BY p.id
         ORDER BY ${orderByClause} ${validatedDirection}
         LIMIT ? OFFSET ?
       `;
@@ -1880,14 +1886,15 @@ class PhotoLibraryDatabase {
       const totalResult = this.db.prepare(countQuery).get(tag);
       const total = totalResult ? totalResult.total : 0;
       
-      // Get folders for each photo
-      const photosWithFolders = await Promise.all(photos.map(async (photo) => {
-        const folders = await this.getFoldersForPhoto(photo.id);
-        const tags = await this.getTagsForPhoto(photo.id);
+      const photosWithFolders = photos.map((photo) => {
+        const folders = photo.folder_ids ? photo.folder_ids.split(',').filter(Boolean) : [];
+        const tags = photo.tags ? photo.tags.split(',').filter(Boolean) : [];
+        const { folder_ids, tags: photoTags, ...cleanPhoto } = photo;
+
         return {
-          ...photo,
-          folders: folders,
-          tags: tags,
+          ...cleanPhoto,
+          folders,
+          tags,
           exif: photo.exif_data ? JSON.parse(photo.exif_data) : null,
           gps: photo.gps_latitude ? {
             latitude: photo.gps_latitude,
@@ -1895,7 +1902,7 @@ class PhotoLibraryDatabase {
             altitude: photo.gps_altitude
           } : null
         };
-      }));
+      });
       
       // Calculate if there are more photos
       const hasMore = offset + limit < total;
