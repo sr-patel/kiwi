@@ -20,7 +20,6 @@ import {
   getAxisColor,
   getGridColor,
   getTotalFromPieData,
-  getTooltipStyle,
   GROUP_COLORS,
   ORIENTATION_COLORS,
 } from './chartUtils';
@@ -33,10 +32,20 @@ interface ChartCardProps {
   children: React.ReactNode;
   className?: string;
   tall?: boolean;
+  variant?: 'chart' | 'flex';
 }
 
-function ChartCard({ title, subtitle, children, className = '', tall = false }: ChartCardProps) {
+function ChartCard({
+  title,
+  subtitle,
+  children,
+  className = '',
+  tall = false,
+  variant = 'chart',
+}: ChartCardProps) {
   const chartHeight = tall ? 280 : 240;
+  const isFlex = variant === 'flex';
+
   return (
     <div
       className={`bg-white dark:bg-zinc-900 p-5 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm flex flex-col ${className}`}
@@ -45,7 +54,13 @@ function ChartCard({ title, subtitle, children, className = '', tall = false }: 
         <h3 className="text-base font-semibold text-gray-900 dark:text-zinc-100">{title}</h3>
         {subtitle && <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">{subtitle}</p>}
       </div>
-      <div className="w-full flex-1 min-h-0" style={{ height: chartHeight }}>{children}</div>
+      {isFlex ? (
+        <div className="min-h-0 flex-1">{children}</div>
+      ) : (
+        <div className="w-full" style={{ width: '100%', height: chartHeight, minHeight: chartHeight }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -230,7 +245,13 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
       </div>
 
       {/* Row 3: Tag cloud */}
-      <ChartCard title="Tag Cloud" subtitle="Size reflects how often each tag is used — click to browse" tall className="min-h-[320px]">
+      <ChartCard
+        title="Tag Cloud"
+        subtitle="Size reflects how often each tag is used — click to browse"
+        tall
+        variant="flex"
+        className="min-h-[320px]"
+      >
         <TagCloud accentHex={accentHex} theme={theme} />
       </ChartCard>
 

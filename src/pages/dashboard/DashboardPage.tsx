@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Database, RefreshCw } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
@@ -13,6 +13,7 @@ export const DashboardPage: React.FC = () => {
   const { accentColor, theme } = useAppStore();
   const accentHex = getAccentHex(accentColor);
   const { stats, syncStatus, loading, refreshing, error, lastUpdated, refresh } = useDashboardData();
+  const [watcherExpanded, setWatcherExpanded] = useState(false);
 
   if (loading) {
     return (
@@ -65,9 +66,14 @@ export const DashboardPage: React.FC = () => {
 
       <WelcomeBanner />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(380px,42%)] gap-6 items-stretch">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(380px,42%)] gap-6 items-start">
         <DashboardCharts stats={stats} theme={theme} accentHex={accentHex} />
-        <WatcherActivityPanel syncStatus={syncStatus} className="min-h-0" />
+        <WatcherActivityPanel
+          syncStatus={syncStatus}
+          expanded={watcherExpanded}
+          onExpandedChange={setWatcherExpanded}
+          className={watcherExpanded ? 'xl:sticky xl:top-6' : undefined}
+        />
       </div>
 
       <DashboardSecondaryStats stats={stats} accentHex={accentHex} />
