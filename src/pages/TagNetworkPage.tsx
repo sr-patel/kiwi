@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Network } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
-import { useTagCoOccurrences } from '@/hooks/useTagCoOccurrences';
+import {
+  useTagCoOccurrences,
+  DEFAULT_DETAIL_LEVEL,
+  DETAIL_THRESHOLDS,
+} from '@/hooks/useTagCoOccurrences';
 import { TagForceGraph } from '@/pages/network/ForceGraph';
 import { TagPhotoPanel } from '@/pages/network/TagPhotoPanel';
 
@@ -14,7 +18,11 @@ export const TagNetworkPage: React.FC = () => {
   const isDark = theme === 'dark';
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const { graphData, isLoading, isError, error, refetch } = useTagCoOccurrences(isDark);
+  const [detailLevel, setDetailLevel] = useState(DEFAULT_DETAIL_LEVEL);
+  const { graphData, minTagCount, isLoading, isError, error, refetch } = useTagCoOccurrences(
+    isDark,
+    detailLevel,
+  );
 
   const selectedTagCount = useMemo(() => {
     if (!selectedTag || !graphData) return 0;
@@ -49,12 +57,37 @@ export const TagNetworkPage: React.FC = () => {
               <h1 className="truncate text-lg font-semibold sm:text-xl">Tag Network</h1>
             </div>
             <p className="truncate text-sm text-zinc-500">
-              Explore how tags cluster and co-occur across your library
+              Tags with more than {minTagCount} items · drag detail to show more or fewer
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="hidden w-44 flex-col gap-1 sm:flex md:w-52">
+            <div className="flex items-center justify-between text-xs text-zinc-500">
+              <span>Overview</span>
+              <span className="font-medium text-zinc-300">Detail</span>
+              <span>Fine</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={DETAIL_THRESHOLDS.length - 1}
+              step={1}
+              value={detailLevel}
+              onChange={(e) => {
+                setDetailLevel(parseInt(e.target.value, 10));
+                setSelectedTag(null);
+              }}
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-current"
+              style={{ accentColor: accentHex }}
+              aria-label="Graph detail level"
+            />
+            <span className="text-center text-[10px] text-zinc-600">
+              min {minTagCount}+ items
+            </span>
+          </div>
+
           {stats && (
             <div className="hidden items-center gap-3 text-xs text-zinc-500 md:flex">
               <span>{stats.tags} tags</span>
@@ -72,6 +105,29 @@ export const TagNetworkPage: React.FC = () => {
             Refresh
           </button>
         </div>
+      </div>
+
+      <div className="flex shrink-0 flex-col gap-1 border-b border-zinc-800/60 px-4 py-2 sm:hidden">
+        <div className="flex items-center justify-between text-xs text-zinc-500">
+          <span>Overview</span>
+          <span className="font-medium text-zinc-300">Detail</span>
+          <span>Fine</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={DETAIL_THRESHOLDS.length - 1}
+          step={1}
+          value={detailLevel}
+          onChange={(e) => {
+            setDetailLevel(parseInt(e.target.value, 10));
+            setSelectedTag(null);
+          }}
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-800"
+          style={{ accentColor: accentHex }}
+          aria-label="Graph detail level"
+        />
+        <span className="text-center text-[10px] text-zinc-600">min {minTagCount}+ items per tag</span>
       </div>
 
       <div className="relative flex min-h-0 flex-1">
@@ -108,7 +164,9 @@ export const TagNetworkPage: React.FC = () => {
 
           {!isLoading && !isError && graphData && graphData.nodes.length === 0 && (
             <div className="flex h-full items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900/40">
-              <p className="text-sm text-zinc-500">No tagged items yet — add tags in Eagle to see the network.</p>
+              <p className="text-sm text-zinc-500">
+                No tag clusters at this detail level — try sliding detail to the right.
+              </p>
             </div>
           )}
 

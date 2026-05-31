@@ -1840,23 +1840,45 @@ class PhotoLibraryDatabase {
    * Get tag co-occurrence edges (tags that appear together on the same photo)
    * @param {Object} options
    * @param {number} options.minWeight - Minimum co-occurrence count (default 2)
+   * @param {number} options.minTagCount - Only include tags with more than this many photos (default 10)
    * @param {number} options.limit - Max edges to return (default 5000)
    */
-  async getTagCoOccurrences({ minWeight = 2, limit = 5000 } = {}) {
+  async getTagCoOccurrences({ minWeight = 2, minTagCount = 10, limit = 5000 } = {}) {
     try {
+      const tagFilterSql =
+        minTagCount > 0
+          ? `
+        WITH major_tags AS (
+          SELECT tag FROM tags GROUP BY tag HAVING COUNT(*) > ?
+        )`
+          : '';
+
+      const tagFilterWhere =
+        minTagCount > 0
+          ? `
+        WHERE t1.tag IN (SELECT tag FROM major_tags)
+          AND t2.tag IN (SELECT tag FROM major_tags)`
+          : '';
+
       const stmt = this.getStatement(
-        'getTagCoOccurrences',
+        `getTagCoOccurrences_${minTagCount > 0 ? 'filtered' : 'all'}`,
         `
+        ${tagFilterSql}
         SELECT t1.tag AS source, t2.tag AS target, COUNT(*) AS weight
         FROM tags t1
         JOIN tags t2 ON t1.photo_id = t2.photo_id AND t1.tag < t2.tag
+        ${tagFilterWhere}
         GROUP BY t1.tag, t2.tag
         HAVING weight >= ?
         ORDER BY weight DESC
         LIMIT ?
         `
       );
-      const rows = stmt.all(minWeight, limit);
+
+      const rows =
+        minTagCount > 0
+          ? stmt.all(minTagCount, minWeight, limit)
+          : stmt.all(minWeight, limit);
       return rows.map((row) => ({
         source: row.source,
         target: row.target,

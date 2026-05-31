@@ -10,8 +10,24 @@ import type {
   TagGraphData,
 } from '@/pages/network/types';
 
+/** Default minimum items per tag (index into DETAIL_THRESHOLDS) */
+export const DEFAULT_DETAIL_LEVEL = 4;
+
+/** Detail slider steps: higher index = more tags shown (lower min count) */
+export const DETAIL_THRESHOLDS = [50, 30, 20, 15, 10, 7, 5, 3, 2, 1] as const;
+
+export function minTagCountForDetailLevel(level: number): number {
+  const index = Math.min(Math.max(Math.round(level), 0), DETAIL_THRESHOLDS.length - 1);
+  return DETAIL_THRESHOLDS[index];
+}
+
 async function fetchCoOccurrences(): Promise<TagCoOccurrenceEdge[]> {
-  const res = await fetchWithRetry('/api/tags/co-occurrences?minWeight=2&limit=5000');
+  const params = new URLSearchParams({
+    minWeight: '2',
+    minTagCount: '0',
+    limit: '5000',
+  });
+  const res = await fetchWithRetry(`/api/tags/co-occurrences?${params}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch tag co-occurrences: ${res.statusText}`);
   }
@@ -30,11 +46,22 @@ function buildGraphData(
   edges: TagCoOccurrenceEdge[],
   tagCounts: Record<string, number>,
   isDark: boolean,
+  minTagCount: number,
 ): TagGraphData & { forceGraph: ForceGraphData } {
-  const degree = new Map<string, number>();
-  const nodeIds = new Set<string>(Object.keys(tagCounts));
+  const majorTags = new Set(
+    Object.entries(tagCounts)
+      .filter(([, count]) => count > minTagCount)
+      .map(([tag]) => tag),
+  );
 
-  for (const edge of edges) {
+  const filteredEdges = edges.filter(
+    (edge) => majorTags.has(edge.source) && majorTags.has(edge.target),
+  );
+
+  const degree = new Map<string, number>();
+  const nodeIds = new Set<string>();
+
+  for (const edge of filteredEdges) {
     nodeIds.add(edge.source);
     nodeIds.add(edge.target);
     degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
@@ -45,7 +72,7 @@ function buildGraphData(
     (a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0),
   );
 
-  const communities = detectCommunities(sortedIds, edges);
+  const communities = detectCommunities(sortedIds, filteredEdges);
 
   const nodes = sortedIds.map((id) => {
     const count = tagCounts[id] ?? 0;
@@ -60,7 +87,7 @@ function buildGraphData(
     };
   });
 
-  const links = edges.map((edge) => ({
+  const links = filteredEdges.map((edge) => ({
     source: edge.source,
     target: edge.target,
     weight: edge.weight,
@@ -85,7 +112,7 @@ function buildGraphData(
   };
 }
 
-export function useTagCoOccurrences(isDark: boolean) {
+export function useTagCoOccurrences(isDark: boolean, detailLevel: number) {
   const edgesQuery = useQuery({
     queryKey: ['tagCoOccurrences'],
     queryFn: fetchCoOccurrences,
@@ -98,13 +125,16 @@ export function useTagCoOccurrences(isDark: boolean) {
     staleTime: 30_000,
   });
 
+  const minTagCount = minTagCountForDetailLevel(detailLevel);
+
   const graphData = useMemo(() => {
     if (!edgesQuery.data || !countsQuery.data) return null;
-    return buildGraphData(edgesQuery.data, countsQuery.data, isDark);
-  }, [edgesQuery.data, countsQuery.data, isDark]);
+    return buildGraphData(edgesQuery.data, countsQuery.data, isDark, minTagCount);
+  }, [edgesQuery.data, countsQuery.data, isDark, minTagCount]);
 
   return {
     graphData,
+    minTagCount,
     isLoading: edgesQuery.isLoading || countsQuery.isLoading,
     isError: edgesQuery.isError || countsQuery.isError,
     error: edgesQuery.error ?? countsQuery.error,

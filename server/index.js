@@ -1127,8 +1127,9 @@ app.get('/api/tags/counts', requireLibrary, async (req, res) => {
 app.get('/api/tags/co-occurrences', requireLibrary, async (req, res) => {
   try {
     const minWeight = req.query.minWeight ? parseInt(req.query.minWeight, 10) : 2;
+    const minTagCount = req.query.minTagCount ? parseInt(req.query.minTagCount, 10) : 10;
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 5000;
-    const edges = await getDb().getTagCoOccurrences({ minWeight, limit });
+    const edges = await getDb().getTagCoOccurrences({ minWeight, minTagCount, limit });
     res.json(edges);
   } catch (error) {
     console.error('❌ Error getting tag co-occurrences:', error);
