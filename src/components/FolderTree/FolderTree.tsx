@@ -138,9 +138,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
   const { data: totalPhotoCount = 0, isLoading: isLoadingTotalCount } = useTotalPhotoCount();
   
   return (
-    <div className="w-full">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col">
       {/* Folders group */}
-      <div className="mb-2">
+      <div className="mb-2 shrink-0 overflow-y-auto">
         <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Navigation</div>
 
         {/* Dashboard */}
@@ -216,7 +216,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
           />
         ))}
       </div>
-      <TagSearch currentTag={currentTag} onTagSelect={onTagSelect} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <TagSearch currentTag={currentTag} onTagSelect={onTagSelect} />
+      </div>
     </div>
   );
 };

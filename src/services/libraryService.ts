@@ -186,6 +186,20 @@ class LibraryService {
     return folders.map(folder => buildNode(folder));
   }
 
+  async refreshFolderTree(allPhotos: PhotoMetadata[]): Promise<FolderNode[] | null> {
+    try {
+      const libraryMetadata = await this.loadLibraryMetadata();
+      const mtimeData = await this.loadMTimeData();
+      if (!libraryMetadata || !mtimeData) return null;
+
+      const folderCache = await this.buildFolderCache(allPhotos, mtimeData);
+      return this.buildFolderTree(libraryMetadata.folders, allPhotos, folderCache);
+    } catch (error) {
+      console.error('Error refreshing folder tree:', error);
+      return null;
+    }
+  }
+
   // ─── Top-level initialization ───
 
   async initializeLibrary(): Promise<{

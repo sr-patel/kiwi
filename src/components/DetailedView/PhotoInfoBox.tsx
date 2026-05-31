@@ -95,7 +95,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
   const visibleTags = tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT);
 
   // Narrow fixed width scaled by user preference — avoids a wide shallow strip on large screens.
-  const panelWidthPx = Math.round(300 * (infoBoxSize / 100));
+  const panelWidthPx = Math.round(360 * (infoBoxSize / 100));
 
   const renderTagPill = (tag: string) => {
     const tagCount = tagCounts[tag] || 0;
@@ -150,7 +150,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
       </button>
 
       <div
-        className={`absolute bottom-4 left-4 z-10 max-h-[70vh] origin-bottom-left overflow-hidden transition-[opacity,transform] duration-300 ease-out ${
+        className={`absolute bottom-4 left-4 z-10 flex max-h-[70vh] flex-col origin-bottom-left overflow-hidden transition-[opacity,transform] duration-300 ease-out ${
           visible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
         style={{
@@ -161,7 +161,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
         aria-hidden={!visible}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex max-h-[70vh] w-full flex-col rounded-lg bg-black/30 text-white backdrop-blur-lg">
+        <div className="flex min-h-0 max-h-[70vh] w-full flex-1 flex-col rounded-lg bg-black/30 text-white backdrop-blur-lg">
           <div className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-3 py-2">
             <h3 className="min-w-0 flex-1 break-words text-base font-semibold leading-snug">
               {photo.name}
@@ -177,7 +177,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
             </button>
           </div>
 
-          <div className="space-y-2 overflow-y-auto px-3 py-2.5">
+          <div data-info-box-scroll className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2.5">
             <InfoRow icon={FileText}>{fileInfoLine}</InfoRow>
 
             {photo.folders?.length > 0 && (

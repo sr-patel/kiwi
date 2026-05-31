@@ -20,6 +20,7 @@ import { RouteWrapper } from '@/components/Layout/RouteWrapper';
 import { SplashScreen } from '@/components/SplashScreen/SplashScreen';
 import { SetupWizard } from '@/components/SetupWizard/SetupWizard';
 import { ServerConnectionScreen } from '@/components/SetupWizard/ServerConnectionScreen';
+import { useLibrarySyncRefresh } from '@/hooks/useLibrarySyncRefresh';
 import './App.css';
 
 // ─── Route components ───
@@ -136,6 +137,10 @@ function App() {
   const [serverUnreachable, setServerUnreachable] = useState(false);
   const [configRetrying, setConfigRetrying] = useState(false);
   const { folderTree } = useAppStore();
+
+  const librarySyncEnabled =
+    needsSetup === false && !!currentLibraryPath && !serverUnreachable;
+  useLibrarySyncRefresh(librarySyncEnabled);
 
   const fetchConfig = useCallback(async () => {
     try {

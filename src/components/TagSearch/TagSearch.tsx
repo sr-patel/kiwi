@@ -24,7 +24,7 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filteredTags = useMemo(
-    () => filterTags(allTags, searchTerm, { limit: 30 }),
+    () => filterTags(allTags, searchTerm, { limit: 100 }),
     [allTags, searchTerm],
   );
 
@@ -57,14 +57,16 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
   };
 
   return (
-    <div className="mt-4">
-      <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Tags</div>
+    <div ref={containerRef} className="flex min-h-0 flex-1 flex-col px-2">
+      <div className="shrink-0 px-1 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+        Tags
+      </div>
 
       {currentTag && (
         <div
-          className={`mx-2 mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`}
+          className={`mb-2 flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm ${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`}
         >
-          <Tag className={`w-4 h-4 shrink-0 ${getAccentText(accentColor)}`} />
+          <Tag className={`h-4 w-4 shrink-0 ${getAccentText(accentColor)}`} />
           <span className="flex-1 truncate font-medium">{currentTag}</span>
           {tagCounts?.[currentTag] != null && (
             <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -77,13 +79,13 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
             className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             aria-label="Clear tag filter"
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      <div ref={containerRef} className="relative px-2">
-        <Search className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+      <div className="flex shrink-0 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-900">
+        <Search className="h-4 w-4 shrink-0 text-gray-400" />
         <input
           ref={inputRef}
           type="text"
@@ -94,11 +96,13 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
           }}
           onFocus={() => setIsOpen(true)}
           placeholder="Search tags…"
-          className="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-gray-600"
+          className="flex-1 border-0 bg-transparent py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0 dark:text-gray-100"
         />
+      </div>
 
-        {showResults && (
-          <div className="absolute left-2 right-2 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+      {showResults ? (
+        <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {isLoading ? (
               <div className="p-3 text-sm text-gray-500 dark:text-gray-400">Loading tags…</div>
             ) : filteredTags.length === 0 ? (
@@ -127,14 +131,12 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
               </ul>
             )}
           </div>
-        )}
-
-        {isOpen && !searchTerm.trim() && (
-          <p className="mt-1.5 px-1 text-xs text-gray-500 dark:text-gray-400">
-            Type to find a tag
-          </p>
-        )}
-      </div>
+        </div>
+      ) : isOpen ? (
+        <p className="mt-1.5 shrink-0 px-1 text-xs text-gray-500 dark:text-gray-400">
+          Type to find a tag
+        </p>
+      ) : null}
     </div>
   );
 };

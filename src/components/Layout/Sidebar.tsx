@@ -66,7 +66,7 @@ export const Sidebar = () => {
 
   return (
     <div
-      className="fixed inset-y-0 left-0 z-50 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800"
+      className="fixed inset-y-0 left-0 z-50 flex h-full flex-col bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800"
       style={{ width: `${sidebarWidth}px` }}
     >
       {/* Header */}
@@ -88,7 +88,7 @@ export const Sidebar = () => {
       </div>
 
       {/* Folder Tree */}
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex flex-1 flex-col min-h-0 overflow-hidden p-2">
         {folderTree ? (
           <FolderTree
             folders={folderTree}

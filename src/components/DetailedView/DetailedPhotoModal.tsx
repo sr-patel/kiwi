@@ -1499,6 +1499,7 @@ export const DetailedPhotoModal: React.FC = () => {
   useEffect(() => {
     if (!isModalOpen) return;
     const prevent = (e: Event) => {
+      if (e.target && (e.target as Element).closest('[data-info-box-scroll]')) return;
       // Allow wheel/touchmove inside the image container ONLY when there's overflow on the active axis (and not zoomed)
       if (imageContainerRef.current && e.target && imageContainerRef.current.contains(e.target as Node) && zoom <= 1) {
         if (viewMode === 'horizontal' && hasVerticalOverflow) return; // permit vertical scroll inside
