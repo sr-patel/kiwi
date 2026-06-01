@@ -44,7 +44,7 @@ export const TagNetworkPage: React.FC = () => {
               <h1 className="truncate text-lg font-semibold sm:text-xl">Tag Network</h1>
             </div>
             <p className="truncate text-sm text-zinc-500">
-              Server-computed clusters · min {minTagCount}+ items · up to {maxNodes} tags
+              PMI clusters · common tags hidden · min {minTagCount}+ items
             </p>
           </div>
         </div>
@@ -80,6 +80,9 @@ export const TagNetworkPage: React.FC = () => {
               <span>{stats.tags} tags</span>
               <span>{stats.links} links</span>
               <span>{stats.communities} clusters</span>
+              {stats.excludedStopTags != null && stats.excludedStopTags > 0 && (
+                <span>{stats.excludedStopTags} common hidden</span>
+              )}
             </div>
           )}
           <button

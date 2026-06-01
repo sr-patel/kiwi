@@ -1837,6 +1837,18 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Count of distinct photos that have at least one tag
+   */
+  getTaggedPhotoCount() {
+    try {
+      return this.db.prepare('SELECT COUNT(DISTINCT photo_id) as count FROM tags').get().count;
+    } catch (error) {
+      console.error('❌ Failed to get tagged photo count:', error.message);
+      return 0;
+    }
+  }
+
+  /**
    * Get tag co-occurrence edges (tags that appear together on the same photo)
    * @param {Object} options
    * @param {number} options.minWeight - Minimum co-occurrence count (default 2)

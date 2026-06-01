@@ -31,6 +31,7 @@ export interface TagNetworkGraph {
     tags: number;
     links: number;
     communities: number;
+    excludedStopTags?: number;
   };
 }
 
