@@ -6,10 +6,10 @@ import type { ForceGraphData, TagNetworkGraph } from '@/pages/network/types';
 export const DEFAULT_DETAIL_LEVEL = 0;
 
 /** Detail slider steps: higher index = more tags shown (lower min count) */
-export const DETAIL_THRESHOLDS = [50, 30, 20, 15, 10, 7, 5, 3, 2, 1] as const;
+export const DETAIL_THRESHOLDS = [50, 35, 25, 18, 12, 8, 5, 3, 2, 1] as const;
 
 /** Cap nodes returned per detail level (sparse PMI edges keep rendering fast) */
-export const MAX_NODES_BY_DETAIL = [60, 80, 100, 130, 160, 200, 250, 300, 350, 400] as const;
+export const MAX_NODES_BY_DETAIL = [100, 150, 200, 280, 360, 450, 550, 650, 750, 800] as const;
 
 export function minTagCountForDetailLevel(level: number): number {
   const index = Math.min(Math.max(Math.round(level), 0), DETAIL_THRESHOLDS.length - 1);

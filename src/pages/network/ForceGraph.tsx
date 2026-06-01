@@ -11,6 +11,8 @@ interface TagForceGraphProps {
   selectedTag: string | null;
   onSelectTag: (tag: string | null) => void;
   showInterLinks: boolean;
+  zoomLevel: number;
+  onZoomChange: (zoom: number) => void;
   accentHex: string;
   isDark: boolean;
 }
@@ -47,17 +49,48 @@ function drawClusterHulls(
   }
 }
 
+function drawClusterLabels(
+  ctx: CanvasRenderingContext2D,
+  clusters: TagCluster[],
+  globalScale: number,
+  isDark: boolean,
+) {
+  if (globalScale < 0.4) return;
+
+  const labelCandidates = clusters
+    .filter((cluster) => cluster.nodeCount >= 4 && cluster.label)
+    .sort((a, b) => b.nodeCount - a.nodeCount)
+    .slice(0, 30);
+
+  const fontSize = Math.max(14 / globalScale, 3);
+  ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (const cluster of labelCandidates) {
+    const text = `#${cluster.label}`;
+    ctx.strokeStyle = isDark ? 'rgba(9, 9, 11, 0.75)' : 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 3 / globalScale;
+    ctx.strokeText(text, cluster.cx, cluster.cy);
+    ctx.fillStyle = isDark ? '#f4f4f5' : '#18181b';
+    ctx.fillText(text, cluster.cx, cluster.cy);
+  }
+}
+
 export function TagForceGraph({
   graphData,
   selectedTag,
   onSelectTag,
   showInterLinks,
+  zoomLevel,
+  onZoomChange,
   accentHex,
   isDark,
 }: TagForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<ForceGraphMethods>();
   const hasFitRef = useRef(false);
+  const skipZoomSyncRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [hoveredTag, setHoveredTag] = useState<string | null>(null);
 
@@ -125,8 +158,17 @@ export function TagForceGraph({
     const graph = graphRef.current;
     if (!graph || hasFitRef.current) return;
     graph.zoomToFit(400, 80);
+    skipZoomSyncRef.current = true;
+    graph.zoom(zoomLevel, 0);
     hasFitRef.current = true;
   }, [displayGraph, dimensions.width, dimensions.height]);
+
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph || !hasFitRef.current) return;
+    skipZoomSyncRef.current = true;
+    graph.zoom(zoomLevel, 0);
+  }, [zoomLevel]);
 
   useEffect(() => {
     const graph = graphRef.current;
@@ -135,7 +177,6 @@ export function TagForceGraph({
     const node = graphData.nodes.find((entry) => entry.id === selectedTag);
     if (node?.x != null && node?.y != null) {
       graph.centerAt(node.x, node.y, 500);
-      graph.zoom(1.8, 500);
     }
   }, [selectedTag, graphData.nodes]);
 
@@ -222,12 +263,25 @@ export function TagForceGraph({
   const renderFramePre = useCallback(
     (ctx: CanvasRenderingContext2D, globalScale: number) => {
       drawClusterHulls(ctx, graphData.clusters, globalScale, isDark);
+      drawClusterLabels(ctx, graphData.clusters, globalScale, isDark);
     },
     [graphData.clusters, isDark],
   );
 
+  const handleZoom = useCallback(
+    (transform: { k: number }) => {
+      if (skipZoomSyncRef.current) {
+        skipZoomSyncRef.current = false;
+        return;
+      }
+      const clamped = Math.min(4, Math.max(0.3, transform.k));
+      onZoomChange(Math.round(clamped * 10) / 10);
+    },
+    [onZoomChange],
+  );
+
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-xl">
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <ForceGraph2D
         ref={graphRef}
         width={dimensions.width}
@@ -264,15 +318,8 @@ export function TagForceGraph({
           setHoveredTag(node ? (node as unknown as ForceGraphNode).id : null);
         }}
         onBackgroundClick={() => onSelectTag(null)}
+        onZoom={handleZoom}
       />
-
-      <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400 backdrop-blur-sm">
-        <div>
-          {graphData.clusters.length} clusters · {graphData.nodes.length} tags ·{' '}
-          {graphData.links.length} intra links
-        </div>
-        <div className="mt-1 text-zinc-500">Hover a node for its label</div>
-      </div>
     </div>
   );
 }

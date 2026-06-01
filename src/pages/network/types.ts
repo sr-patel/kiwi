@@ -3,6 +3,10 @@ export interface TagCluster {
   color: string;
   hull: Array<{ x: number; y: number }>;
   nodeCount: number;
+  label: string;
+  labelCount: number;
+  cx: number;
+  cy: number;
 }
 
 export interface TagNetworkNode {

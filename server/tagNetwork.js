@@ -231,28 +231,90 @@ function expandHull(hull, padding) {
   });
 }
 
-function hexGridCenters(count, spacing = 250) {
-  if (count === 0) return [];
-  if (count === 1) return [{ x: 0, y: 0 }];
+function buildClusterAffinities(clusterIds, interLinks, communities) {
+  const affinities = new Map();
+  for (const link of interLinks) {
+    const sourceCommunity = communities.get(link.source);
+    const targetCommunity = communities.get(link.target);
+    if (sourceCommunity === undefined || targetCommunity === undefined) continue;
+    if (sourceCommunity === targetCommunity) continue;
+    const key =
+      sourceCommunity < targetCommunity
+        ? `${sourceCommunity}:${targetCommunity}`
+        : `${targetCommunity}:${sourceCommunity}`;
+    affinities.set(key, (affinities.get(key) ?? 0) + (link.pmi ?? 1));
+  }
+  return affinities;
+}
 
-  const cols = Math.ceil(Math.sqrt(count * 1.15));
-  const centers = [];
-  let placed = 0;
+function layoutClusterCenters(clusterIds, affinities) {
+  const positions = new Map();
+  const count = clusterIds.length;
 
-  for (let row = 0; row < cols && placed < count; row += 1) {
-    for (let col = 0; col < cols && placed < count; col += 1) {
-      const xOffset = row % 2 === 0 ? 0 : spacing * 0.5;
-      centers.push({
-        x: col * spacing * 0.866 + xOffset,
-        y: row * spacing * 0.75,
-      });
-      placed += 1;
+  clusterIds.forEach((id, index) => {
+    const angle = (2 * Math.PI * index) / Math.max(count, 1) + (Math.random() - 0.5) * 0.4;
+    const radius = 140 + Math.random() * 60;
+    positions.set(id, {
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+      vx: 0,
+      vy: 0,
+    });
+  });
+
+  const minDist = 200;
+  const repulsionStrength = 12000;
+
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    for (let i = 0; i < count; i += 1) {
+      for (let j = i + 1; j < count; j += 1) {
+        const a = positions.get(clusterIds[i]);
+        const b = positions.get(clusterIds[j]);
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let dist = Math.hypot(dx, dy) || 0.01;
+        if (dist < minDist) dist = minDist;
+        const force = repulsionStrength / (dist * dist);
+        dx = (dx / dist) * force;
+        dy = (dy / dist) * force;
+        a.vx -= dx;
+        a.vy -= dy;
+        b.vx += dx;
+        b.vy += dy;
+      }
+    }
+
+    for (const [key, weight] of affinities) {
+      const [sourceCommunity, targetCommunity] = key.split(':').map(Number);
+      const a = positions.get(sourceCommunity);
+      const b = positions.get(targetCommunity);
+      if (!a || !b) continue;
+
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 0.01;
+      const target = Math.max(120, 400 / (1 + weight * 0.15));
+      const force = (dist - target) * 0.02 * Math.min(weight, 20);
+      dx = (dx / dist) * force;
+      dy = (dy / dist) * force;
+      a.vx += dx;
+      a.vy += dy;
+      b.vx -= dx;
+      b.vy -= dy;
+    }
+
+    for (const id of clusterIds) {
+      const point = positions.get(id);
+      point.vx -= point.x * 0.002;
+      point.vy -= point.y * 0.002;
+      point.x += point.vx * 0.3;
+      point.y += point.vy * 0.3;
+      point.vx *= 0.85;
+      point.vy *= 0.85;
     }
   }
 
-  const cx = centers.reduce((sum, point) => sum + point.x, 0) / centers.length;
-  const cy = centers.reduce((sum, point) => sum + point.y, 0) / centers.length;
-  return centers.map((point) => ({ x: point.x - cx, y: point.y - cy }));
+  return positions;
 }
 
 function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
@@ -330,36 +392,43 @@ function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
   }
 }
 
-function layoutClusteredGraph(nodes, intraLinks) {
+function layoutClusteredGraph(nodes, intraLinks, interLinks, communities) {
   const clusters = new Map();
   for (const node of nodes) {
     if (!clusters.has(node.community)) clusters.set(node.community, []);
     clusters.get(node.community).push(node);
   }
 
-  const clusterEntries = [...clusters.entries()].sort(
-    (a, b) => b[1].length - a[1].length,
-  );
+  const clusterIds = [...clusters.keys()];
+  if (clusterIds.length === 0) return [];
 
-  const clusterCount = clusterEntries.length;
-  if (clusterCount === 0) return [];
+  const affinities = buildClusterAffinities(clusterIds, interLinks, communities);
+  const centers = layoutClusterCenters(clusterIds, affinities);
 
-  const spacing = Math.max(250, 180 + clusterCount * 8);
-  const centers = hexGridCenters(clusterCount, spacing);
-
-  clusterEntries.forEach(([, members], index) => {
-    const center = centers[index] ?? { x: 0, y: 0 };
+  for (const [communityId, members] of clusters.entries()) {
+    const center = centers.get(communityId) ?? { x: 0, y: 0 };
     layoutCommunityNodes(members, intraLinks, center.x, center.y);
-  });
+  }
 
-  return clusterEntries.map(([communityId, members]) => {
+  return [...clusters.entries()].map(([communityId, members]) => {
+    const topTag = members.reduce(
+      (best, node) => (node.count > best.count ? node : best),
+      members[0],
+    );
     const points = members.map((node) => ({ x: node.x, y: node.y }));
     const hull = expandHull(convexHull(points), 40);
+    const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
+    const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
+
     return {
       id: communityId,
       color: getCommunityColor(communityId),
       hull,
       nodeCount: members.length,
+      label: topTag.id,
+      labelCount: topTag.count,
+      cx,
+      cy,
     };
   });
 }
@@ -442,7 +511,7 @@ async function buildTagNetworkGraph(db, tagCounts, totalPhotos, options = {}) {
     };
   });
 
-  const clusters = layoutClusteredGraph(nodes, intraLinks);
+  const clusters = layoutClusteredGraph(nodes, intraLinks, interLinks, communities);
 
   return {
     nodes,

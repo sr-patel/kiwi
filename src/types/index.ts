@@ -163,6 +163,13 @@ export interface AppState {
 
   // Media preferences
   autoplayGifsInGrid?: boolean;
+
+  // Tag Network view preferences
+  tagNetworkSettings: {
+    detailLevel: number;
+    showInterLinks: boolean;
+    zoomLevel: number;
+  };
 }
 
 export interface AppActions {
@@ -225,6 +232,7 @@ export interface AppActions {
   setTransitionEffect: (effect: 'none' | 'slide' | 'fade' | 'zoom') => void;
   setNavigationList: (ids: string[]) => void;
   shuffleRandomOrder: () => void;
+  setTagNetworkSettings: (partial: Partial<AppState['tagNetworkSettings']>) => void;
 }
 
 export interface TagsData {

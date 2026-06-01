@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Layout/Sidebar';
 import { PhotoGrid } from '@/components/PhotoGrid/PhotoGrid';
 import SettingsPage from '@/pages/SettingsPage';
@@ -133,6 +133,7 @@ function App() {
   } = useAppStore();
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [showSplash, setShowSplash] = useState(true);
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [serverUnreachable, setServerUnreachable] = useState(false);
@@ -360,12 +361,14 @@ function App() {
             </header>
 
             {/* Breadcrumbs */}
-            <div
-              className="transition-all duration-300 ease-in-out"
-              style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
-            >
-              <Breadcrumbs />
-            </div>
+            {location.pathname !== '/network' && (
+              <div
+                className="transition-all duration-300 ease-in-out"
+                style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
+              >
+                <Breadcrumbs />
+              </div>
+            )}
 
             {/* Main Content */}
             <div className="flex">

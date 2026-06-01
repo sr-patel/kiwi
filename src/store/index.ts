@@ -79,6 +79,12 @@ export const useAppStore = create<AppStore>()(
       autoplayGifsInGrid: false,
       transitionEffect: 'slide',
 
+      tagNetworkSettings: {
+        detailLevel: 0,
+        showInterLinks: false,
+        zoomLevel: 1,
+      },
+
       // Visualizer Settings
       visualizerSettings: {
         visBarCount: 32,
@@ -106,6 +112,10 @@ export const useAppStore = create<AppStore>()(
       setInfoBoxSize: (size: number) => set({ infoBoxSize: Math.max(50, Math.min(150, Math.floor(size))) }),
       setHideControlsWithInfoBox: (value: boolean) => set({ hideControlsWithInfoBox: value }),
       setTransitionEffect: (effect) => set({ transitionEffect: effect }),
+      setTagNetworkSettings: (partial) =>
+        set((state) => ({
+          tagNetworkSettings: { ...state.tagNetworkSettings, ...partial },
+        })),
       setSettingsOpen: (open: boolean) => set({ settingsOpen: open }),
       
       setCurrentFolder: (folderId: string | null) => {
@@ -475,6 +485,7 @@ export const useAppStore = create<AppStore>()(
         infoBoxSize: state.infoBoxSize,
         hideControlsWithInfoBox: state.hideControlsWithInfoBox,
         transitionEffect: state.transitionEffect,
+        tagNetworkSettings: state.tagNetworkSettings,
         audioPlayer: {
           volume: state.audioPlayer.volume,
           isMuted: state.audioPlayer.isMuted,
