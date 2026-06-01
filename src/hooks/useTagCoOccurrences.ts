@@ -2,14 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchWithRetry } from '@/utils/fetchWithTimeout';
 import type { ForceGraphData, TagNetworkGraph } from '@/pages/network/types';
 
-/** Default detail level index — overview (50+ items, fewer nodes) */
+/** Default detail level index — overview (50+ items) */
 export const DEFAULT_DETAIL_LEVEL = 0;
 
 /** Detail slider steps: higher index = more tags shown (lower min count) */
 export const DETAIL_THRESHOLDS = [50, 30, 20, 15, 10, 7, 5, 3, 2, 1] as const;
 
-/** Cap nodes returned per detail level to keep rendering fast */
-export const MAX_NODES_BY_DETAIL = [40, 50, 60, 70, 80, 90, 100, 110, 120, 150] as const;
+/** Cap nodes returned per detail level (sparse PMI edges keep rendering fast) */
+export const MAX_NODES_BY_DETAIL = [60, 80, 100, 130, 160, 200, 250, 300, 350, 400] as const;
 
 export function minTagCountForDetailLevel(level: number): number {
   const index = Math.min(Math.max(Math.round(level), 0), DETAIL_THRESHOLDS.length - 1);
@@ -26,6 +26,9 @@ async function fetchTagNetwork(minTagCount: number, maxNodes: number): Promise<T
     minTagCount: String(minTagCount),
     minWeight: '2',
     maxNodes: String(maxNodes),
+    megaTagPct: '0.35',
+    pmiThreshold: '1.0',
+    maxDegree: '6',
   });
   const res = await fetchWithRetry(`/api/tags/network?${params}`);
   if (!res.ok) {
@@ -48,6 +51,7 @@ export function useTagCoOccurrences(detailLevel: number) {
     ? {
         nodes: query.data.nodes,
         links: query.data.links,
+        interLinks: query.data.interLinks,
         clusters: query.data.clusters,
       }
     : null;

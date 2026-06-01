@@ -1130,7 +1130,17 @@ app.get('/api/tags/network', requireLibrary, async (req, res) => {
     const minTagCount = req.query.minTagCount ? parseInt(req.query.minTagCount, 10) : 10;
     const minWeight = req.query.minWeight ? parseInt(req.query.minWeight, 10) : 2;
     const maxNodes = req.query.maxNodes ? parseInt(req.query.maxNodes, 10) : 100;
-    const graph = await getTagNetworkGraph(getDb(), { minTagCount, minWeight, maxNodes });
+    const megaTagPct = req.query.megaTagPct ? parseFloat(req.query.megaTagPct) : 0.35;
+    const pmiThreshold = req.query.pmiThreshold ? parseFloat(req.query.pmiThreshold) : 1.0;
+    const maxDegree = req.query.maxDegree ? parseInt(req.query.maxDegree, 10) : 6;
+    const graph = await getTagNetworkGraph(getDb(), {
+      minTagCount,
+      minWeight,
+      maxNodes,
+      megaTagPct,
+      pmiThreshold,
+      maxDegree,
+    });
     res.json(graph);
   } catch (error) {
     console.error('❌ Error building tag network:', error);

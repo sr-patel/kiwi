@@ -16,143 +16,173 @@ const COMMUNITY_COLORS = [
 const networkCache = new Map();
 const CACHE_TTL_MS = 120_000;
 
-/** Tags appearing on more than this fraction of tagged photos are treated as stop-words */
-const DEFAULT_MAX_TAG_COVERAGE = 0.1;
-
-/** Drop the top N% most frequent tags (they connect everything) */
-const DEFAULT_TOP_TAG_PERCENTILE = 0.05;
-
-/** Max edges kept per node after PMI ranking */
-const MAX_EDGES_PER_NODE = 6;
-
-/** Minimum PMI score for an edge to be kept */
-const MIN_PMI = 1.5;
-
 function getCommunityColor(community) {
   return COMMUNITY_COLORS[community % COMMUNITY_COLORS.length];
 }
 
-/**
- * Remove ultra-common tags that appear on a large % of the library.
- */
-function filterStopTags(tagCounts, taggedPhotoCount, topPercentile = DEFAULT_TOP_TAG_PERCENTILE, maxCoverage = DEFAULT_MAX_TAG_COVERAGE) {
-  const entries = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0 || taggedPhotoCount === 0) {
-    return { allowed: new Set(), excluded: 0 };
-  }
-
-  const topCutIndex = Math.max(1, Math.ceil(entries.length * topPercentile));
-  const topCutThreshold = entries[topCutIndex - 1][1];
-
-  const allowed = new Set();
-  let excluded = 0;
-
-  for (const [tag, count] of entries) {
-    const coverage = count / taggedPhotoCount;
-    if (coverage > maxCoverage) {
-      excluded += 1;
-      continue;
+function pruneMegaTags(tagCounts, totalPhotos, megaTagPct) {
+  const pruned = new Set();
+  for (const [tag, count] of Object.entries(tagCounts)) {
+    if (totalPhotos > 0 && count / totalPhotos > megaTagPct) {
+      pruned.add(tag);
     }
-    if (count >= topCutThreshold) {
-      excluded += 1;
-      continue;
-    }
-    allowed.add(tag);
   }
-
-  return { allowed, excluded };
+  return pruned;
 }
 
-/**
- * PMI highlights pairs that co-occur more than chance — not just frequent tags together.
- */
-function computePmiEdges(rawEdges, tagCounts, taggedPhotoCount, allowedTags) {
-  if (taggedPhotoCount === 0) return [];
+function computePMIEdges(rawEdges, tagCounts, totalPhotos, pmiThreshold) {
+  if (totalPhotos <= 0) return [];
 
-  const scored = [];
+  const edges = [];
   for (const { source, target, weight } of rawEdges) {
-    if (!allowedTags.has(source) || !allowedTags.has(target)) continue;
-
     const countA = tagCounts[source] ?? 0;
     const countB = tagCounts[target] ?? 0;
-    if (countA === 0 || countB === 0 || weight < 2) continue;
+    if (countA === 0 || countB === 0) continue;
 
-    const pmi = Math.log2((weight * taggedPhotoCount) / (countA * countB));
-    if (pmi < MIN_PMI) continue;
+    const pa = countA / totalPhotos;
+    const pb = countB / totalPhotos;
+    const pab = weight / totalPhotos;
+    const joint = pa * pb;
+    if (joint <= 0 || pab <= 0) continue;
 
-    scored.push({ source, target, weight, pmi });
+    const pmi = Math.log2(pab / joint);
+    if (pmi >= pmiThreshold) {
+      edges.push({ source, target, weight, pmi });
+    }
   }
-
-  return scored.sort((a, b) => b.pmi - a.pmi);
+  return edges;
 }
 
-/**
- * Keep only the strongest PMI edges per node to avoid hairballs.
- */
-function sparsifyEdges(edges, maxPerNode = MAX_EDGES_PER_NODE) {
+function topKSparsify(edges, maxDegree) {
   const byNode = new Map();
-
   for (const edge of edges) {
-    for (const nodeId of [edge.source, edge.target]) {
-      if (!byNode.has(nodeId)) byNode.set(nodeId, []);
-      byNode.get(nodeId).push(edge);
+    for (const node of [edge.source, edge.target]) {
+      if (!byNode.has(node)) byNode.set(node, []);
+      byNode.get(node).push(edge);
     }
   }
 
   const kept = new Set();
   for (const nodeEdges of byNode.values()) {
     nodeEdges.sort((a, b) => b.pmi - a.pmi);
-    for (const edge of nodeEdges.slice(0, maxPerNode)) {
+    for (const edge of nodeEdges.slice(0, maxDegree)) {
       kept.add(`${edge.source}\0${edge.target}`);
     }
   }
 
-  return edges.filter((e) => kept.has(`${e.source}\0${e.target}`));
+  return edges.filter((edge) => kept.has(`${edge.source}\0${edge.target}`));
 }
 
-/**
- * Connected components — each component becomes one visual cluster.
- */
-function findConnectedComponents(nodeIds, edges) {
-  const parent = new Map();
-  for (const id of nodeIds) parent.set(id, id);
+function detectCommunities(nodeIds, edges) {
+  if (nodeIds.length === 0) return new Map();
 
-  function find(x) {
-    let root = x;
-    while (parent.get(root) !== root) root = parent.get(root);
-    let current = x;
-    while (parent.get(current) !== root) {
-      const next = parent.get(current);
-      parent.set(current, root);
-      current = next;
-    }
-    return root;
+  const adjacency = new Map();
+  for (const id of nodeIds) adjacency.set(id, new Map());
+
+  let totalWeight = 0;
+  for (const edge of edges) {
+    const weight = edge.pmi ?? edge.weight;
+    if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) continue;
+    adjacency.get(edge.source).set(edge.target, weight);
+    adjacency.get(edge.target).set(edge.source, weight);
+    totalWeight += weight;
   }
 
-  function union(a, b) {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) parent.set(ra, rb);
+  if (totalWeight === 0) {
+    const isolated = new Map();
+    nodeIds.forEach((id, index) => isolated.set(id, index));
+    return isolated;
   }
 
-  for (const { source, target } of edges) {
-    union(source, target);
-  }
-
-  const components = new Map();
+  const nodeStrength = new Map();
   for (const id of nodeIds) {
-    const root = find(id);
-    if (!components.has(root)) components.set(root, []);
-    components.get(root).push(id);
+    let sum = 0;
+    for (const w of adjacency.get(id).values()) sum += w;
+    nodeStrength.set(id, sum);
   }
 
-  const sorted = [...components.values()].sort((a, b) => b.length - a.length);
-  const communityMap = new Map();
-  sorted.forEach((members, communityId) => {
-    for (const id of members) communityMap.set(id, communityId);
+  const community = new Map();
+  nodeIds.forEach((id, index) => community.set(id, index));
+
+  const communityStrength = new Map();
+  nodeIds.forEach((id, index) => {
+    communityStrength.set(index, nodeStrength.get(id) ?? 0);
   });
 
-  return communityMap;
+  const m2 = totalWeight;
+  let improved = true;
+  let passes = 0;
+
+  while (improved && passes < 10) {
+    improved = false;
+    passes += 1;
+
+    const shuffled = [...nodeIds].sort(() => Math.random() - 0.5);
+    for (const node of shuffled) {
+      const currentCommunity = community.get(node);
+      const neighbors = adjacency.get(node);
+      if (!neighbors || neighbors.size === 0) continue;
+
+      const commWeights = new Map();
+      for (const [neighbor, weight] of neighbors) {
+        const comm = community.get(neighbor);
+        commWeights.set(comm, (commWeights.get(comm) ?? 0) + weight);
+      }
+
+      const ki = nodeStrength.get(node) ?? 0;
+      let bestCommunity = currentCommunity;
+      let bestGain = 0;
+
+      for (const [candidate, kiIn] of commWeights) {
+        if (candidate === currentCommunity) continue;
+        const sigmaTot = communityStrength.get(candidate) ?? 0;
+        const gain = kiIn - (sigmaTot * ki) / m2;
+        if (gain > bestGain) {
+          bestGain = gain;
+          bestCommunity = candidate;
+        }
+      }
+
+      if (bestCommunity !== currentCommunity && bestGain > 0) {
+        communityStrength.set(
+          currentCommunity,
+          (communityStrength.get(currentCommunity) ?? 0) - ki,
+        );
+        communityStrength.set(
+          bestCommunity,
+          (communityStrength.get(bestCommunity) ?? 0) + ki,
+        );
+        community.set(node, bestCommunity);
+        improved = true;
+      }
+    }
+  }
+
+  const uniqueCommunities = [...new Set(community.values())];
+  const remap = new Map(uniqueCommunities.map((value, index) => [value, index]));
+
+  const result = new Map();
+  for (const [node, comm] of community) {
+    result.set(node, remap.get(comm) ?? 0);
+  }
+  return result;
+}
+
+function splitLinksByCommunity(links, communities) {
+  const intraLinks = [];
+  const interLinks = [];
+
+  for (const link of links) {
+    const sourceCommunity = communities.get(link.source);
+    const targetCommunity = communities.get(link.target);
+    if (sourceCommunity === targetCommunity) {
+      intraLinks.push(link);
+    } else {
+      interLinks.push(link);
+    }
+  }
+
+  return { intraLinks, interLinks };
 }
 
 function cross(origin, a, b) {
@@ -201,10 +231,106 @@ function expandHull(hull, padding) {
   });
 }
 
-/**
- * Pack clusters on a grid with generous spacing — no mega-circle hairball.
- */
-function layoutGridClusters(nodes) {
+function hexGridCenters(count, spacing = 250) {
+  if (count === 0) return [];
+  if (count === 1) return [{ x: 0, y: 0 }];
+
+  const cols = Math.ceil(Math.sqrt(count * 1.15));
+  const centers = [];
+  let placed = 0;
+
+  for (let row = 0; row < cols && placed < count; row += 1) {
+    for (let col = 0; col < cols && placed < count; col += 1) {
+      const xOffset = row % 2 === 0 ? 0 : spacing * 0.5;
+      centers.push({
+        x: col * spacing * 0.866 + xOffset,
+        y: row * spacing * 0.75,
+      });
+      placed += 1;
+    }
+  }
+
+  const cx = centers.reduce((sum, point) => sum + point.x, 0) / centers.length;
+  const cy = centers.reduce((sum, point) => sum + point.y, 0) / centers.length;
+  return centers.map((point) => ({ x: point.x - cx, y: point.y - cy }));
+}
+
+function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
+  const positions = new Map();
+  const memberIds = new Set(members.map((node) => node.id));
+
+  members.forEach((node, index) => {
+    const angle = (2 * Math.PI * index) / Math.max(members.length, 1);
+    const radius = 18 + Math.sqrt(members.length) * 10;
+    positions.set(node.id, {
+      x: centerX + radius * Math.cos(angle),
+      y: centerY + radius * Math.sin(angle),
+      vx: 0,
+      vy: 0,
+    });
+  });
+
+  const localEdges = intraLinks.filter(
+    (edge) => memberIds.has(edge.source) && memberIds.has(edge.target),
+  );
+
+  for (let iteration = 0; iteration < 50; iteration += 1) {
+    for (let i = 0; i < members.length; i += 1) {
+      for (let j = i + 1; j < members.length; j += 1) {
+        const a = positions.get(members[i].id);
+        const b = positions.get(members[j].id);
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 0.01;
+        const repulse = 900 / (dist * dist);
+        dx = (dx / dist) * repulse;
+        dy = (dy / dist) * repulse;
+        a.vx -= dx;
+        a.vy -= dy;
+        b.vx += dx;
+        b.vy += dy;
+      }
+    }
+
+    for (const edge of localEdges) {
+      const a = positions.get(edge.source);
+      const b = positions.get(edge.target);
+      if (!a || !b) continue;
+
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 0.01;
+      const target = 36 + (edge.pmi ?? 1) * 4;
+      const force = (dist - target) * 0.04 * Math.max(edge.pmi ?? 1, 0.5);
+      dx = (dx / dist) * force;
+      dy = (dy / dist) * force;
+      a.vx += dx;
+      a.vy += dy;
+      b.vx -= dx;
+      b.vy -= dy;
+    }
+
+    for (const node of members) {
+      const point = positions.get(node.id);
+      point.vx += (centerX - point.x) * 0.015;
+      point.vy += (centerY - point.y) * 0.015;
+      point.x += point.vx * 0.25;
+      point.y += point.vy * 0.25;
+      point.vx *= 0.82;
+      point.vy *= 0.82;
+    }
+  }
+
+  for (const node of members) {
+    const point = positions.get(node.id);
+    node.x = point.x;
+    node.y = point.y;
+    node.fx = point.x;
+    node.fy = point.y;
+  }
+}
+
+function layoutClusteredGraph(nodes, intraLinks) {
   const clusters = new Map();
   for (const node of nodes) {
     if (!clusters.has(node.community)) clusters.set(node.community, []);
@@ -218,32 +344,17 @@ function layoutGridClusters(nodes) {
   const clusterCount = clusterEntries.length;
   if (clusterCount === 0) return [];
 
-  const cols = Math.ceil(Math.sqrt(clusterCount));
-  const cellSize = 220;
-  const gap = 80;
+  const spacing = Math.max(250, 180 + clusterCount * 8);
+  const centers = hexGridCenters(clusterCount, spacing);
 
   clusterEntries.forEach(([, members], index) => {
-    const col = index % cols;
-    const row = Math.floor(index / cols);
-    const cx = col * (cellSize + gap) - ((cols - 1) * (cellSize + gap)) / 2;
-    const cy = row * (cellSize + gap) - ((Math.ceil(clusterCount / cols) - 1) * (cellSize + gap)) / 2;
-
-    const localRadius = 20 + Math.sqrt(members.length) * 16;
-
-    members.forEach((node, memberIndex) => {
-      const localAngle = (2 * Math.PI * memberIndex) / members.length - Math.PI / 2;
-      const x = cx + localRadius * Math.cos(localAngle);
-      const y = cy + localRadius * Math.sin(localAngle);
-      node.x = x;
-      node.y = y;
-      node.fx = x;
-      node.fy = y;
-    });
+    const center = centers[index] ?? { x: 0, y: 0 };
+    layoutCommunityNodes(members, intraLinks, center.x, center.y);
   });
 
   return clusterEntries.map(([communityId, members]) => {
     const points = members.map((node) => ({ x: node.x, y: node.y }));
-    const hull = expandHull(convexHull(points), 32);
+    const hull = expandHull(convexHull(points), 40);
     return {
       id: communityId,
       color: getCommunityColor(communityId),
@@ -253,42 +364,53 @@ function layoutGridClusters(nodes) {
   });
 }
 
-async function buildTagNetworkGraph(db, tagCounts, options = {}) {
+async function buildTagNetworkGraph(db, tagCounts, totalPhotos, options = {}) {
   const {
     minTagCount = 10,
     minWeight = 2,
     maxNodes = 100,
-    maxTagCoverage = DEFAULT_MAX_TAG_COVERAGE,
-    topTagPercentile = DEFAULT_TOP_TAG_PERCENTILE,
+    megaTagPct = 0.35,
+    pmiThreshold = 1.0,
+    maxDegree = 6,
   } = options;
 
-  const taggedPhotoCount = db.getTaggedPhotoCount();
-  const { allowed: allowedTags, excluded: excludedStopTags } = filterStopTags(
-    tagCounts,
-    taggedPhotoCount,
-    topTagPercentile,
-    maxTagCoverage,
+  const megaTags = pruneMegaTags(tagCounts, totalPhotos, megaTagPct);
+
+  const qualifyingTags = Object.entries(tagCounts)
+    .filter(([tag, count]) => count > minTagCount && !megaTags.has(tag))
+    .sort((a, b) => b[1] - a[1]);
+
+  const cappedTags = new Set(
+    qualifyingTags.slice(0, maxNodes).map(([tag]) => tag),
   );
-
-  const qualifyingTags = [...allowedTags]
-    .filter((tag) => (tagCounts[tag] ?? 0) > minTagCount)
-    .sort((a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0))
-    .slice(0, maxNodes);
-
-  const cappedTags = new Set(qualifyingTags);
 
   if (cappedTags.size === 0) {
     return {
       nodes: [],
       links: [],
+      interLinks: [],
       clusters: [],
-      stats: { tags: 0, links: 0, communities: 0, excludedStopTags },
+      stats: {
+        tags: 0,
+        links: 0,
+        interLinks: 0,
+        communities: 0,
+        prunedMegaTags: megaTags.size,
+      },
     };
   }
 
   const allEdges = await db.getTagCoOccurrences({ minWeight, minTagCount: 0, limit: 12000 });
-  const pmiEdges = computePmiEdges(allEdges, tagCounts, taggedPhotoCount, cappedTags);
-  const sparseEdges = sparsifyEdges(pmiEdges);
+  const filteredRaw = allEdges.filter(
+    (edge) =>
+      cappedTags.has(edge.source) &&
+      cappedTags.has(edge.target) &&
+      !megaTags.has(edge.source) &&
+      !megaTags.has(edge.target),
+  );
+
+  const pmiEdges = computePMIEdges(filteredRaw, tagCounts, totalPhotos, pmiThreshold);
+  const sparseEdges = topKSparsify(pmiEdges, maxDegree);
 
   const nodeIds = new Set();
   for (const link of sparseEdges) {
@@ -300,14 +422,13 @@ async function buildTagNetworkGraph(db, tagCounts, options = {}) {
     (a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0),
   );
 
-  const communities = findConnectedComponents(sortedIds, sparseEdges);
+  const communities = detectCommunities(sortedIds, sparseEdges);
+  const { intraLinks, interLinks } = splitLinksByCommunity(sparseEdges, communities);
 
-  // Only draw edges within the same cluster — eliminates cross-cluster hairball
-  const links = sparseEdges.filter(
-    (edge) => communities.get(edge.source) === communities.get(edge.target),
+  const maxCount = Math.max(
+    1,
+    ...sortedIds.map((id) => tagCounts[id] ?? 0),
   );
-
-  const maxCount = Math.max(1, ...sortedIds.map((id) => tagCounts[id] ?? 0));
 
   const nodes = sortedIds.map((id) => {
     const community = communities.get(id) ?? 0;
@@ -321,17 +442,19 @@ async function buildTagNetworkGraph(db, tagCounts, options = {}) {
     };
   });
 
-  const clusters = layoutGridClusters(nodes);
+  const clusters = layoutClusteredGraph(nodes, intraLinks);
 
   return {
     nodes,
-    links,
+    links: intraLinks,
+    interLinks,
     clusters,
     stats: {
       tags: nodes.length,
-      links: links.length,
+      links: intraLinks.length,
+      interLinks: interLinks.length,
       communities: clusters.length,
-      excludedStopTags,
+      prunedMegaTags: megaTags.size,
     },
   };
 }
@@ -340,9 +463,11 @@ async function getTagNetworkGraph(db, options = {}) {
   const minTagCount = options.minTagCount ?? 10;
   const minWeight = options.minWeight ?? 2;
   const maxNodes = options.maxNodes ?? 100;
-  const maxTagCoverage = options.maxTagCoverage ?? DEFAULT_MAX_TAG_COVERAGE;
-  const topTagPercentile = options.topTagPercentile ?? DEFAULT_TOP_TAG_PERCENTILE;
-  const cacheKey = `${minTagCount}:${minWeight}:${maxNodes}:${maxTagCoverage}:${topTagPercentile}`;
+  const megaTagPct = options.megaTagPct ?? 0.35;
+  const pmiThreshold = options.pmiThreshold ?? 1.0;
+  const maxDegree = options.maxDegree ?? 6;
+
+  const cacheKey = `${minTagCount}:${minWeight}:${maxNodes}:${megaTagPct}:${pmiThreshold}:${maxDegree}`;
 
   const cached = networkCache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
@@ -350,12 +475,14 @@ async function getTagNetworkGraph(db, options = {}) {
   }
 
   const tagCounts = await db.getTagCounts();
-  const data = await buildTagNetworkGraph(db, tagCounts, {
+  const totalPhotos = await db.getPhotoCount();
+  const data = await buildTagNetworkGraph(db, tagCounts, totalPhotos, {
     minTagCount,
     minWeight,
     maxNodes,
-    maxTagCoverage,
-    topTagPercentile,
+    megaTagPct,
+    pmiThreshold,
+    maxDegree,
   });
   networkCache.set(cacheKey, { at: Date.now(), data });
   return data;

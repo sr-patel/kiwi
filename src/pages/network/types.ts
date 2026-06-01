@@ -21,17 +21,20 @@ export interface TagNetworkLink {
   source: string;
   target: string;
   weight: number;
+  pmi?: number;
 }
 
 export interface TagNetworkGraph {
   nodes: TagNetworkNode[];
   links: TagNetworkLink[];
+  interLinks: TagNetworkLink[];
   clusters: TagCluster[];
   stats: {
     tags: number;
     links: number;
+    interLinks: number;
     communities: number;
-    excludedStopTags?: number;
+    prunedMegaTags: number;
   };
 }
 
@@ -44,10 +47,12 @@ export interface ForceGraphLink {
   source: string | ForceGraphNode;
   target: string | ForceGraphNode;
   weight: number;
+  pmi?: number;
 }
 
 export interface ForceGraphData {
   nodes: ForceGraphNode[];
   links: ForceGraphLink[];
+  interLinks: ForceGraphLink[];
   clusters: TagCluster[];
 }

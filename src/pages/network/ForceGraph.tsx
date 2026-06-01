@@ -2,10 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D, { type ForceGraphMethods, type GraphLink, type GraphNode } from 'react-force-graph-2d';
 import type { ForceGraphData, ForceGraphLink, ForceGraphNode, TagCluster } from '@/pages/network/types';
 
+interface DisplayLink extends ForceGraphLink {
+  isInter?: boolean;
+}
+
 interface TagForceGraphProps {
   graphData: ForceGraphData;
   selectedTag: string | null;
   onSelectTag: (tag: string | null) => void;
+  showInterLinks: boolean;
   accentHex: string;
   isDark: boolean;
 }
@@ -34,9 +39,9 @@ function drawClusterHulls(
     }
     ctx.closePath();
 
-    ctx.fillStyle = hexToRgba(cluster.color, isDark ? 0.12 : 0.18);
+    ctx.fillStyle = hexToRgba(cluster.color, isDark ? 0.14 : 0.2);
     ctx.fill();
-    ctx.strokeStyle = hexToRgba(cluster.color, isDark ? 0.35 : 0.45);
+    ctx.strokeStyle = hexToRgba(cluster.color, isDark ? 0.4 : 0.5);
     ctx.lineWidth = 1.5 / globalScale;
     ctx.stroke();
   }
@@ -46,6 +51,7 @@ export function TagForceGraph({
   graphData,
   selectedTag,
   onSelectTag,
+  showInterLinks,
   accentHex,
   isDark,
 }: TagForceGraphProps) {
@@ -53,15 +59,29 @@ export function TagForceGraph({
   const graphRef = useRef<ForceGraphMethods>();
   const hasFitRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [zoomLevel, setZoomLevel] = useState(1);
   const [hoveredTag, setHoveredTag] = useState<string | null>(null);
+
+  const displayLinks = useMemo<DisplayLink[]>(() => {
+    const intra = graphData.links.map((link) => ({ ...link, isInter: false }));
+    if (!showInterLinks) return intra;
+    const inter = graphData.interLinks.map((link) => ({ ...link, isInter: true }));
+    return [...intra, ...inter];
+  }, [graphData.links, graphData.interLinks, showInterLinks]);
+
+  const displayGraph = useMemo(
+    () => ({
+      nodes: graphData.nodes,
+      links: displayLinks,
+    }),
+    [graphData.nodes, displayLinks],
+  );
 
   const adjacency = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const node of graphData.nodes) {
       map.set(node.id, new Set());
     }
-    for (const link of graphData.links) {
+    for (const link of displayLinks) {
       const source = typeof link.source === 'object' ? link.source.id : link.source;
       const target = typeof link.target === 'object' ? link.target.id : link.target;
       if (typeof source === 'string' && typeof target === 'string') {
@@ -70,7 +90,7 @@ export function TagForceGraph({
       }
     }
     return map;
-  }, [graphData.nodes, graphData.links]);
+  }, [graphData.nodes, displayLinks]);
 
   const connectedToSelected = useMemo(() => {
     if (!selectedTag) return new Set<string>();
@@ -99,14 +119,14 @@ export function TagForceGraph({
 
   useEffect(() => {
     hasFitRef.current = false;
-  }, [graphData]);
+  }, [graphData, showInterLinks]);
 
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph || hasFitRef.current) return;
     graph.zoomToFit(400, 80);
     hasFitRef.current = true;
-  }, [graphData, dimensions.width, dimensions.height]);
+  }, [displayGraph, dimensions.width, dimensions.height]);
 
   useEffect(() => {
     const graph = graphRef.current;
@@ -133,14 +153,18 @@ export function TagForceGraph({
   );
 
   const getLinkColor = useCallback(
-    (link: ForceGraphLink) => {
+    (link: DisplayLink) => {
+      if (link.isInter) {
+        return isDark ? 'rgba(161, 161, 170, 0.08)' : 'rgba(113, 113, 122, 0.12)';
+      }
+
       const sourceId =
         typeof link.source === 'object' ? link.source.id : (link.source as string);
       const targetId =
         typeof link.target === 'object' ? link.target.id : (link.target as string);
 
       if (!selectedTag) {
-        return isDark ? 'rgba(161, 161, 170, 0.18)' : 'rgba(113, 113, 122, 0.25)';
+        return isDark ? 'rgba(161, 161, 170, 0.22)' : 'rgba(113, 113, 122, 0.3)';
       }
 
       const touchesSelection =
@@ -149,7 +173,7 @@ export function TagForceGraph({
         (connectedToSelected.has(sourceId as string) &&
           connectedToSelected.has(targetId as string));
 
-      if (touchesSelection) return hexToRgba(accentHex, 0.5);
+      if (touchesSelection) return hexToRgba(accentHex, 0.55);
       return isDark ? 'rgba(39, 39, 42, 0.12)' : 'rgba(228, 228, 231, 0.15)';
     },
     [selectedTag, connectedToSelected, accentHex, isDark],
@@ -161,10 +185,7 @@ export function TagForceGraph({
 
       const radius = Math.sqrt(Math.max(node.val ?? 1, 1)) * 2.8;
       const color = getNodeColor(node);
-      const showLabel =
-        node.id === selectedTag ||
-        node.id === hoveredTag ||
-        (zoomLevel > 1.4 && globalScale > 1.2);
+      const showLabel = node.id === selectedTag || node.id === hoveredTag;
 
       ctx.save();
 
@@ -195,7 +216,7 @@ export function TagForceGraph({
 
       ctx.restore();
     },
-    [getNodeColor, selectedTag, hoveredTag, zoomLevel, isDark],
+    [getNodeColor, selectedTag, hoveredTag, isDark],
   );
 
   const renderFramePre = useCallback(
@@ -211,7 +232,7 @@ export function TagForceGraph({
         ref={graphRef}
         width={dimensions.width}
         height={dimensions.height}
-        graphData={graphData as unknown as { nodes: GraphNode[]; links: GraphLink[] }}
+        graphData={displayGraph as unknown as { nodes: GraphNode[]; links: GraphLink[] }}
         backgroundColor={isDark ? '#09090b' : '#fafafa'}
         nodeRelSize={1}
         nodeVal="val"
@@ -229,10 +250,12 @@ export function TagForceGraph({
         }
         nodeCanvasObjectMode={() => 'replace'}
         linkWidth={(link) => {
-          const weight = (link as unknown as ForceGraphLink).weight ?? 1;
+          const entry = link as unknown as DisplayLink;
+          if (entry.isInter) return 0.3;
+          const weight = entry.weight ?? 1;
           return Math.min(0.4 + Math.log2(weight + 1) * 0.5, 2.5);
         }}
-        linkColor={(link) => getLinkColor(link as unknown as ForceGraphLink)}
+        linkColor={(link) => getLinkColor(link as unknown as DisplayLink)}
         onNodeClick={(node) => {
           const entry = node as unknown as ForceGraphNode;
           onSelectTag(selectedTag === entry.id ? null : entry.id);
@@ -241,12 +264,14 @@ export function TagForceGraph({
           setHoveredTag(node ? (node as unknown as ForceGraphNode).id : null);
         }}
         onBackgroundClick={() => onSelectTag(null)}
-        onZoom={({ k }) => setZoomLevel(k)}
       />
 
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400 backdrop-blur-sm">
-        <div>{graphData.clusters.length} clusters · {graphData.nodes.length} tags</div>
-        <div className="mt-1 text-zinc-500">Hover or zoom in for labels</div>
+        <div>
+          {graphData.clusters.length} clusters · {graphData.nodes.length} tags ·{' '}
+          {graphData.links.length} intra links
+        </div>
+        <div className="mt-1 text-zinc-500">Hover a node for its label</div>
       </div>
     </div>
   );

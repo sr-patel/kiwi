@@ -19,6 +19,7 @@ export const TagNetworkPage: React.FC = () => {
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [detailLevel, setDetailLevel] = useState(DEFAULT_DETAIL_LEVEL);
+  const [showInterLinks, setShowInterLinks] = useState(false);
   const { graphData, stats, minTagCount, maxNodes, isLoading, isError, error, refetch } =
     useTagCoOccurrences(detailLevel);
 
@@ -44,7 +45,7 @@ export const TagNetworkPage: React.FC = () => {
               <h1 className="truncate text-lg font-semibold sm:text-xl">Tag Network</h1>
             </div>
             <p className="truncate text-sm text-zinc-500">
-              PMI clusters · common tags hidden · min {minTagCount}+ items
+              PMI-weighted clusters · min {minTagCount}+ items · up to {maxNodes} tags
             </p>
           </div>
         </div>
@@ -78,13 +79,20 @@ export const TagNetworkPage: React.FC = () => {
           {stats && (
             <div className="hidden items-center gap-3 text-xs text-zinc-500 md:flex">
               <span>{stats.tags} tags</span>
-              <span>{stats.links} links</span>
+              <span>{stats.links} intra</span>
               <span>{stats.communities} clusters</span>
-              {stats.excludedStopTags != null && stats.excludedStopTags > 0 && (
-                <span>{stats.excludedStopTags} common hidden</span>
-              )}
             </div>
           )}
+          <label className="hidden items-center gap-2 text-xs text-zinc-400 sm:flex">
+            <input
+              type="checkbox"
+              checked={showInterLinks}
+              onChange={(e) => setShowInterLinks(e.target.checked)}
+              className="rounded border-zinc-700 bg-zinc-900"
+              style={{ accentColor: accentHex }}
+            />
+            Cross-cluster links
+          </label>
           <button
             type="button"
             onClick={() => refetch()}
@@ -164,6 +172,7 @@ export const TagNetworkPage: React.FC = () => {
               graphData={graphData}
               selectedTag={selectedTag}
               onSelectTag={setSelectedTag}
+              showInterLinks={showInterLinks}
               accentHex={accentHex}
               isDark={isDark}
             />
