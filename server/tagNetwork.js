@@ -247,13 +247,15 @@ function buildClusterAffinities(clusterIds, interLinks, communities) {
   return affinities;
 }
 
-function layoutClusterCenters(clusterIds, affinities) {
+function layoutClusterCenters(clusterIds, affinities, clusterRadii) {
   const positions = new Map();
   const count = clusterIds.length;
+  const spreadScale = Math.max(1.3, Math.sqrt(count) * 0.7);
+  const baseRadius = 260 * spreadScale;
 
   clusterIds.forEach((id, index) => {
-    const angle = (2 * Math.PI * index) / Math.max(count, 1) + (Math.random() - 0.5) * 0.4;
-    const radius = 140 + Math.random() * 60;
+    const angle = (2 * Math.PI * index) / Math.max(count, 1) + (Math.random() - 0.5) * 0.35;
+    const radius = baseRadius + Math.random() * baseRadius * 0.35;
     positions.set(id, {
       x: Math.cos(angle) * radius,
       y: Math.sin(angle) * radius,
@@ -262,10 +264,10 @@ function layoutClusterCenters(clusterIds, affinities) {
     });
   });
 
-  const minDist = 200;
-  const repulsionStrength = 12000;
+  const minGap = 100;
+  const repulsionStrength = 28000;
 
-  for (let iteration = 0; iteration < 80; iteration += 1) {
+  for (let iteration = 0; iteration < 120; iteration += 1) {
     for (let i = 0; i < count; i += 1) {
       for (let j = i + 1; j < count; j += 1) {
         const a = positions.get(clusterIds[i]);
@@ -273,10 +275,22 @@ function layoutClusterCenters(clusterIds, affinities) {
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         let dist = Math.hypot(dx, dy) || 0.01;
-        if (dist < minDist) dist = minDist;
-        const force = repulsionStrength / (dist * dist);
-        dx = (dx / dist) * force;
-        dy = (dy / dist) * force;
+
+        const radiusA = clusterRadii.get(clusterIds[i]) ?? 70;
+        const radiusB = clusterRadii.get(clusterIds[j]) ?? 70;
+        const minDist = radiusA + radiusB + minGap;
+
+        if (dist < minDist) {
+          const overlap = (minDist - dist) / minDist;
+          const push = overlap * 2.5 + repulsionStrength / (dist * dist);
+          dx = (dx / dist) * push;
+          dy = (dy / dist) * push;
+        } else {
+          const force = repulsionStrength / (dist * dist);
+          dx = (dx / dist) * force;
+          dy = (dy / dist) * force;
+        }
+
         a.vx -= dx;
         a.vy -= dy;
         b.vx += dx;
@@ -293,8 +307,12 @@ function layoutClusterCenters(clusterIds, affinities) {
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       const dist = Math.hypot(dx, dy) || 0.01;
-      const target = Math.max(120, 400 / (1 + weight * 0.15));
-      const force = (dist - target) * 0.02 * Math.min(weight, 20);
+
+      const radiusA = clusterRadii.get(sourceCommunity) ?? 70;
+      const radiusB = clusterRadii.get(targetCommunity) ?? 70;
+      const minDist = radiusA + radiusB + minGap * 0.6;
+      const target = Math.max(minDist, 600 / (1 + weight * 0.12));
+      const force = (dist - target) * 0.012 * Math.min(weight, 16);
       dx = (dx / dist) * force;
       dy = (dy / dist) * force;
       a.vx += dx;
@@ -305,16 +323,20 @@ function layoutClusterCenters(clusterIds, affinities) {
 
     for (const id of clusterIds) {
       const point = positions.get(id);
-      point.vx -= point.x * 0.002;
-      point.vy -= point.y * 0.002;
-      point.x += point.vx * 0.3;
-      point.y += point.vy * 0.3;
-      point.vx *= 0.85;
-      point.vy *= 0.85;
+      point.vx -= point.x * 0.0008;
+      point.vy -= point.y * 0.0008;
+      point.x += point.vx * 0.35;
+      point.y += point.vy * 0.35;
+      point.vx *= 0.82;
+      point.vy *= 0.82;
     }
   }
 
   return positions;
+}
+
+function estimateClusterRadius(memberCount) {
+  return 55 + Math.sqrt(memberCount) * 24;
 }
 
 function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
@@ -323,7 +345,7 @@ function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
 
   members.forEach((node, index) => {
     const angle = (2 * Math.PI * index) / Math.max(members.length, 1);
-    const radius = 18 + Math.sqrt(members.length) * 10;
+    const radius = 28 + Math.sqrt(members.length) * 14;
     positions.set(node.id, {
       x: centerX + radius * Math.cos(angle),
       y: centerY + radius * Math.sin(angle),
@@ -344,7 +366,7 @@ function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         const dist = Math.hypot(dx, dy) || 0.01;
-        const repulse = 900 / (dist * dist);
+        const repulse = 1400 / (dist * dist);
         dx = (dx / dist) * repulse;
         dy = (dy / dist) * repulse;
         a.vx -= dx;
@@ -402,8 +424,15 @@ function layoutClusteredGraph(nodes, intraLinks, interLinks, communities) {
   const clusterIds = [...clusters.keys()];
   if (clusterIds.length === 0) return [];
 
+  const clusterRadii = new Map(
+    [...clusters.entries()].map(([communityId, members]) => [
+      communityId,
+      estimateClusterRadius(members.length),
+    ]),
+  );
+
   const affinities = buildClusterAffinities(clusterIds, interLinks, communities);
-  const centers = layoutClusterCenters(clusterIds, affinities);
+  const centers = layoutClusterCenters(clusterIds, affinities, clusterRadii);
 
   for (const [communityId, members] of clusters.entries()) {
     const center = centers.get(communityId) ?? { x: 0, y: 0 };
@@ -416,7 +445,7 @@ function layoutClusteredGraph(nodes, intraLinks, interLinks, communities) {
       members[0],
     );
     const points = members.map((node) => ({ x: node.x, y: node.y }));
-    const hull = expandHull(convexHull(points), 40);
+    const hull = expandHull(convexHull(points), 55);
     const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
     const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
 

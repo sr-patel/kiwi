@@ -157,7 +157,7 @@ export function TagForceGraph({
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph || hasFitRef.current) return;
-    graph.zoomToFit(400, 80);
+    graph.zoomToFit(400, 120);
     skipZoomSyncRef.current = true;
     graph.zoom(zoomLevel, 0);
     hasFitRef.current = true;
@@ -195,14 +195,22 @@ export function TagForceGraph({
 
   const getLinkColor = useCallback(
     (link: DisplayLink) => {
-      if (link.isInter) {
-        return isDark ? 'rgba(161, 161, 170, 0.08)' : 'rgba(113, 113, 122, 0.12)';
-      }
-
       const sourceId =
         typeof link.source === 'object' ? link.source.id : (link.source as string);
       const targetId =
         typeof link.target === 'object' ? link.target.id : (link.target as string);
+
+      if (link.isInter) {
+        const touchesSelection =
+          selectedTag &&
+          (sourceId === selectedTag ||
+            targetId === selectedTag ||
+            connectedToSelected.has(sourceId as string) ||
+            connectedToSelected.has(targetId as string));
+
+        if (touchesSelection) return hexToRgba(accentHex, 0.9);
+        return isDark ? 'rgba(250, 204, 21, 0.62)' : 'rgba(217, 119, 6, 0.55)';
+      }
 
       if (!selectedTag) {
         return isDark ? 'rgba(161, 161, 170, 0.22)' : 'rgba(113, 113, 122, 0.3)';
@@ -305,7 +313,10 @@ export function TagForceGraph({
         nodeCanvasObjectMode={() => 'replace'}
         linkWidth={(link) => {
           const entry = link as unknown as DisplayLink;
-          if (entry.isInter) return 0.3;
+          if (entry.isInter) {
+            const pmi = entry.pmi ?? 1;
+            return Math.min(1 + Math.log2(pmi + 1) * 0.45, 2.5);
+          }
           const weight = entry.weight ?? 1;
           return Math.min(0.4 + Math.log2(weight + 1) * 0.5, 2.5);
         }}
