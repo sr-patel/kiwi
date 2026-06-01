@@ -250,8 +250,8 @@ function buildClusterAffinities(clusterIds, interLinks, communities) {
 function layoutClusterCenters(clusterIds, affinities, clusterRadii) {
   const positions = new Map();
   const count = clusterIds.length;
-  const spreadScale = Math.max(1.6, Math.sqrt(count) * 0.9);
-  const baseRadius = 320 * spreadScale;
+  const spreadScale = Math.max(2.0, Math.sqrt(count) * 1.15);
+  const baseRadius = 400 * spreadScale;
 
   clusterIds.forEach((id, index) => {
     const angle = (2 * Math.PI * index) / Math.max(count, 1) + (Math.random() - 0.5) * 0.35;
@@ -264,8 +264,8 @@ function layoutClusterCenters(clusterIds, affinities, clusterRadii) {
     });
   });
 
-  const minGap = 150;
-  const repulsionStrength = 35000;
+  const minGap = 200;
+  const repulsionStrength = 48000;
 
   for (let iteration = 0; iteration < 120; iteration += 1) {
     for (let i = 0; i < count; i += 1) {
@@ -282,7 +282,7 @@ function layoutClusterCenters(clusterIds, affinities, clusterRadii) {
 
         if (dist < minDist) {
           const overlap = (minDist - dist) / minDist;
-          const push = overlap * 3.5 + repulsionStrength / (dist * dist);
+          const push = overlap * 4.5 + repulsionStrength / (dist * dist);
           dx = (dx / dist) * push;
           dy = (dy / dist) * push;
         } else {
@@ -336,7 +336,7 @@ function layoutClusterCenters(clusterIds, affinities, clusterRadii) {
 }
 
 function estimateClusterRadius(memberCount) {
-  return 65 + Math.sqrt(memberCount) * 28;
+  return 75 + Math.sqrt(memberCount) * 32;
 }
 
 function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
@@ -345,7 +345,7 @@ function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
 
   members.forEach((node, index) => {
     const angle = (2 * Math.PI * index) / Math.max(members.length, 1);
-    const radius = 32 + Math.sqrt(members.length) * 16;
+    const radius = 36 + Math.sqrt(members.length) * 18;
     positions.set(node.id, {
       x: centerX + radius * Math.cos(angle),
       y: centerY + radius * Math.sin(angle),
@@ -439,8 +439,8 @@ function layoutClusteredGraph(nodes, intraLinks, interLinks, communities) {
     layoutCommunityNodes(members, intraLinks, center.x, center.y);
   }
 
-  if (clusterIds.length > 20) {
-    const scale = 1.2;
+  if (clusterIds.length > 15) {
+    const scale = 1.35;
     for (const node of nodes) {
       node.x *= scale;
       node.y *= scale;
@@ -455,7 +455,7 @@ function layoutClusteredGraph(nodes, intraLinks, interLinks, communities) {
       members[0],
     );
     const points = members.map((node) => ({ x: node.x, y: node.y }));
-    const hull = expandHull(convexHull(points), 65);
+    const hull = expandHull(convexHull(points), 75);
     const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
     const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
 

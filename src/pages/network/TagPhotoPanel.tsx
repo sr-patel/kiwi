@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Tag, Link2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -99,14 +99,18 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
   });
 
   const activeQuery = selection?.kind === 'tag' ? tagQuery : tagsQuery;
-  const photos = activeQuery.data?.pages.flatMap((page) => page.photos) ?? [];
+  const photos = useMemo(
+    () => activeQuery.data?.pages.flatMap((page) => page.photos) ?? [],
+    [activeQuery.data?.pages],
+  );
   const totalCount = selection?.kind === 'link' ? tagsQuery.total : tagCount;
 
-  useEffect(() => {
-    if (photos.length > 0) {
-      setNavigationList(photos.map((p) => p.id));
-    }
-  }, [photos, setNavigationList]);
+  const fetchNextPageRef = useRef(activeQuery.fetchNextPage);
+  const hasNextPageRef = useRef(activeQuery.hasNextPage);
+  const isFetchingRef = useRef(activeQuery.isFetchingNextPage);
+  fetchNextPageRef.current = activeQuery.fetchNextPage;
+  hasNextPageRef.current = activeQuery.hasNextPage;
+  isFetchingRef.current = activeQuery.isFetchingNextPage;
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
@@ -114,8 +118,12 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && activeQuery.hasNextPage && !activeQuery.isFetchingNextPage) {
-          activeQuery.fetchNextPage();
+        if (
+          entries[0]?.isIntersecting &&
+          hasNextPageRef.current &&
+          !isFetchingRef.current
+        ) {
+          fetchNextPageRef.current();
         }
       },
       { rootMargin: '200px' },
@@ -123,7 +131,7 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [selection, activeQuery.hasNextPage, activeQuery.isFetchingNextPage, activeQuery.fetchNextPage]);
+  }, [selection, activeQuery.hasNextPage, activeQuery.isFetchingNextPage]);
 
   const handleOpenPhoto = useCallback(
     (photo: PhotoMetadata) => {
@@ -134,9 +142,10 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
       } else if (selection?.kind === 'link') {
         setCurrentTag(null);
       }
+      setNavigationList(photos.map((p) => p.id));
       setDetailedPhoto(photo.id);
     },
-    [selection, saveScrollPosition, setCurrentFolder, setCurrentTag, setDetailedPhoto],
+    [selection, photos, saveScrollPosition, setCurrentFolder, setCurrentTag, setNavigationList, setDetailedPhoto],
   );
 
   const handleBrowseTag = () => {

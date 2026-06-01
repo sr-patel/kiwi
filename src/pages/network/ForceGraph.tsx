@@ -182,7 +182,7 @@ export function TagForceGraph({
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph || hasFitRef.current) return;
-    graph.zoomToFit(400, 120);
+    graph.zoomToFit(400, 160);
     skipZoomSyncRef.current = true;
     graph.zoom(zoomLevel, 0);
     hasFitRef.current = true;
