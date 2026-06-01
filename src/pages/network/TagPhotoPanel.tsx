@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react';
-import { X, Tag, ExternalLink } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Tag, Link2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import Masonry from 'react-masonry-css';
 import { usePhotosByTag } from '@/hooks/usePhotosByTag';
+import { usePhotosByTags } from '@/hooks/usePhotosByTags';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
 import { generateTagUrl } from '@/utils/tagUrls';
 import { isVideoFile } from '@/utils/fileTypes';
 import type { PhotoMetadata } from '@/types';
+import type { NetworkSelection } from '@/pages/network/types';
 
 interface TagPhotoPanelProps {
-  tag: string | null;
+  selection: NetworkSelection;
   tagCount: number;
   accentHex: string;
   onClose: () => void;
@@ -26,6 +29,10 @@ function PanelThumbnail({
   onOpen: (photo: PhotoMetadata) => void;
 }) {
   const [src, setSrc] = useState<string | null>(null);
+  const aspectRatio =
+    photo.width && photo.height && photo.height > 0
+      ? photo.width / photo.height
+      : 1;
 
   useEffect(() => {
     const url = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
@@ -36,8 +43,11 @@ function PanelThumbnail({
     <button
       type="button"
       onClick={() => onOpen(photo)}
-      className="group relative aspect-square overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 transition-transform hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
-      style={{ ['--tw-ring-color' as string]: accentHex }}
+      className="group relative w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 transition-transform hover:scale-[1.01] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+      style={{
+        aspectRatio: aspectRatio.toString(),
+        ['--tw-ring-color' as string]: accentHex,
+      }}
     >
       {src ? (
         isVideoFile(photo.ext) ? (
@@ -63,50 +73,111 @@ function PanelThumbnail({
   );
 }
 
-export function TagPhotoPanel({ tag, tagCount, accentHex, onClose }: TagPhotoPanelProps) {
+export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPhotoPanelProps) {
   const navigate = useNavigate();
-  const { setCurrentTag, setCurrentFolder, setDetailedPhoto, saveScrollPosition } = useAppStore();
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const {
+    setCurrentTag,
+    setCurrentFolder,
+    setDetailedPhoto,
+    setNavigationList,
+    saveScrollPosition,
+  } = useAppStore();
 
-  const { data, loading, error } = usePhotosByTag({
-    tag,
-    limit: 20,
-    enabled: !!tag,
+  const singleTag = selection?.kind === 'tag' ? selection.tag : null;
+  const linkTags =
+    selection?.kind === 'link' ? [selection.source, selection.target] : [];
+
+  const tagQuery = usePhotosByTag({
+    tag: singleTag,
+    enabled: selection?.kind === 'tag',
   });
 
-  const photos = data?.pages.flatMap((page) => page.photos) ?? [];
+  const tagsQuery = usePhotosByTags({
+    tags: linkTags,
+    enabled: selection?.kind === 'link',
+  });
 
-  const handleOpenPhoto = (photo: PhotoMetadata) => {
-    if (!tag) return;
-    saveScrollPosition(0);
-    setCurrentFolder(null);
-    setCurrentTag(tag);
-    setDetailedPhoto(photo.id);
-  };
+  const activeQuery = selection?.kind === 'tag' ? tagQuery : tagsQuery;
+  const photos = activeQuery.data?.pages.flatMap((page) => page.photos) ?? [];
+  const totalCount = selection?.kind === 'link' ? tagsQuery.total : tagCount;
+
+  useEffect(() => {
+    if (photos.length > 0) {
+      setNavigationList(photos.map((p) => p.id));
+    }
+  }, [photos, setNavigationList]);
+
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || !selection) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && activeQuery.hasNextPage && !activeQuery.isFetchingNextPage) {
+          activeQuery.fetchNextPage();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [selection, activeQuery.hasNextPage, activeQuery.isFetchingNextPage, activeQuery.fetchNextPage]);
+
+  const handleOpenPhoto = useCallback(
+    (photo: PhotoMetadata) => {
+      saveScrollPosition(0);
+      setCurrentFolder(null);
+      if (selection?.kind === 'tag') {
+        setCurrentTag(selection.tag);
+      } else if (selection?.kind === 'link') {
+        setCurrentTag(null);
+      }
+      setDetailedPhoto(photo.id);
+    },
+    [selection, saveScrollPosition, setCurrentFolder, setCurrentTag, setDetailedPhoto],
+  );
 
   const handleBrowseTag = () => {
-    if (!tag) return;
-    navigate(generateTagUrl(tag));
+    if (selection?.kind !== 'tag') return;
+    navigate(generateTagUrl(selection.tag));
   };
 
   return (
     <AnimatePresence>
-      {tag && (
+      {selection && (
         <motion.aside
-          initial={{ x: 360, opacity: 0 }}
+          initial={{ x: 420, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          exit={{ x: 360, opacity: 0 }}
+          exit={{ x: 420, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-          className="flex h-full w-full max-w-sm flex-col border-l border-zinc-800 bg-zinc-950/95 backdrop-blur-sm"
+          className="absolute right-0 top-0 z-20 flex h-full w-[min(420px,40vw)] flex-col border-l border-zinc-800 bg-zinc-950/95 shadow-2xl backdrop-blur-sm"
         >
           <div className="flex items-start justify-between gap-3 border-b border-zinc-800 p-4">
             <div className="min-w-0">
-              <div className="mb-1 flex items-center gap-2 text-zinc-400">
-                <Tag className="h-4 w-4 shrink-0" style={{ color: accentHex }} />
-                <span className="text-xs uppercase tracking-wide">Selected tag</span>
-              </div>
-              <h2 className="truncate text-lg font-semibold text-zinc-100">#{tag}</h2>
+              {selection.kind === 'tag' ? (
+                <>
+                  <div className="mb-1 flex items-center gap-2 text-zinc-400">
+                    <Tag className="h-4 w-4 shrink-0" style={{ color: accentHex }} />
+                    <span className="text-xs uppercase tracking-wide">Selected tag</span>
+                  </div>
+                  <h2 className="truncate text-lg font-semibold text-zinc-100">#{selection.tag}</h2>
+                </>
+              ) : (
+                <>
+                  <div className="mb-1 flex items-center gap-2 text-zinc-400">
+                    <Link2 className="h-4 w-4 shrink-0" style={{ color: accentHex }} />
+                    <span className="text-xs uppercase tracking-wide">Co-tagged</span>
+                  </div>
+                  <h2 className="truncate text-lg font-semibold text-zinc-100">
+                    #{selection.source}{' '}
+                    <span className="font-normal text-zinc-500">+</span> #{selection.target}
+                  </h2>
+                </>
+              )}
               <p className="mt-1 text-sm text-zinc-500">
-                {tagCount.toLocaleString()} items in library
+                {totalCount.toLocaleString()} items in library
               </p>
             </div>
             <button
@@ -119,48 +190,65 @@ export function TagPhotoPanel({ tag, tagCount, accentHex, onClose }: TagPhotoPan
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
-            <span className="text-sm text-zinc-400">Recent items</span>
-            <button
-              type="button"
-              onClick={handleBrowseTag}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-900"
-            >
-              Browse all
-              <ExternalLink className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {selection.kind === 'tag' && (
+            <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
+              <span className="text-sm text-zinc-400">Recent items</span>
+              <button
+                type="button"
+                onClick={handleBrowseTag}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-900"
+              >
+                Browse all
+                <ExternalLink className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {loading && (
+          <div className="flex-1 overflow-y-auto p-3">
+            {activeQuery.loading && photos.length === 0 && (
               <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
                 Loading photos…
               </div>
             )}
 
-            {error && (
+            {activeQuery.error && (
               <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-300">
-                {error}
+                {activeQuery.error}
               </div>
             )}
 
-            {!loading && !error && photos.length === 0 && (
+            {!activeQuery.loading && !activeQuery.error && photos.length === 0 && (
               <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
-                No photos found for this tag
+                {selection.kind === 'tag'
+                  ? 'No photos found for this tag'
+                  : 'No photos found with both tags'}
               </div>
             )}
 
-            {!loading && photos.length > 0 && (
-              <div className="grid grid-cols-2 gap-2">
-                {photos.slice(0, 20).map((photo) => (
-                  <PanelThumbnail
-                    key={photo.id}
-                    photo={photo}
-                    accentHex={accentHex}
-                    onOpen={handleOpenPhoto}
-                  />
-                ))}
-              </div>
+            {photos.length > 0 && (
+              <>
+                <Masonry
+                  breakpointCols={{ default: 2 }}
+                  className="my-masonry-grid"
+                  columnClassName="my-masonry-grid_column"
+                >
+                  {photos.map((photo) => (
+                    <div key={photo.id}>
+                      <PanelThumbnail
+                        photo={photo}
+                        accentHex={accentHex}
+                        onOpen={handleOpenPhoto}
+                      />
+                    </div>
+                  ))}
+                </Masonry>
+                <div ref={loadMoreRef} className="h-4" />
+                {activeQuery.isFetchingNextPage && (
+                  <div className="flex items-center justify-center py-4 text-sm text-zinc-500">
+                    Loading more…
+                  </div>
+                )}
+              </>
             )}
           </div>
         </motion.aside>

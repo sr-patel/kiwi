@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useAppStore } from '@/store';
@@ -9,6 +9,7 @@ import {
 } from '@/hooks/useTagCoOccurrences';
 import { TagForceGraph } from '@/pages/network/ForceGraph';
 import { TagPhotoPanel } from '@/pages/network/TagPhotoPanel';
+import type { NetworkSelection } from '@/pages/network/types';
 
 export const TagNetworkPage: React.FC = () => {
   const navigate = useNavigate();
@@ -22,18 +23,33 @@ export const TagNetworkPage: React.FC = () => {
     zoomLevel: 1,
   };
 
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selection, setSelection] = useState<NetworkSelection>(null);
   const { graphData, stats, minTagCount, isLoading, isError, error, refetch } =
     useTagCoOccurrences(detailLevel);
 
-  const selectedTagCount = useMemo(() => {
-    if (!selectedTag || !graphData) return 0;
-    return graphData.nodes.find((node) => node.id === selectedTag)?.count ?? 0;
-  }, [selectedTag, graphData]);
+  const selectedTag = selection?.kind === 'tag' ? selection.tag : null;
+  const selectedLink = selection?.kind === 'link' ? selection : null;
+
+  const tagCount = useMemo(() => {
+    if (selection?.kind !== 'tag' || !graphData) return 0;
+    return graphData.nodes.find((node) => node.id === selection.tag)?.count ?? 0;
+  }, [selection, graphData]);
 
   const statsLabel = stats
     ? `${stats.communities} clusters · ${stats.tags} tags · ${stats.links} intra`
     : 'Loading…';
+
+  const handleSelectTag = useCallback((tag: string | null) => {
+    setSelection(tag ? { kind: 'tag', tag } : null);
+  }, []);
+
+  const handleSelectLink = useCallback((source: string, target: string) => {
+    setSelection({ kind: 'link', source, target });
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelection(null);
+  }, []);
 
   return (
     <div className="relative h-[calc(100dvh-4rem)] overflow-hidden bg-zinc-950 text-zinc-100">
@@ -80,7 +96,10 @@ export const TagNetworkPage: React.FC = () => {
           <TagForceGraph
             graphData={graphData}
             selectedTag={selectedTag}
-            onSelectTag={setSelectedTag}
+            selectedLink={selectedLink}
+            onSelectTag={handleSelectTag}
+            onSelectLink={handleSelectLink}
+            onClearSelection={handleClearSelection}
             showInterLinks={showInterLinks}
             zoomLevel={zoomLevel}
             onZoomChange={(zoom) => setTagNetworkSettings({ zoomLevel: zoom })}
@@ -117,7 +136,7 @@ export const TagNetworkPage: React.FC = () => {
               value={detailLevel}
               onChange={(e) => {
                 setTagNetworkSettings({ detailLevel: parseInt(e.target.value, 10) });
-                setSelectedTag(null);
+                setSelection(null);
               }}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-current"
               style={{ accentColor: accentHex }}
@@ -177,10 +196,10 @@ export const TagNetworkPage: React.FC = () => {
       </div>
 
       <TagPhotoPanel
-        tag={selectedTag}
-        tagCount={selectedTagCount}
+        selection={selection}
+        tagCount={tagCount}
         accentHex={accentHex}
-        onClose={() => setSelectedTag(null)}
+        onClose={handleClearSelection}
       />
     </div>
   );

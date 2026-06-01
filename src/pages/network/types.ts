@@ -60,3 +60,12 @@ export interface ForceGraphData {
   interLinks: ForceGraphLink[];
   clusters: TagCluster[];
 }
+
+export type NetworkSelection =
+  | { kind: 'tag'; tag: string }
+  | { kind: 'link'; source: string; target: string }
+  | null;
+
+export function linkSelectionKey(source: string, target: string): string {
+  return source < target ? `${source}:${target}` : `${target}:${source}`;
+}

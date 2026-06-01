@@ -1162,6 +1162,37 @@ app.get('/api/tags/co-occurrences', requireLibrary, async (req, res) => {
   }
 });
 
+// Get paginated photos matching all listed tags (must be before /api/tags/:tag/photos)
+app.get('/api/tags/photos', requireLibrary, async (req, res) => {
+  try {
+    const tagsParam = req.query.tags;
+    if (!tagsParam || typeof tagsParam !== 'string') {
+      return res.status(400).json({ error: 'tags query parameter is required' });
+    }
+
+    const tags = tagsParam.split(',').map((t) => t.trim()).filter(Boolean);
+    if (tags.length < 2) {
+      return res.status(400).json({ error: 'At least two tags are required' });
+    }
+
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
+    const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+    const orderBy = req.query.orderBy || 'mtime';
+    const orderDirection = req.query.orderDirection || 'DESC';
+    const result = await getDb().getPhotosByTagsPaginated({
+      tags,
+      limit,
+      offset,
+      orderBy,
+      orderDirection,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error getting photos for tags:', error);
+    res.status(500).json({ error: 'Failed to get photos for tags' });
+  }
+});
+
 // Get paginated photos for a tag
 app.get('/api/tags/:tag/photos', requireLibrary, async (req, res) => {
   try {

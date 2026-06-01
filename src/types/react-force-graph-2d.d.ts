@@ -45,6 +45,7 @@ declare module 'react-force-graph-2d' {
     enablePanInteraction?: boolean;
     onNodeClick?: (node: GraphNode, event: MouseEvent) => void;
     onNodeHover?: (node: GraphNode | null, previous: GraphNode | null) => void;
+    onLinkClick?: (link: GraphLink, event: MouseEvent) => void;
     onBackgroundClick?: () => void;
     onZoom?: (transform: { k: number; x: number; y: number }) => void;
     onRenderFramePre?: (

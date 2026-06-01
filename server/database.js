@@ -1905,6 +1905,96 @@ class PhotoLibraryDatabase {
   }
 
   /**
+   * Get paginated photos that have all of the given tags
+   */
+  async getPhotosByTagsPaginated({ tags, limit = 50, offset = 0, orderBy = 'mtime', orderDirection = 'DESC' }) {
+    try {
+      if (!Array.isArray(tags) || tags.length < 2) {
+        return { photos: [], total: 0, hasMore: false, totalSize: 0 };
+      }
+
+      const uniqueTags = [...new Set(tags.filter(Boolean))];
+      if (uniqueTags.length < 2) {
+        return { photos: [], total: 0, hasMore: false, totalSize: 0 };
+      }
+
+      const orderByClause = this.getOrderByClause(orderBy, { tableAlias: 'p' });
+      const validatedDirection = this._validateDirection(orderDirection);
+
+      const tagJoins = uniqueTags
+        .map((_, index) => `INNER JOIN tags t${index} ON p.id = t${index}.photo_id AND t${index}.tag = ?`)
+        .join('\n        ');
+
+      const query = `
+        SELECT 
+          p.*,
+          GROUP_CONCAT(DISTINCT pf.folder_id) as folder_ids,
+          GROUP_CONCAT(DISTINCT tall.tag) as tags
+        FROM photos p
+        ${tagJoins}
+        LEFT JOIN photo_folders pf ON p.id = pf.photo_id
+        LEFT JOIN tags tall ON p.id = tall.photo_id
+        GROUP BY p.id
+        ORDER BY ${orderByClause} ${validatedDirection}
+        LIMIT ? OFFSET ?
+      `;
+      const photos = this.db.prepare(query).all(...uniqueTags, limit, offset);
+
+      const countJoins = uniqueTags
+        .map((_, index) => `INNER JOIN tags c${index} ON p.id = c${index}.photo_id AND c${index}.tag = ?`)
+        .join('\n        ');
+      const countQuery = `
+        SELECT COUNT(DISTINCT p.id) as total
+        FROM photos p
+        ${countJoins}
+      `;
+      const totalResult = this.db.prepare(countQuery).get(...uniqueTags);
+      const total = totalResult ? totalResult.total : 0;
+
+      const photosWithFolders = photos.map((photo) => {
+        const folders = photo.folder_ids ? photo.folder_ids.split(',').filter(Boolean) : [];
+        const photoTags = photo.tags ? photo.tags.split(',').filter(Boolean) : [];
+        const { folder_ids, tags: _tags, ...cleanPhoto } = photo;
+
+        return {
+          ...cleanPhoto,
+          folders,
+          tags: photoTags,
+          exif: photo.exif_data ? JSON.parse(photo.exif_data) : null,
+          gps: photo.gps_latitude ? {
+            latitude: photo.gps_latitude,
+            longitude: photo.gps_longitude,
+            altitude: photo.gps_altitude
+          } : null
+        };
+      });
+
+      const hasMore = offset + limit < total;
+
+      const totalSizeJoins = uniqueTags
+        .map((_, index) => `INNER JOIN tags s${index} ON p.id = s${index}.photo_id AND s${index}.tag = ?`)
+        .join('\n        ');
+      const totalSizeQuery = `
+        SELECT SUM(p.size) as totalSize
+        FROM photos p
+        ${totalSizeJoins}
+      `;
+      const totalSizeResult = this.db.prepare(totalSizeQuery).get(...uniqueTags);
+      const totalSize = totalSizeResult ? totalSizeResult.totalSize : 0;
+
+      return {
+        photos: photosWithFolders,
+        total,
+        hasMore,
+        totalSize
+      };
+    } catch (error) {
+      console.error('❌ Failed to get paginated photos by tags:', error.message);
+      return { photos: [], total: 0, hasMore: false, totalSize: 0 };
+    }
+  }
+
+  /**
    * Get paginated photos for a tag
    */
   async getPhotosByTagPaginated({ tag, limit = 50, offset = 0, orderBy = 'mtime', orderDirection = 'DESC' }) {
