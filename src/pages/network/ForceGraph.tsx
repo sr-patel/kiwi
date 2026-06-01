@@ -324,17 +324,18 @@ export function TagForceGraph({
 
   const getLinkWidth = useCallback(
     (link: DisplayLink) => {
+      const coCount = link.weight ?? 1;
+
       if (link.isInter) {
         const sourceId = resolveLinkEndpointId(link.source);
         const targetId = resolveLinkEndpointId(link.target);
         if (sourceId && targetId && selectedLinkKey === linkSelectionKey(sourceId, targetId)) {
           return 2.5;
         }
-        const pmi = link.pmi ?? 1;
-        return Math.min(0.5 + Math.log2(pmi + 1) * 0.25, 1.2);
+        return Math.min(0.4 + Math.log2(coCount + 1) * 0.65, 3);
       }
-      const weight = link.weight ?? 1;
-      return Math.min(0.4 + Math.log2(weight + 1) * 0.5, 2.5);
+
+      return Math.min(0.5 + Math.log2(coCount + 1) * 0.9, 5);
     },
     [selectedLinkKey],
   );
