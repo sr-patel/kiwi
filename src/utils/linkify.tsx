@@ -38,7 +38,7 @@ export const linkifyText = (text: string, className?: string): React.ReactNode =
   if (!text) return text;
 
   const parts = text.split(URL_REGEX);
-  
+
   return parts.map((part, index) => {
     // Check if this part is a URL
     if (URL_REGEX.test(part) && isValidUrl(part)) {
@@ -49,14 +49,14 @@ export const linkifyText = (text: string, className?: string): React.ReactNode =
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className={className || "text-blue-500 hover:text-blue-700 underline"}
+          className={className || 'text-blue-500 hover:text-blue-700 underline'}
           onClick={(e) => e.stopPropagation()} // Prevent modal from closing
         >
           {part}
         </a>
       );
     }
-    
+
     return part;
   });
 };
@@ -68,25 +68,25 @@ export const linkifyText = (text: string, className?: string): React.ReactNode =
  * @param className - Optional CSS classes for the link
  */
 export const renderClickableUrl = (
-  url: string, 
-  displayText?: string, 
-  className?: string
+  url: string,
+  displayText?: string,
+  className?: string,
 ): React.ReactNode => {
   if (!url) return null;
-  
+
   if (!isValidUrl(url)) {
     // If it's not a valid URL, just return the text
     return displayText || url;
   }
-  
+
   const href = normalizeUrl(url);
-  
+
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={className || "text-blue-500 hover:text-blue-700 underline"}
+      className={className || 'text-blue-500 hover:text-blue-700 underline'}
       onClick={(e) => e.stopPropagation()} // Prevent modal from closing
     >
       {displayText || url}

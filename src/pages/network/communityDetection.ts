@@ -4,10 +4,7 @@ import type { TagCoOccurrenceEdge } from './types';
  * Lightweight greedy modularity community detection (Louvain-inspired phase 1).
  * Suitable for tag graphs with typically fewer than 500 nodes.
  */
-export function detectCommunities(
-  nodeIds: string[],
-  edges: TagCoOccurrenceEdge[],
-): Map<string, number> {
+export function detectCommunities(nodeIds: string[], edges: TagCoOccurrenceEdge[]): Map<string, number> {
   if (nodeIds.length === 0) return new Map();
 
   const adjacency = new Map<string, Map<string, number>>();
@@ -79,14 +76,8 @@ export function detectCommunities(
       }
 
       if (bestCommunity !== currentCommunity && bestGain > 0) {
-        communityStrength.set(
-          currentCommunity,
-          (communityStrength.get(currentCommunity) ?? 0) - ki,
-        );
-        communityStrength.set(
-          bestCommunity,
-          (communityStrength.get(bestCommunity) ?? 0) + ki,
-        );
+        communityStrength.set(currentCommunity, (communityStrength.get(currentCommunity) ?? 0) - ki);
+        communityStrength.set(bestCommunity, (communityStrength.get(bestCommunity) ?? 0) + ki);
         community.set(node, bestCommunity);
         improved = true;
       }

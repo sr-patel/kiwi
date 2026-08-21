@@ -20,6 +20,6 @@ export const parseTagFromUrl = (tagPath: string): string | null => {
 export const getTagBreadcrumb = (tag: string): { name: string; url: string } => {
   return {
     name: `Tag: ${tag}`,
-    url: generateTagUrl(tag)
+    url: generateTagUrl(tag),
   };
-}; 
+};

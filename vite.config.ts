@@ -1,15 +1,17 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@kiwi/contracts': path.resolve(__dirname, './packages/contracts/src/index.ts'),
     },
   },
   server: {
@@ -17,7 +19,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: process.env.KIWI_API_PROXY ?? 'http://127.0.0.1:3001',
         changeOrigin: true,
         secure: false,
       },
@@ -25,6 +27,20 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
+    chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react-force-graph') || id.includes('node_modules/d3-'))
+            return 'network';
+          if (id.includes('node_modules/recharts')) return 'charts';
+          if (id.includes('node_modules/epubjs')) return 'epub';
+          if (id.includes('node_modules/@tanstack') || id.includes('node_modules/zustand')) return 'query';
+          if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) return 'react';
+          return undefined;
+        },
+      },
+    },
   },
-})
+});

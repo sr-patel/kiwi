@@ -3,7 +3,7 @@ import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
 
 interface AudioContextType {
-  audioRef: React.RefObject<HTMLAudioElement>;
+  audioRef: React.RefObject<HTMLAudioElement | null>;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -80,12 +80,12 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       audioRef.current.src = libraryService.getPhotoFileUrl(
         audioPlayer.currentAudio.id,
         audioPlayer.currentAudio.ext,
-        audioPlayer.currentAudio.name
+        audioPlayer.currentAudio.name,
       );
       audioRef.current.load();
       setCurrentTime(0);
       setDuration(0);
-      
+
       // Check if podcast mode is enabled and restore saved time
       if (podcastMode.enabled && audioPlayer.currentAudio) {
         const savedTime = getAudioTime(audioPlayer.currentAudio.id);
@@ -122,7 +122,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
       setAudioPlayerState({ currentTime: audio.currentTime });
-      
+
       // Save time for podcast mode if enabled
       if (podcastMode.enabled && audioPlayer.currentAudio) {
         saveAudioTime(audioPlayer.currentAudio.id, audio.currentTime);
@@ -154,26 +154,51 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsPlaying(false);
     setAudioPlayerState({ isPlaying: false });
   }, [setAudioPlayerState]);
-  const seek = useCallback((time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
-      setAudioPlayerState({ currentTime: time });
-    }
-  }, [setAudioPlayerState]);
-  const setVolume = useCallback((v: number) => {
-    if (audioRef.current) audioRef.current.volume = v;
-    setVolumeState(v);
-    setAudioPlayerState({ volume: v });
-  }, [setAudioPlayerState]);
-  const setMuted = useCallback((m: boolean) => {
-    if (audioRef.current) audioRef.current.muted = m;
-    setMutedState(m);
-    setAudioPlayerState({ isMuted: m });
-  }, [setAudioPlayerState]);
+  const seek = useCallback(
+    (time: number) => {
+      if (audioRef.current) {
+        audioRef.current.currentTime = time;
+        setCurrentTime(time);
+        setAudioPlayerState({ currentTime: time });
+      }
+    },
+    [setAudioPlayerState],
+  );
+  const setVolume = useCallback(
+    (v: number) => {
+      if (audioRef.current) audioRef.current.volume = v;
+      setVolumeState(v);
+      setAudioPlayerState({ volume: v });
+    },
+    [setAudioPlayerState],
+  );
+  const setMuted = useCallback(
+    (m: boolean) => {
+      if (audioRef.current) audioRef.current.muted = m;
+      setMutedState(m);
+      setAudioPlayerState({ isMuted: m });
+    },
+    [setAudioPlayerState],
+  );
 
   return (
-    <AudioContext.Provider value={{ audioRef, isPlaying, currentTime, duration, volume, isMuted, play, pause, seek, setVolume, setMuted, analyzerNode: analyzerRef.current, getFrequencyData }}>
+    <AudioContext.Provider
+      value={{
+        audioRef,
+        isPlaying,
+        currentTime,
+        duration,
+        volume,
+        isMuted,
+        play,
+        pause,
+        seek,
+        setVolume,
+        setMuted,
+        analyzerNode: analyzerRef.current,
+        getFrequencyData,
+      }}
+    >
       {children}
       <audio ref={audioRef} hidden />
     </AudioContext.Provider>
@@ -184,4 +209,4 @@ export function useAudio() {
   const ctx = useContext(AudioContext);
   if (!ctx) throw new Error('useAudio must be used within AudioProvider');
   return ctx;
-} 
+}

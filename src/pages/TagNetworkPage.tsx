@@ -3,10 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
-import {
-  useTagCoOccurrences,
-  DETAIL_THRESHOLDS,
-} from '@/hooks/useTagCoOccurrences';
+import { useTagCoOccurrences, DETAIL_THRESHOLDS } from '@/hooks/useTagCoOccurrences';
 import { TagForceGraph } from '@/pages/network/ForceGraph';
 import { TagPhotoPanel } from '@/pages/network/TagPhotoPanel';
 import type { NetworkSelection } from '@/pages/network/types';
@@ -159,9 +156,7 @@ export const TagNetworkPage: React.FC = () => {
               max={4}
               step={0.1}
               value={zoomLevel}
-              onChange={(e) =>
-                setTagNetworkSettings({ zoomLevel: parseFloat(e.target.value) })
-              }
+              onChange={(e) => setTagNetworkSettings({ zoomLevel: parseFloat(e.target.value) })}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-current"
               style={{ accentColor: accentHex }}
               aria-label="Graph zoom level"

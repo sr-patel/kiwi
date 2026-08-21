@@ -123,8 +123,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
     </>
   ) : (
     <>
-      {photo.width}×{photo.height} • {libraryService.formatFileSize(photo.size)} •{' '}
-      {photo.ext.toUpperCase()}
+      {photo.width}×{photo.height} • {libraryService.formatFileSize(photo.size)} • {photo.ext.toUpperCase()}
     </>
   );
 
@@ -137,9 +136,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
           onVisibleChange(true);
         }}
         className={`absolute bottom-4 left-4 z-10 flex items-center justify-center rounded-md bg-black/25 p-1.5 text-white/70 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-black/40 hover:text-white ${
-          visible
-            ? 'pointer-events-none scale-75 opacity-0'
-            : 'pointer-events-auto scale-100 opacity-100'
+          visible ? 'pointer-events-none scale-75 opacity-0' : 'pointer-events-auto scale-100 opacity-100'
         }`}
         title="Show info (I)"
         aria-label="Show photo info"
@@ -163,9 +160,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
       >
         <div className="flex min-h-0 max-h-[70vh] w-full flex-1 flex-col rounded-lg bg-black/30 text-white backdrop-blur-lg">
           <div className="flex shrink-0 items-start justify-between gap-2 border-b border-white/10 px-3 py-2">
-            <h3 className="min-w-0 flex-1 break-words text-base font-semibold leading-snug">
-              {photo.name}
-            </h3>
+            <h3 className="min-w-0 flex-1 break-words text-base font-semibold leading-snug">{photo.name}</h3>
             <button
               type="button"
               onClick={() => onVisibleChange(false)}
@@ -264,7 +259,11 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
 
             {isExternalUrl(photo.url) && (
               <InfoRow icon={BookOpen} label="URL">
-                {renderClickableUrl(photo.url, undefined, 'text-blue-400 hover:text-blue-300 underline break-all')}
+                {renderClickableUrl(
+                  photo.url,
+                  undefined,
+                  'text-blue-400 hover:text-blue-300 underline break-all',
+                )}
               </InfoRow>
             )}
 
@@ -285,12 +284,14 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
               <div className="text-sm leading-snug text-gray-300">
                 <div className="mb-1 font-medium text-white">EXIF</div>
                 <div className="space-y-1 pl-6">
-                  {Object.entries(JSON.parse(photo.exif_data)).slice(0, 5).map(([key, value]) => (
-                    <div key={key} className="flex flex-col gap-0.5">
-                      <span className="shrink-0 text-gray-400">{key}:</span>
-                      <span className="break-words">{String(value)}</span>
-                    </div>
-                  ))}
+                  {Object.entries(JSON.parse(photo.exif_data))
+                    .slice(0, 5)
+                    .map(([key, value]) => (
+                      <div key={key} className="flex flex-col gap-0.5">
+                        <span className="shrink-0 text-gray-400">{key}:</span>
+                        <span className="break-words">{String(value)}</span>
+                      </div>
+                    ))}
                 </div>
               </div>
             )}

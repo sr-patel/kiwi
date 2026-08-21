@@ -3,6 +3,11 @@ server/node_modules
 dist
 example.library
 data
+.tmp
+coverage
+server/coverage
+playwright-report
+test-results
 
 # OS / editor
 .DS_Store

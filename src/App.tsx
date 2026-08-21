@@ -1,10 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { Suspense, lazy, useEffect, useState, useCallback } from 'react';
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Layout/Sidebar';
 import { PhotoGrid } from '@/components/PhotoGrid/PhotoGrid';
-import SettingsPage from '@/pages/SettingsPage';
-import DashboardPage from '@/pages/DashboardPage';
-import TagNetworkPage from '@/pages/TagNetworkPage';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
 import { Moon, Sun, Settings as SettingsIcon, Network } from 'lucide-react';
@@ -22,7 +19,21 @@ import { SplashScreen } from '@/components/SplashScreen/SplashScreen';
 import { SetupWizard } from '@/components/SetupWizard/SetupWizard';
 import { ServerConnectionScreen } from '@/components/SetupWizard/ServerConnectionScreen';
 import { useLibrarySyncRefresh } from '@/hooks/useLibrarySyncRefresh';
+import { kiwiApi } from '@/services/kiwiApi';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/queryKeys';
 import './App.css';
+
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const TagNetworkPage = lazy(() => import('@/pages/TagNetworkPage'));
+
+const RouteLoading = () => (
+  <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-live="polite">
+    <span className="sr-only">Loading page</span>
+    <div className="h-9 w-9 animate-spin rounded-full border-2 border-gray-300 border-t-current dark:border-gray-700" />
+  </div>
+);
 
 // ─── Route components ───
 
@@ -119,12 +130,7 @@ function App() {
     setCurrentFolder,
     setCurrentTag,
     setFolderTree,
-    setAllPhotos,
     accentColor,
-    loadFromCache,
-    clearCache,
-    isCacheValid,
-    cacheProgress,
     audioPlayer,
     closeAudioPlayer,
     playNextAudio,
@@ -134,101 +140,61 @@ function App() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [showSplash, setShowSplash] = useState(true);
-  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
-  const [serverUnreachable, setServerUnreachable] = useState(false);
-  const [configRetrying, setConfigRetrying] = useState(false);
   const { folderTree } = useAppStore();
+  const configQuery = useQuery({
+    queryKey: queryKeys.config(),
+    queryFn: ({ signal }) => kiwiApi.config.get(signal),
+    staleTime: 30_000,
+  });
+  const needsSetup = configQuery.data ? !configQuery.data._configured : null;
+  const serverUnreachable = configQuery.isError;
 
-  const librarySyncEnabled =
-    needsSetup === false && !!currentLibraryPath && !serverUnreachable;
+  const librarySyncEnabled = needsSetup === false && !!currentLibraryPath && !serverUnreachable;
   useLibrarySyncRefresh(librarySyncEnabled);
 
-  const fetchConfig = useCallback(async () => {
-    try {
-      const res = await fetch('/api/config');
-      if (!res.ok) {
-        setServerUnreachable(true);
-        setNeedsSetup(null);
-        return;
-      }
-      const data = await res.json();
-      setServerUnreachable(false);
-      setNeedsSetup(!data._configured);
-      if (data._configured && !currentLibraryPath) {
-        setCurrentLibraryPath(data.libraryPath);
-      }
-    } catch {
-      setServerUnreachable(true);
-      setNeedsSetup(null);
-    }
-  }, [currentLibraryPath, setCurrentLibraryPath]);
-
-  const handleConfigRetry = useCallback(async () => {
-    setConfigRetrying(true);
-    await fetchConfig();
-    setConfigRetrying(false);
-  }, [fetchConfig]);
-
-  // ── First-run detection: ask server if library is configured ──
   useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+    if (configQuery.data?._configured && !currentLibraryPath) {
+      setCurrentLibraryPath(configQuery.data.libraryPath);
+    }
+  }, [configQuery.data, currentLibraryPath, setCurrentLibraryPath]);
 
   const handleSetupComplete = useCallback(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.config() });
+  }, [queryClient]);
 
   // ── Detect mobile ──
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      if (mobile && sidebarOpen) setSidebarOpen(false);
+      if (mobile) setSidebarOpen(false);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [setIsMobile, sidebarOpen, setSidebarOpen]);
+  }, [setIsMobile, setSidebarOpen]);
 
-  // ── Initialize library with IndexedDB caching ──
+  // ── Initialize the lightweight folder tree; photo pages live in TanStack Query ──
   useEffect(() => {
     const initializeLibrary = async () => {
       try {
         setIsLoading(true);
 
-        const cacheLoaded = await loadFromCache();
-        if (cacheLoaded) {
-          const cacheValid = await isCacheValid();
-          if (cacheValid) return;
-        }
-
         const result = await libraryService.initializeLibrary();
         if (result) {
-          await setFolderTree(result.folderTree);
-          await setAllPhotos(result.allPhotos);
+          setFolderTree(result.folderTree);
         }
       } catch (error) {
         console.error('Error initializing library:', error);
-        if (error instanceof Error && error.name === 'QuotaExceededError') {
-          try {
-            await clearCache();
-            const result = await libraryService.initializeLibrary();
-            if (result) {
-              await setFolderTree(result.folderTree);
-              await setAllPhotos(result.allPhotos);
-            }
-          } catch (retryError) {
-            console.error('Failed to initialize library after cache clear:', retryError);
-          }
-        }
       } finally {
         setIsLoading(false);
       }
     };
 
     if (currentLibraryPath) initializeLibrary();
-  }, [currentLibraryPath, setCurrentLibraryPath, loadFromCache, isCacheValid, setFolderTree, setAllPhotos, setIsLoading, clearCache]);
+  }, [currentLibraryPath, setFolderTree, setIsLoading]);
 
   // ── Hide splash once data arrives ──
   useEffect(() => {
@@ -261,7 +227,10 @@ function App() {
   if (serverUnreachable) {
     return (
       <div className={theme === 'dark' ? 'dark' : ''}>
-        <ServerConnectionScreen onRetry={handleConfigRetry} retrying={configRetrying} />
+        <ServerConnectionScreen
+          onRetry={() => void configQuery.refetch()}
+          retrying={configQuery.isFetching}
+        />
       </div>
     );
   }
@@ -283,16 +252,24 @@ function App() {
           <div className="bg-gray-50 dark:bg-black min-h-screen">
             {/* Header */}
             <header className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
-              <div className={`flex items-center justify-between px-4 transition-all duration-300 ease-in-out ${
-                isMiniPlayer ? 'h-24' : 'py-4'
-              }`}>
+              <div
+                className={`flex items-center justify-between px-4 transition-all duration-300 ease-in-out ${
+                  isMiniPlayer ? 'h-24' : 'py-4'
+                }`}
+              >
                 <div className="flex items-center gap-4 flex-shrink-0">
                   <button
                     onClick={() => setSidebarOpen(!sidebarOpen)}
+                    aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
                     className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 6h16M4 12h16M4 18h16"
+                      />
                     </svg>
                   </button>
                   <div className="flex items-center gap-2">
@@ -306,39 +283,9 @@ function App() {
                   </div>
                 )}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {cacheProgress.isCaching && (
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-lg border"
-                      style={{
-                        backgroundColor: `${getAccentHex(accentColor)}20`,
-                        borderColor: `${getAccentHex(accentColor)}40`
-                      }}>
-                      <div className="w-4 h-4 rounded-full animate-spin"
-                        style={{
-                          borderWidth: '2px',
-                          borderStyle: 'solid',
-                          borderColor: `${getAccentHex(accentColor)}40`,
-                          borderTopColor: getAccentHex(accentColor)
-                        }} />
-                      <div className="flex flex-col gap-1">
-                        <span className="text-sm" style={{ color: getAccentHex(accentColor) }}>
-                          Caching {cacheProgress.current.toLocaleString()} / {cacheProgress.total.toLocaleString()} files
-                        </span>
-                        <div className="w-32 h-1 rounded-full overflow-hidden"
-                          style={{ backgroundColor: `${getAccentHex(accentColor)}30` }}>
-                          <div
-                            className="h-full transition-all duration-300 ease-out"
-                            style={{
-                              width: `${cacheProgress.total > 0 ? (cacheProgress.current / cacheProgress.total) * 100 : 0}%`,
-                              background: `linear-gradient(to right, ${getAccentHex(accentColor)}, ${getAccentHex(accentColor)}CC)`
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   <button
                     onClick={() => navigate('/network')}
+                    aria-label="Open tag network"
                     className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
                     title="Tag Network"
                   >
@@ -346,12 +293,14 @@ function App() {
                   </button>
                   <button
                     onClick={() => navigate('/settings')}
+                    aria-label="Open settings"
                     className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
                   >
                     <SettingsIcon className="w-5 h-5" />
                   </button>
                   <button
                     onClick={toggleTheme}
+                    aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
                     className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
                   >
                     {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -377,16 +326,39 @@ function App() {
                 className="flex-1 transition-all duration-300 ease-in-out"
                 style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
               >
-                <Routes>
-                  <Route path="/" element={<HomeRedirect />} />
-                  <Route path="/dashboard" element={<RouteWrapper><DashboardPage /></RouteWrapper>} />
-                  <Route path="/all" element={<AllFilesRoute isMobile={isMobile} />} />
-                  <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
-                  <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
-                  <Route path="/network" element={<RouteWrapper><TagNetworkPage /></RouteWrapper>} />
-                  <Route path="/settings" element={<RouteWrapper><SettingsPage /></RouteWrapper>} />
-                  <Route path="*" element={<HomeRedirect />} />
-                </Routes>
+                <Suspense fallback={<RouteLoading />}>
+                  <Routes>
+                    <Route path="/" element={<HomeRedirect />} />
+                    <Route
+                      path="/dashboard"
+                      element={
+                        <RouteWrapper>
+                          <DashboardPage />
+                        </RouteWrapper>
+                      }
+                    />
+                    <Route path="/all" element={<AllFilesRoute isMobile={isMobile} />} />
+                    <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
+                    <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
+                    <Route
+                      path="/network"
+                      element={
+                        <RouteWrapper>
+                          <TagNetworkPage />
+                        </RouteWrapper>
+                      }
+                    />
+                    <Route
+                      path="/settings"
+                      element={
+                        <RouteWrapper>
+                          <SettingsPage />
+                        </RouteWrapper>
+                      }
+                    />
+                    <Route path="*" element={<HomeRedirect />} />
+                  </Routes>
+                </Suspense>
               </main>
             </div>
 

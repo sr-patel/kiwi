@@ -1,16 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
-import {
-  FolderOpen, CheckCircle, AlertCircle, Loader, ArrowRight, ArrowLeft, Info,
-} from 'lucide-react';
+import { FolderOpen, CheckCircle, AlertCircle, Loader, ArrowRight, ArrowLeft, Info } from 'lucide-react';
 import { LibraryFolderPicker } from './LibraryFolderPicker';
-
-interface ValidationResult {
-  valid: boolean;
-  reason?: string;
-  hint?: string;
-}
+import { kiwiApi } from '@/services/kiwiApi';
+import { toUserMessage } from '@/services/apiClient';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -43,12 +37,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
     setHint(null);
 
     try {
-      const validateRes = await fetch('/api/config/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ libraryPath: libraryPath.trim() }),
-      });
-      const validation: ValidationResult = await validateRes.json();
+      const validation = await kiwiApi.config.validate(libraryPath.trim());
 
       if (!validation.valid) {
         setStatus('invalid');
@@ -57,18 +46,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
         return;
       }
 
-      const saveRes = await fetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ libraryPath: libraryPath.trim() }),
-      });
-      const saveData = await saveRes.json();
-
-      if (!saveData.success) {
-        setStatus('invalid');
-        setError('Could not save your library path. Try again.');
-        return;
-      }
+      await kiwiApi.config.update({ libraryPath: libraryPath.trim() });
 
       setStep(2);
       setStatus('idle');
@@ -83,21 +61,18 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
         }
 
         try {
-          const statusRes = await fetch('/api/database/status');
-          if (statusRes.ok) {
-            const statusData = await statusRes.json();
-            const count = statusData.totalPhotos || 0;
-            setPhotoCount(count);
-            if (count > 0) {
-              setBuildMessage(`Found ${count.toLocaleString()} photos`);
-              setTimeout(onComplete, 800);
-              return;
-            }
-            if (statusData.exists) {
-              setBuildMessage('Library is ready (no photos yet)');
-              setTimeout(onComplete, 800);
-              return;
-            }
+          const statusData = await kiwiApi.system.databaseStatus();
+          const count = statusData.totalPhotos;
+          setPhotoCount(count);
+          if (count > 0) {
+            setBuildMessage(`Found ${count.toLocaleString()} photos`);
+            setTimeout(onComplete, 800);
+            return;
+          }
+          if (statusData.exists) {
+            setBuildMessage('Library is ready (no photos yet)');
+            setTimeout(onComplete, 800);
+            return;
           }
         } catch {
           // still initializing
@@ -109,9 +84,9 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
       };
 
       await poll();
-    } catch {
+    } catch (requestError) {
       setStatus('invalid');
-      setError('Could not connect to Kiwi. Make sure Docker or the server is running.');
+      setError(toUserMessage(requestError, 'Could not finish library setup.'));
     }
   }, [libraryPath, onComplete]);
 
@@ -169,11 +144,17 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
               <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
               <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
                 <p>
-                  Kiwi browses photo libraries created in <strong className="text-gray-800 dark:text-gray-200">Eagle</strong>.
-                  You need an existing Eagle library (a folder ending in <code className="px-1 rounded bg-gray-100 dark:bg-gray-800">.library</code>).
+                  Kiwi browses photo libraries created in{' '}
+                  <strong className="text-gray-800 dark:text-gray-200">Eagle</strong>. You need an existing
+                  Eagle library (a folder ending in{' '}
+                  <code className="rounded bg-gray-100 px-1 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    .library
+                  </code>
+                  ).
                 </p>
                 <p>
-                  Eagle can stay open on your computer. Kiwi reads the same files and keeps them in sync automatically.
+                  Eagle can stay open on your computer. Kiwi reads the same files and keeps them in sync
+                  automatically.
                 </p>
                 <p className="text-xs text-gray-500">
                   To find your library in Eagle: <strong>Library → Manage library</strong>
@@ -200,8 +181,11 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                   Your Eagle library
                 </label>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  Browse to your <code className="px-1 rounded bg-gray-100 dark:bg-gray-800">.library</code> folder.
-                  If you use Docker, it appears under the libraries folder you mounted.
+                  Browse to your{' '}
+                  <code className="rounded bg-gray-100 px-1 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    .library
+                  </code>{' '}
+                  folder. If you use Docker, it appears under the libraries folder you mounted.
                 </p>
                 <LibraryFolderPicker
                   selectedPath={libraryPath}
@@ -228,6 +212,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                   <FolderOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
+                    aria-label="Advanced library path"
                     value={libraryPath}
                     onChange={(e) => {
                       setLibraryPath(e.target.value);
@@ -252,7 +237,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
               )}
 
               {libraryPath && status !== 'invalid' && (
-                <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1.5">
+                <p className="flex items-center gap-1.5 text-sm text-green-700 dark:text-green-300">
                   <CheckCircle className="w-4 h-4" />
                   Library folder selected
                 </p>

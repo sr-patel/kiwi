@@ -28,7 +28,7 @@ function waitForHealth(url, maxAttempts = 60) {
   });
 }
 
-const server = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['start'], {
+const server = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], {
   cwd: serverDir,
   stdio: 'inherit',
   shell: process.platform === 'win32',

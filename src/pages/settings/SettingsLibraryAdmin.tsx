@@ -1,11 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  AlertCircle,
-  CheckCircle,
-  Database,
-  HardDrive,
-  Loader,
-} from 'lucide-react';
+import { AlertCircle, CheckCircle, Database, HardDrive, Loader } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
 import { libraryService } from '@/services/libraryService';
@@ -14,40 +8,47 @@ import { WatcherActivityPanel } from '@/pages/dashboard/WatcherActivityPanel';
 import { useDashboardData } from '@/pages/dashboard/useDashboardData';
 import { SettingsCard } from './SettingsCard';
 import { DatabaseMaintenancePanel } from './DatabaseMaintenancePanel';
+import { kiwiApi } from '@/services/kiwiApi';
+import { toUserMessage } from '@/services/apiClient';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/queryKeys';
 
 type LibraryStatus = 'idle' | 'loading' | 'valid' | 'invalid' | 'saving' | 'error';
 
 export function SettingsLibraryAdmin() {
+  const queryClient = useQueryClient();
   const accentHex = getAccentHex(useAppStore((s) => s.accentColor));
-  const { setCurrentLibraryPath, setFolderTree, setAllPhotos, clearCache } = useAppStore();
+  const { setCurrentLibraryPath, setFolderTree } = useAppStore();
   const { stats, syncStatus, refresh } = useDashboardData();
 
   const [libraryPath, setLibraryPath] = useState('');
   const [libraryStatus, setLibraryStatus] = useState<LibraryStatus>('idle');
   const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
+  const configQuery = useQuery({
+    queryKey: queryKeys.config(),
+    queryFn: ({ signal }) => kiwiApi.config.get(signal),
+  });
+  const validationMutation = useMutation({
+    mutationFn: (path: string) => kiwiApi.config.validate(path),
+  });
+  const configMutation = useMutation({
+    mutationFn: (path: string) => kiwiApi.config.update({ libraryPath: path }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.config() }),
+  });
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/config');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setLibraryPath(data.libraryPath || '');
-        setIsConfigured(!!data._configured);
-        if (!data._configured && data._validation?.reason) {
-          setLibraryMessage(data._validation.reason);
-        }
-      } catch {
-        // backend unavailable
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const data = configQuery.data;
+    if (!data) return;
+    setLibraryPath(data.libraryPath || '');
+    setIsConfigured(Boolean(data._configured));
+    if (!data._configured && data._validation?.reason) setLibraryMessage(data._validation.reason);
+  }, [configQuery.data]);
+
+  useEffect(() => {
+    if (configQuery.error)
+      setLibraryMessage(toUserMessage(configQuery.error, 'Could not load library settings.'));
+  }, [configQuery.error]);
 
   const validateLibraryPath = useCallback(async () => {
     if (!libraryPath.trim()) {
@@ -60,22 +61,17 @@ export function SettingsLibraryAdmin() {
     setLibraryMessage(null);
 
     try {
-      const res = await fetch('/api/config/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ libraryPath: libraryPath.trim() }),
-      });
-      const data = await res.json();
+      const data = await validationMutation.mutateAsync(libraryPath.trim());
       if (data.valid) {
         setLibraryStatus('valid');
         setLibraryMessage('Valid Eagle library detected.');
       } else {
         setLibraryStatus('invalid');
-        setLibraryMessage(data.hint ? `${data.reason} ${data.hint}` : (data.reason || 'Invalid library path.'));
+        setLibraryMessage(data.hint ? `${data.reason} ${data.hint}` : data.reason || 'Invalid library path.');
       }
-    } catch {
+    } catch (error) {
       setLibraryStatus('error');
-      setLibraryMessage('Could not reach the backend. Is the server running?');
+      setLibraryMessage(toUserMessage(error, 'Could not validate that library.'));
     }
   }, [libraryPath]);
 
@@ -85,39 +81,27 @@ export function SettingsLibraryAdmin() {
     setLibraryMessage(null);
 
     try {
-      const res = await fetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ libraryPath: libraryPath.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setLibraryStatus('error');
-        setLibraryMessage(data.error || 'Failed to save configuration.');
-        return;
-      }
+      await configMutation.mutateAsync(libraryPath.trim());
       setLibraryStatus('valid');
       setIsConfigured(true);
       setLibraryMessage('Configuration saved. Reloading your library…');
 
       setCurrentLibraryPath(libraryPath.trim());
       try {
-        await clearCache();
         const result = await libraryService.initializeLibrary();
         if (result) {
-          await setFolderTree(result.folderTree);
-          await setAllPhotos(result.allPhotos);
+          setFolderTree(result.folderTree);
         }
         setLibraryMessage('Library path saved and reloaded.');
         refresh();
       } catch {
         setLibraryMessage('Path saved. Refresh the page if folders do not update.');
       }
-    } catch {
+    } catch (error) {
       setLibraryStatus('error');
-      setLibraryMessage('Failed to save configuration. Check server connection.');
+      setLibraryMessage(toUserMessage(error, 'Failed to save configuration.'));
     }
-  }, [libraryPath, setCurrentLibraryPath, setFolderTree, setAllPhotos, clearCache, refresh]);
+  }, [libraryPath, setCurrentLibraryPath, setFolderTree, refresh]);
 
   const renderStatusIcon = () => {
     if (libraryStatus === 'loading' || libraryStatus === 'saving') {
@@ -134,15 +118,13 @@ export function SettingsLibraryAdmin() {
 
   return (
     <div className="space-y-5">
-      <SettingsCard
-        title="Library path"
-        description="Path to your Eagle .library folder on the server."
-      >
+      <SettingsCard title="Library path" description="Path to your Eagle .library folder on the server.">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <HardDrive className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
+              aria-label="Library path"
               value={libraryPath}
               onChange={(e) => {
                 setLibraryPath(e.target.value);
@@ -213,9 +195,7 @@ export function SettingsLibraryAdmin() {
           <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
             <div className="text-sm text-gray-500 dark:text-zinc-400">Last refresh</div>
             <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-zinc-100">
-              {stats.lastRefresh
-                ? new Date(stats.lastRefresh).toLocaleString()
-                : 'Never'}
+              {stats.lastRefresh ? new Date(stats.lastRefresh).toLocaleString() : 'Never'}
             </p>
           </div>
         </div>

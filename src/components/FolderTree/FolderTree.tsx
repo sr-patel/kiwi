@@ -1,6 +1,16 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Image, Video, Music, FileText, LayoutDashboard } from 'lucide-react';
+import {
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  Image,
+  Video,
+  Music,
+  FileText,
+  LayoutDashboard,
+} from 'lucide-react';
 import { FolderNode } from '@/types';
 import { useAppStore } from '@/store';
 import { getAccentText, getAccentSelected, getAccentHover, getAccentBorder } from '@/utils/accentColors';
@@ -24,7 +34,13 @@ interface FolderItemProps {
   folderCounts: { [folderId: string]: number };
 }
 
-const FolderItem: React.FC<FolderItemProps> = ({ folder, level, currentFolderId, onFolderSelect, folderCounts }) => {
+const FolderItem: React.FC<FolderItemProps> = ({
+  folder,
+  level,
+  currentFolderId,
+  onFolderSelect,
+  folderCounts,
+}) => {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const { accentColor, folderTree } = useAppStore();
   const navigate = useNavigate();
@@ -40,7 +56,6 @@ const FolderItem: React.FC<FolderItemProps> = ({ folder, level, currentFolderId,
   };
 
   const handleSelect = () => {
-    console.log('FolderTree: Folder clicked:', folder.name, folder.id);
     if (folderTree) {
       const folderUrl = generateFolderUrl(folder, folderTree);
       navigate(folderUrl);
@@ -69,35 +84,38 @@ const FolderItem: React.FC<FolderItemProps> = ({ folder, level, currentFolderId,
       <div
         className={`
           flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors
-          ${isSelected 
-            ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}` 
-            : `hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200`
+          ${
+            isSelected
+              ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
+              : `hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200`
           }
         `}
         style={{ paddingLeft: `${level * 16 + 12}px` }}
-        onClick={handleSelect}
       >
         {hasChildren && (
           <button
+            type="button"
             onClick={handleToggle}
+            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${folder.name}`}
+            aria-expanded={isExpanded}
             className="p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded text-gray-500 dark:text-gray-400"
           >
-            {isExpanded ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
+            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           </button>
         )}
         {!hasChildren && <div className="w-5" />}
-        
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className={`
-            ${isSelected 
-              ? getAccentText(accentColor)
-              : 'text-gray-500 dark:text-gray-400'
-            }
-          `}>
+
+        <button
+          type="button"
+          onClick={handleSelect}
+          aria-current={isSelected ? 'page' : undefined}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <div
+            className={`
+            ${isSelected ? getAccentText(accentColor) : 'text-gray-500 dark:text-gray-400'}
+          `}
+          >
             {getFolderIcon()}
           </div>
           <span className="truncate font-medium">{folder.name}</span>
@@ -106,9 +124,9 @@ const FolderItem: React.FC<FolderItemProps> = ({ folder, level, currentFolderId,
               {photoCount}
             </span>
           )}
-        </div>
+        </button>
       </div>
-      
+
       {isExpanded && hasChildren && (
         <div>
           {folder.children.map((child) => (
@@ -127,78 +145,93 @@ const FolderItem: React.FC<FolderItemProps> = ({ folder, level, currentFolderId,
   );
 };
 
-export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId, currentTag, onFolderSelect, onTagSelect }) => {
+export const FolderTree: React.FC<FolderTreeProps> = ({
+  folders,
+  currentFolderId,
+  currentTag,
+  onFolderSelect,
+  onTagSelect,
+}) => {
   const { accentColor, setCurrentFolder, setCurrentTag, defaultLandingPage } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
   const isDashboard = location.pathname === '/dashboard';
-  const isAllFiles = location.pathname === '/all' || (location.pathname === '/' && defaultLandingPage !== 'dashboard') || (currentFolderId === null && !currentTag && !isDashboard);
+  const isAllFiles =
+    location.pathname === '/all' ||
+    (location.pathname === '/' && defaultLandingPage !== 'dashboard') ||
+    (currentFolderId === null && !currentTag && !isDashboard);
 
   const { data: folderCounts = {}, isLoading: isLoadingCounts } = useRecursiveFolderCounts();
   const { data: totalPhotoCount = 0, isLoading: isLoadingTotalCount } = useTotalPhotoCount();
-  
+
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">
       {/* Folders group */}
       <div className="mb-2 shrink-0 overflow-y-auto">
-        <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Navigation</div>
+        <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">
+          Navigation
+        </div>
 
         {/* Dashboard */}
-        <div
+        <button
+          type="button"
           className={`
-            flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors mb-1
-            ${isDashboard
-              ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
-              : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200'
+            flex w-full items-center gap-2 px-3 py-2 text-left text-sm cursor-pointer rounded-md transition-colors mb-1
+            ${
+              isDashboard
+                ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
+                : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200'
             }
           `}
           onClick={() => {
-            console.log('FolderTree: Dashboard clicked');
             setCurrentFolder(null);
             setCurrentTag(null);
             navigate('/dashboard');
             onFolderSelect(null);
             onTagSelect(null);
           }}
+          aria-current={isDashboard ? 'page' : undefined}
         >
-          <LayoutDashboard className={`w-4 h-4 ${
-            isDashboard
-              ? getAccentText(accentColor)
-              : 'text-gray-500 dark:text-gray-400'
-          }`} />
+          <LayoutDashboard
+            className={`w-4 h-4 ${
+              isDashboard ? getAccentText(accentColor) : 'text-gray-500 dark:text-gray-400'
+            }`}
+          />
           <span className="font-medium">Dashboard</span>
-        </div>
+        </button>
 
         {/* Root folder / All Files */}
-        <div
+        <button
+          type="button"
           className={`
-            flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors mb-4
-            ${isAllFiles
-              ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
-              : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200'
+            flex w-full items-center gap-2 px-3 py-2 text-left text-sm cursor-pointer rounded-md transition-colors mb-4
+            ${
+              isAllFiles
+                ? `${getAccentSelected(accentColor)} border ${getAccentBorder(accentColor)}`
+                : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-200'
             }
           `}
-          onClick={() => { 
-            console.log('FolderTree: All Files clicked');
+          onClick={() => {
             setCurrentFolder(null);
             setCurrentTag(null);
             navigate('/all');
-            onFolderSelect(null); 
-            onTagSelect(null); 
+            onFolderSelect(null);
+            onTagSelect(null);
           }}
+          aria-current={isAllFiles ? 'page' : undefined}
         >
-          <Folder className={`w-4 h-4 ${
-            isAllFiles
-              ? getAccentText(accentColor)
-              : 'text-gray-500 dark:text-gray-400'
-          }`} />
+          <Folder
+            className={`w-4 h-4 ${
+              isAllFiles ? getAccentText(accentColor) : 'text-gray-500 dark:text-gray-400'
+            }`}
+          />
           <span className="font-medium">All Files</span>
           {!isLoadingTotalCount && (
             <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
               {totalPhotoCount}
             </span>
           )}
-        </div>
+        </button>
 
         <div className="px-3 py-1 text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Folders</div>
         {/* Folder tree */}
@@ -208,9 +241,8 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ folders, currentFolderId
             folder={folder}
             level={0}
             currentFolderId={currentFolderId}
-            onFolderSelect={id => { 
-              console.log('FolderTree: Folder selected:', id);
-              onFolderSelect(id); 
+            onFolderSelect={(id) => {
+              onFolderSelect(id);
             }}
             folderCounts={folderCounts}
           />

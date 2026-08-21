@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+server/coverage
+packages/contracts/dist
+data
+example.library
+server/*.cjs
+package-lock.json
+config.json
+playwright-report
+test-results

@@ -1,87 +1,67 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { libraryService } from '@/services/libraryService';
-import { PhotoMetadata, PaginatedPhotosResponse } from '@/types';
+import { useInfiniteQuery, useQuery, type InfiniteData } from '@tanstack/react-query';
+import type { PaginatedPhotosResponse } from '@/types';
 import { useAppStore } from '@/store';
+import { queryKeys } from '@/hooks/queryKeys';
+import { photoApi } from '@/services/photoApi';
+import { libraryService } from '@/services/libraryService';
 
-type InfinitePhotosOptions = { field: string; direction: 'asc' | 'desc'; randomSeed?: number; enabled?: boolean };
+type InfinitePhotosOptions = {
+  field: string;
+  direction: 'asc' | 'desc';
+  randomSeed?: number;
+  enabled?: boolean;
+};
 
 export function useInfinitePhotos(folderId: string | null, sortOptions?: InfinitePhotosOptions) {
-  const { requestPageSize } = useAppStore();
-  return useInfiniteQuery<PaginatedPhotosResponse, Error>({
-    queryKey: [
-      'photos',
-      folderId,
-      sortOptions?.field || 'mtime',
-      sortOptions?.direction || 'desc',
-      sortOptions?.randomSeed || null,
-      sortOptions?.enabled ?? true,
-    ],
-    queryFn: async ({ pageParam = 0 }: { pageParam?: number }): Promise<PaginatedPhotosResponse> => {
-      const limit = requestPageSize || 50;
-      const offset = pageParam * limit;
-      console.log('useInfinitePhotos: Loading photos', {
-        folderId,
-        limit,
-        offset,
-        field: sortOptions?.field || 'mtime',
-        direction: sortOptions?.direction || 'desc',
-        randomSeed: sortOptions?.randomSeed
-      });
-      const result = await libraryService.loadPaginatedPhotos(
-        folderId, 
-        limit, 
-        offset, 
-        sortOptions?.field || 'mtime',
-        sortOptions?.direction || 'desc',
-        sortOptions?.randomSeed
-      );
-      console.log('useInfinitePhotos: Received photos', {
-        photosCount: result.photos.length,
-        total: result.total,
-        hasMore: result.hasMore
-      });
-      return result;
-    },
-    getNextPageParam: (lastPage: PaginatedPhotosResponse, allPages: PaginatedPhotosResponse[]) => {
-      const totalLoaded = allPages.reduce((sum: number, page: PaginatedPhotosResponse) => sum + page.photos.length, 0);
-      return totalLoaded < lastPage.total ? allPages.length : undefined;
-    },
+  const requestPageSize = useAppStore((state) => state.requestPageSize);
+  const sortField = sortOptions?.field ?? 'mtime';
+  const direction = sortOptions?.direction ?? 'desc';
+  return useInfiniteQuery<
+    PaginatedPhotosResponse,
+    Error,
+    InfiniteData<PaginatedPhotosResponse, number>,
+    ReturnType<typeof queryKeys.photoPage>,
+    number
+  >({
+    queryKey: queryKeys.photoPage(folderId, sortField, direction, sortOptions?.randomSeed),
     initialPageParam: 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
-    enabled: sortOptions?.enabled !== undefined ? sortOptions.enabled : true,
+    enabled: sortOptions?.enabled ?? true,
+    queryFn: ({ pageParam, signal }) =>
+      photoApi.list(folderId, {
+        limit: requestPageSize || 50,
+        offset: pageParam,
+        orderBy: sortField,
+        orderDirection: direction,
+        randomSeed: sortOptions?.randomSeed,
+        signal,
+      }),
+    getNextPageParam: (page, pages) =>
+      page.hasMore ? pages.reduce((count, current) => count + current.photos.length, 0) : undefined,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
   });
 }
 
 export function useFolderCounts() {
   return useQuery({
-    queryKey: ['folderCounts'],
-    queryFn: async (): Promise<{ [folderId: string]: number }> => {
-      return await libraryService.loadFolderCounts();
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes
+    queryKey: queryKeys.folderCounts(),
+    queryFn: () => libraryService.loadFolderCounts(),
+    staleTime: 10 * 60_000,
   });
 }
 
 export function useRecursiveFolderCounts() {
   return useQuery({
-    queryKey: ['recursiveFolderCounts'],
-    queryFn: async (): Promise<{ [folderId: string]: number }> => {
-      return await libraryService.loadRecursiveFolderCounts();
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes,
+    queryKey: queryKeys.folderCounts(true),
+    queryFn: () => libraryService.loadRecursiveFolderCounts(),
+    staleTime: 10 * 60_000,
   });
 }
 
 export function useTotalPhotoCount() {
   return useQuery({
-    queryKey: ['totalPhotoCount'],
-    queryFn: async (): Promise<number> => {
-      return await libraryService.getTotalPhotoCount();
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes
+    queryKey: [...queryKeys.photos(), 'count'],
+    queryFn: () => libraryService.getTotalPhotoCount(),
+    staleTime: 10 * 60_000,
   });
-} 
+}

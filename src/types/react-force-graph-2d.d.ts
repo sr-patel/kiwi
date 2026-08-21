@@ -48,16 +48,9 @@ declare module 'react-force-graph-2d' {
     onLinkClick?: (link: GraphLink, event: MouseEvent) => void;
     onBackgroundClick?: () => void;
     onZoom?: (transform: { k: number; x: number; y: number }) => void;
-    onRenderFramePre?: (
-      ctx: CanvasRenderingContext2D,
-      globalScale: number,
-    ) => void;
+    onRenderFramePre?: (ctx: CanvasRenderingContext2D, globalScale: number) => void;
     d3AlphaMin?: number;
-    nodeCanvasObject?: (
-      node: GraphNode,
-      ctx: CanvasRenderingContext2D,
-      globalScale: number,
-    ) => void;
+    nodeCanvasObject?: (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => void;
     nodeCanvasObjectMode?: string | ((node: GraphNode) => string);
     ref?: MutableRefObject<ForceGraphMethods | undefined>;
   }

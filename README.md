@@ -9,7 +9,7 @@
 
 ## What is Kiwi?
 
-Kiwi lets you browse folders, tags, and photos from an existing **Eagle** library (a `.library` folder) in your web browser. 
+Kiwi lets you browse folders, tags, and photos from an existing **Eagle** library (a `.library` folder) in your web browser.
 
 ---
 
@@ -85,6 +85,8 @@ docker compose up -d
 
 Go to **http://localhost:3000** and follow the setup wizard.
 
+Port 3000 is the only host port. The API listens on port 3001 only inside the Compose network and is reached through nginx at the same origin.
+
 ---
 
 ## First-time setup in the browser
@@ -96,33 +98,38 @@ Go to **http://localhost:3000** and follow the setup wizard.
 
 **Important:** In the wizard, pick the path **inside the container** (for example `/app/data/libraries/MyPhotos.library`), not your host path like `C:\...` or `/Users/...`.
 
-
 ---
 
 ## Help & troubleshooting
 
 **The page will not load**
+
 - Is Docker running? (`docker info` should succeed)
 - Did you start Kiwi? (`docker-start.bat` or `docker compose up -d`)
 - Try http://localhost:3000 after waiting 30 seconds
 
 **I cannot find my library in the setup wizard**
+
 - In Eagle: **Library → Manage library** to see where your `.library` folder lives
 - Make sure that folder is mounted in `docker-compose.yml`
 - Restart containers after editing `docker-compose.yml`
 
 **Photos are missing or out of date**
+
 - Kiwi syncs changes from Eagle automatically
 - For a full refresh: open **Dashboard → Database Maintenance → Run Full Rebuild**
 
 **I changed the library path in Docker**
+
 - Update the volume in `docker-compose.yml`
 - Restart: `docker compose down` then start again
 
 **`docker compose pull` fails or image not found**
+
 - Images are published when changes land on the `main` branch (see [Packages](https://github.com/sr-patel/kiwi/pkgs/container/kiwi-backend))
 
 **Database error: "unable to open database file"**
+
 - Ensure `./data` exists and is writable (`docker-start.bat` creates it automatically)
 - Restart: `docker compose down` then `docker compose up -d`
 - Pull the latest backend image if you recently updated Kiwi
@@ -140,18 +147,48 @@ Go to **http://localhost:3000** and follow the setup wizard.
 
 ---
 
+## Development
+
+Kiwi requires Node.js 22. From a clean checkout:
+
+```bash
+npm ci
+npm run dev
+```
+
+The frontend runs at `http://127.0.0.1:3000`; the development API binds to `127.0.0.1:3001`. Useful quality gates are:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test:coverage
+npm run build
+npm run test:e2e
+```
+
+The repository is an npm workspace: the frontend remains at the root, `server/` contains the TypeScript/ESM API boundary, and `packages/contracts/` contains the shared runtime schemas.
+
+## Operations and compatibility
+
+- [Operations, backup, migration, and troubleshooting](docs/OPERATIONS.md)
+- [API compatibility reference](docs/API.md)
+- [LAN security guidance](docs/SECURITY.md)
+
+Existing configuration and SQLite indexes are opened in place. Before the first schema-version migration, Kiwi creates a sibling `*.pre-v2-backup` file. Eagle library mounts are never modified by migrations.
+
+---
+
 ## Screenshots
 
 <div align="center">
 
-| Grid view | Detail view | Tags |
-|-----------|-------------|------|
+| Grid view                                                    | Detail view                                                          | Tags                                                       |
+| ------------------------------------------------------------ | -------------------------------------------------------------------- | ---------------------------------------------------------- |
 | <img src="sample/gridView.png" alt="Grid View" width="280"/> | <img src="sample/detailedView.png" alt="Detailed View" width="280"/> | <img src="sample/tagMetadata.png" alt="Tags" width="280"/> |
 
 </div>
 
 ---
-
 
 ### Project layout:
 
@@ -159,7 +196,10 @@ Go to **http://localhost:3000** and follow the setup wizard.
 kiwi/
 ├── data/                    Your settings + index (config.json, databases/)
 ├── src/                     React frontend
-├── server/                  Express API + SQLite sync
+├── server/                  TypeScript/ESM API + SQLite sync
+├── packages/contracts/      Shared Zod contracts and inferred types
+├── e2e/                     Playwright accessibility/workflow tests
+├── docs/                    API, operations, backup, and security guides
 ├── public/                  Static assets (logo, icons)
 ├── scripts/                 Dev helpers (start.js, dev-start.bat)
 ├── config.json              Default settings template (copied to data/ on first Docker run)

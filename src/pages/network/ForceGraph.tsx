@@ -101,7 +101,7 @@ export function TagForceGraph({
   isDark,
 }: TagForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<ForceGraphMethods>();
+  const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
   const hasFitRef = useRef(false);
   const skipZoomSyncRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -115,9 +115,7 @@ export function TagForceGraph({
     return map;
   }, [graphData.nodes]);
 
-  const selectedLinkKey = selectedLink
-    ? linkSelectionKey(selectedLink.source, selectedLink.target)
-    : null;
+  const selectedLinkKey = selectedLink ? linkSelectionKey(selectedLink.source, selectedLink.target) : null;
 
   const displayLinks = useMemo<DisplayLink[]>(() => {
     const intra = graphData.links.map((link) => ({ ...link, isInter: false }));
@@ -375,9 +373,7 @@ export function TagForceGraph({
           const sourceId = resolveLinkEndpointId(entry.source);
           const targetId = resolveLinkEndpointId(entry.target);
           if (!sourceId || !targetId) return;
-          if (
-            selectedLinkKey === linkSelectionKey(sourceId, targetId)
-          ) {
+          if (selectedLinkKey === linkSelectionKey(sourceId, targetId)) {
             onClearSelection();
           } else {
             onSelectLink(sourceId, targetId);

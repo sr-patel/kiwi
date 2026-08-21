@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+import { useState } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { SettingsCard } from './SettingsCard';
+import { toUserMessage } from '@/services/apiClient';
+import { kiwiApi } from '@/services/kiwiApi';
 
 interface DatabaseMaintenancePanelProps {
   onRebuildComplete?: () => void;
@@ -18,14 +19,11 @@ export function DatabaseMaintenancePanel({ onRebuildComplete }: DatabaseMaintena
     setRebuildError(null);
     setRebuildSuccess(false);
     try {
-      await axios.post('/api/database/refresh', { source: 'library' });
+      await kiwiApi.system.rebuild();
       setRebuildSuccess(true);
       onRebuildComplete?.();
     } catch (err: unknown) {
-      const message = axios.isAxiosError(err)
-        ? err.response?.data?.error || err.message
-        : 'Failed to rebuild database';
-      setRebuildError(message);
+      setRebuildError(toUserMessage(err, 'Failed to rebuild database'));
     } finally {
       setIsRebuilding(false);
     }

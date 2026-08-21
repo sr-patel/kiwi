@@ -5,7 +5,6 @@ import { useAppStore } from '@/store';
 import { getAccentColor, getAccentRing } from '@/utils/accentColors';
 import { isVideoFile } from '@/utils/fileTypes';
 import { Play } from 'lucide-react';
-import { sequentialImageLoader } from '@/services/sequentialImageLoader';
 
 interface SimplePhotoCardProps {
   photo: PhotoMetadata;
@@ -25,77 +24,48 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
   index = 0,
 }) => {
   const { setDetailedPhoto, accentColor, currentFolder, detailedPhoto } = useAppStore();
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [imageSrc, setImageSrc] = useState(() => libraryService.getPhotoThumbnailUrl(photo.id, photo.name));
   const [imageError, setImageError] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load image sequentially
+  // Native lazy loading handles the grid; reset the trusted thumbnail when the card changes.
   React.useEffect(() => {
-    // If already have a resolved source, don't re-queue on reorder/pagination
-    if (imageSrc) {
-      return;
-    }
     if (isVideoFile(photo.ext)) {
-      // For videos, load immediately
-      const videoUrl = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
-      setImageSrc(videoUrl);
+      setImageSrc(libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name));
       setIsLoading(false);
       return;
     }
+    setImageSrc(libraryService.getPhotoThumbnailUrl(photo.id, photo.name));
+    setImageError(false);
+    setIsLoading(true);
+  }, [photo.id, photo.name, photo.ext]);
 
-    // For images, use sequential loading
-    const priority = isAboveFold ? 'high' : 'normal';
-    
-    sequentialImageLoader.addToQueue(
-      photo.id,
-      photo.name,
-      photo.ext,
-      (url: string) => {
-        setImageSrc(url);
-        // Keep isLoading true until <img> onLoad fires to show placeholder
-      },
-      index,
-      priority
-    );
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const { saveScrollPosition } = useAppStore.getState();
+      saveScrollPosition(window.scrollY);
+      // Route opening through parent so it can capture navigationList order
+      onDoubleClick(photo);
+    },
+    [photo, onDoubleClick],
+  );
 
-    // Fallback: if image doesn't load within 15 seconds, try direct loading of full image
-    const fallbackTimeout = setTimeout(() => {
-      if (isLoading && !imageSrc) {
-        console.log(`SimplePhotoCard: Fallback loading full image for ${photo.id}`);
-        const fullImageUrl = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
-        setImageSrc(fullImageUrl);
-        setIsLoading(false);
+  const handleImageError = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      if (!imageError) {
+        const fallbackUrl = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
+        setImageError(true);
+        setImageSrc(fallbackUrl);
+      } else {
       }
-    }, 15000);
-
-    return () => clearTimeout(fallbackTimeout);
-  }, [photo.id, photo.name, photo.ext, imageSrc]);
-
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const { saveScrollPosition } = useAppStore.getState();
-    saveScrollPosition(window.scrollY);
-    // Route opening through parent so it can capture navigationList order
-    onDoubleClick(photo);
-  }, [photo, onDoubleClick]);
-
-
-  const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    console.log('SimplePhotoCard: Image failed to load:', imageSrc, 'Error:', e);
-    if (!imageError) {
-      const fallbackUrl = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
-      console.log('SimplePhotoCard: Trying fallback URL:', fallbackUrl);
-      setImageError(true);
-      setImageSrc(fallbackUrl);
-    } else {
-      console.log('SimplePhotoCard: Fallback also failed, no more attempts');
-    }
-    setIsLoading(false);
-  }, [imageError, photo.id, photo.ext, photo.name, imageSrc]);
+      setIsLoading(false);
+    },
+    [imageError, photo.id, photo.ext, photo.name, imageSrc],
+  );
 
   const handleImageLoad = useCallback(() => {
-    console.log('Image loaded successfully:', imageSrc);
     setIsLoading(false);
   }, [imageSrc]);
 
@@ -115,7 +85,7 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
     if (isMobile) {
       return '(max-width: 600px) 50vw, 25vw';
     }
-    
+
     switch (size) {
       case 'small':
         return '(max-width: 1200px) 20vw, (max-width: 1600px) 15vw, 12vw';
@@ -133,7 +103,7 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
 
   const getCardStyle = () => {
     const aspectRatio = photo.width / photo.height;
-    
+
     return {
       width: '100%',
       aspectRatio: aspectRatio.toString(),
@@ -146,11 +116,11 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
       relative group cursor-pointer rounded-lg overflow-hidden transition-all duration-200
       hover:shadow-md
     `;
-    
+
     if (isMobile) {
       return `${baseClasses} w-full aspect-square ${isActive ? `${getAccentRing(accentColor)} ring-8 ring-offset-2 ring-offset-white dark:ring-offset-gray-900` : ''}`;
     }
-    
+
     return `${baseClasses} ${isActive ? `${getAccentRing(accentColor)} ring-8 ring-offset-2 ring-offset-white dark:ring-offset-gray-900` : ''}`;
   };
 
@@ -187,9 +157,10 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
     }
 
     const isGif = photo.ext?.toLowerCase() === 'gif' || photo.name.toLowerCase().endsWith('.gif');
-    const effectiveSrc = imageSrc && isGif && !autoplayGifsInGrid
-      ? libraryService.getPhotoThumbnailUrl(photo.id, photo.name) // static preview when autoplay off
-      : imageSrc;
+    const effectiveSrc =
+      imageSrc && isGif && !autoplayGifsInGrid
+        ? libraryService.getPhotoThumbnailUrl(photo.id, photo.name) // static preview when autoplay off
+        : imageSrc;
 
     return (
       <>
@@ -205,8 +176,8 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
           width={photo.width}
           height={photo.height}
           decoding="async"
-          loading={isAboveFold ? "eager" : "lazy"}
-          fetchpriority={isAboveFold ? "high" : "auto"}
+          loading={isAboveFold ? 'eager' : 'lazy'}
+          fetchPriority={isAboveFold ? 'high' : 'auto'}
           onError={handleImageError}
           onLoad={handleImageLoad}
           style={{ display: isLoading ? 'none' : 'block' }}
@@ -216,17 +187,25 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
   };
 
   return (
-    <div 
-      className={getCardClasses()} 
+    <div
+      className={getCardClasses()}
       style={!isMobile ? getCardStyle() : undefined}
-      onClick={handleClick} 
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${photo.name}`}
+      onClick={handleClick}
       onDoubleClick={() => onDoubleClick(photo)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onDoubleClick(photo);
+        }
+      }}
     >
       {/* Image */}
       <div className="relative w-full h-full">
         {renderMediaContent()}
-        
-        
+
         {/* Video play overlay */}
         {isVideoFile(photo.ext) && !videoError && (
           <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -235,13 +214,15 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
             </div>
           </div>
         )}
-        
+
         {/* Info overlay */}
-        <div className={`
+        <div
+          className={`
           absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent
           opacity-0 group-hover:opacity-100 transition-opacity duration-200
           ${isMobile ? 'opacity-100' : ''}
-        `}>
+        `}
+        >
           <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
@@ -252,9 +233,8 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
                   <span>{libraryService.getFileType(photo.ext)}</span>
                 </div>
               </div>
-              
             </div>
-            
+
             {/* Tags */}
             {photo.tags && photo.tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">

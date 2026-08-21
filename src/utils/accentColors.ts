@@ -18,7 +18,10 @@ const isColorIntegrationEnabled = (): boolean => {
   }
 };
 
-export const getAccentClasses = (accentColor: string, variant: 'bg' | 'text' | 'border' | 'ring' | 'hover' | 'selected' = 'bg') => {
+export const getAccentClasses = (
+  accentColor: string,
+  variant: 'bg' | 'text' | 'border' | 'ring' | 'hover' | 'selected' = 'bg',
+) => {
   if (!isColorIntegrationEnabled()) {
     // Provide neutral, accessible fallbacks when integration is off
     if (variant === 'selected') {
@@ -161,7 +164,7 @@ export const getAccentHover = (accentColor: string) => {
 
 export const getAccentSelected = (accentColor: string) => {
   return getAccentClasses(accentColor, 'selected');
-}; 
+};
 
 // Get hex color for inline styles
 export const getAccentHex = (accentColor: string) => {
@@ -183,6 +186,6 @@ export const getAccentHex = (accentColor: string) => {
     lime: '#84cc16',
     amber: '#f59e0b',
   };
-  
+
   return hexMap[accentColor] || hexMap.kiwi;
-}; 
+};

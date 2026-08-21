@@ -70,14 +70,18 @@ export const Sidebar = () => {
       style={{ width: `${sidebarWidth}px` }}
     >
       {/* Header */}
-      <div className={`flex items-center justify-between border-b border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out px-4 ${
-        isMiniPlayer ? 'h-24' : 'py-4'
-      }`}>
+      <div
+        className={`flex items-center justify-between border-b border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out px-4 ${
+          isMiniPlayer ? 'h-24' : 'py-4'
+        }`}
+      >
         <div className="flex items-center gap-2">
           <img src="/kiwi.png" alt="Kiwi" className="w-8 h-8" />
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Kiwi</h2>
         </div>
         <button
+          type="button"
+          aria-label="Close navigation"
           onClick={() => setSidebarOpen(false)}
           className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
         >
@@ -100,7 +104,9 @@ export const Sidebar = () => {
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-500 dark:text-gray-400 px-4">
             <div className="text-center space-y-2">
-              <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)} mx-auto`} />
+              <div
+                className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)} mx-auto`}
+              />
               <p className="text-sm">Loading your library…</p>
               <p className="text-xs text-gray-400">Large libraries can take a moment on first open</p>
             </div>

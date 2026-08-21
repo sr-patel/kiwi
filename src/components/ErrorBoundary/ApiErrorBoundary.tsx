@@ -23,7 +23,7 @@ export class ApiErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    const isNetworkError = 
+    const isNetworkError =
       error.message.includes('Failed to fetch') ||
       error.message.includes('NetworkError') ||
       error.message.includes('timeout') ||
@@ -66,16 +66,15 @@ export class ApiErrorBoundary extends Component<Props, State> {
               <Wifi className="w-8 h-8 text-red-600 dark:text-red-400" />
             )}
           </div>
-          
+
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
             {isNetworkError ? 'Connection Error' : 'API Error'}
           </h3>
-          
+
           <p className="text-gray-600 dark:text-gray-400 text-center mb-4 max-w-md">
-            {isNetworkError 
+            {isNetworkError
               ? 'Unable to connect to the server. Please check your internet connection and try again.'
-              : 'There was an error loading data. Please try again.'
-            }
+              : 'There was an error loading data. Please try again.'}
           </p>
 
           {process.env.NODE_ENV === 'development' && error && (

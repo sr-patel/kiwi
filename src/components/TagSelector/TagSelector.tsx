@@ -150,9 +150,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
                     {tag}
                   </span>
                   {tagCounts?.[tag] != null && (
-                    <span className="text-xs text-gray-600 dark:text-gray-400">
-                      {tagCounts[tag]} photos
-                    </span>
+                    <span className="text-xs text-gray-600 dark:text-gray-400">{tagCounts[tag]} photos</span>
                   )}
                 </button>
               ))}

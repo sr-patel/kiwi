@@ -6,9 +6,5 @@ interface RouteWrapperProps {
 }
 
 export const RouteWrapper: React.FC<RouteWrapperProps> = ({ children }) => {
-  return (
-    <ApiErrorBoundary>
-      {children}
-    </ApiErrorBoundary>
-  );
+  return <ApiErrorBoundary>{children}</ApiErrorBoundary>;
 };

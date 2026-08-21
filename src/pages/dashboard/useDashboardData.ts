@@ -1,75 +1,45 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DashboardStats, SyncStatus } from './types';
+import { useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/queryKeys';
+import { toUserMessage } from '@/services/apiClient';
+import { kiwiApi } from '@/services/kiwiApi';
 
 export function useDashboardData() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const queryClient = useQueryClient();
   const processedCountRef = useRef<number | null>(null);
-
-  const fetchStats = useCallback(async (isManual = false) => {
-    if (isManual) setRefreshing(true);
-    try {
-      const res = await fetch('/api/database/stats');
-      if (!res.ok) throw new Error('Failed to fetch statistics');
-      const data: DashboardStats = await res.json();
-      setStats(data);
-      setLastUpdated(new Date());
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      if (isManual) setRefreshing(false);
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchSyncStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/sync/status');
-      if (!res.ok) return;
-      const data: SyncStatus = await res.json();
-      setSyncStatus(data);
-
-      const prev = processedCountRef.current;
-      if (prev !== null && data.processedCount > prev) {
-        await fetchStats();
-      }
-      processedCountRef.current = data.processedCount;
-    } catch {
-      // non-critical
-    }
-  }, [fetchStats]);
+  const statsQuery = useQuery({
+    queryKey: queryKeys.dashboard(),
+    queryFn: ({ signal }) => kiwiApi.system.stats(signal),
+    refetchInterval: 30_000,
+  });
+  const syncQuery = useQuery({
+    queryKey: queryKeys.sync(),
+    queryFn: ({ signal }) => kiwiApi.system.syncStatus(signal),
+    refetchInterval: 5_000,
+  });
 
   useEffect(() => {
-    fetchStats();
-    fetchSyncStatus();
-  }, [fetchStats, fetchSyncStatus]);
+    const processedCount = syncQuery.data?.processedCount;
+    if (processedCount === undefined) return;
+    const previous = processedCountRef.current;
+    processedCountRef.current = processedCount;
+    if (previous !== null && processedCount > previous) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard() });
+    }
+  }, [queryClient, syncQuery.data?.processedCount]);
 
-  useEffect(() => {
-    const syncInterval = setInterval(fetchSyncStatus, 5000);
-    const statsInterval = setInterval(() => fetchStats(), 30000);
-    return () => {
-      clearInterval(syncInterval);
-      clearInterval(statsInterval);
-    };
-  }, [fetchStats, fetchSyncStatus]);
-
-  const refresh = useCallback(() => {
-    fetchStats(true);
-    fetchSyncStatus();
-  }, [fetchStats, fetchSyncStatus]);
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sync() });
+  };
 
   return {
-    stats,
-    syncStatus,
-    loading,
-    refreshing,
-    error,
-    lastUpdated,
+    stats: statsQuery.data ?? null,
+    syncStatus: syncQuery.data ?? null,
+    loading: statsQuery.isLoading,
+    refreshing: statsQuery.isFetching && !statsQuery.isLoading,
+    error: statsQuery.error ? toUserMessage(statsQuery.error, 'Could not load dashboard statistics.') : null,
+    lastUpdated: statsQuery.dataUpdatedAt ? new Date(statsQuery.dataUpdatedAt) : null,
     refresh,
   };
 }

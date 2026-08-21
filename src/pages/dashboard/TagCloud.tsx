@@ -57,7 +57,8 @@ export function TagCloud({ accentHex, theme, maxTags = 80 }: TagCloudProps) {
       {tags.map(([tag, count], index) => {
         const fontSize = scaleFontSize(count, minCount, maxCount);
         const hue = HUES[index % HUES.length];
-        const color = index === 0 ? accentHex : `hsl(${hue} ${isDark ? '55%' : '45%'} ${isDark ? '68%' : '42%'})`;
+        const color =
+          index === 0 ? accentHex : `hsl(${hue} ${isDark ? '55%' : '45%'} ${isDark ? '68%' : '42%'})`;
 
         return (
           <button

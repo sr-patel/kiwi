@@ -17,8 +17,8 @@ export function ServerConnectionScreen({ onRetry, retrying = false }: ServerConn
             <h1 className="text-xl font-semibold">Kiwi is not running yet</h1>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-            The app could not connect to Kiwi&apos;s server. If you use Docker, make sure it is
-            running and you have started Kiwi (<strong>docker-start.bat</strong> or{' '}
+            The app could not connect to Kiwi&apos;s server. If you use Docker, make sure it is running and
+            you have started Kiwi (<strong>docker-start.bat</strong> or{' '}
             <code className="px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-800">docker compose up -d</code>).
           </p>
         </div>
@@ -35,8 +35,9 @@ export function ServerConnectionScreen({ onRetry, retrying = false }: ServerConn
             Advanced: running without Docker
           </summary>
           <p className="mt-2 pl-2 border-l-2 border-gray-200 dark:border-gray-700">
-            From the Kiwi folder, run <code className="px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-800">npm start</code>
-            {' '}then open http://localhost:3000
+            From the Kiwi folder, run{' '}
+            <code className="px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-800">npm start</code> then open
+            http://localhost:3000
           </p>
         </details>
       </div>

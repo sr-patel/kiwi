@@ -20,9 +20,7 @@ interface DashboardFileTypesProps {
 }
 
 export function DashboardFileTypes({ stats }: DashboardFileTypesProps) {
-  const fileTypes = stats.fileTypes
-    ? Object.entries(stats.fileTypes).sort((a, b) => b[1] - a[1])
-    : [];
+  const fileTypes = stats.fileTypes ? Object.entries(stats.fileTypes).sort((a, b) => b[1] - a[1]) : [];
 
   if (fileTypes.length === 0) return null;
 
@@ -35,8 +33,7 @@ export function DashboardFileTypes({ stats }: DashboardFileTypesProps) {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {fileTypes.map(([type, count]) => {
           const Icon = getFileTypeIcon(type);
-          const pct =
-            stats.totalPhotos > 0 ? ((count / stats.totalPhotos) * 100).toFixed(1) : '0';
+          const pct = stats.totalPhotos > 0 ? ((count / stats.totalPhotos) * 100).toFixed(1) : '0';
           return (
             <div
               key={type}
@@ -47,9 +44,7 @@ export function DashboardFileTypes({ stats }: DashboardFileTypesProps) {
                 <p className="truncate text-sm font-medium capitalize text-gray-900 dark:text-zinc-100">
                   {type}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-zinc-400">
-                  {count.toLocaleString()} files
-                </p>
+                <p className="text-xs text-gray-500 dark:text-zinc-400">{count.toLocaleString()} files</p>
               </div>
               <span className="shrink-0 text-xs font-medium tabular-nums text-gray-500 dark:text-zinc-400">
                 {pct}%

@@ -7,8 +7,8 @@ services:
     pull_policy: always
     container_name: kiwi-backend
     restart: unless-stopped
-    ports:
-      - "3001:3001"
+    expose:
+      - '3001'
     volumes:
       # Kiwi settings + index (config.json and SQLite live here)
       - ./data:/app/data:rw
@@ -29,10 +29,26 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - KIWI_DATA_DIR=/app/data
+      - KIWI_LIBRARY_ROOTS=/app/data/libraries
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     networks:
       - kiwi-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3001/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -44,12 +60,26 @@ services:
     container_name: kiwi-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - '3000:8080'
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - kiwi-network
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /var/cache/nginx:size=16m,uid=101,gid=101,mode=0755
+      - /var/run:size=1m,uid=101,gid=101,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 networks:
   kiwi-network:

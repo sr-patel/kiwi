@@ -78,9 +78,7 @@ export function WatcherActivityPanel({
   const expanded = expandedProp ?? expandedInternal;
   const setExpanded = onExpandedChange ?? setExpandedInternal;
 
-  const entries = syncStatus?.activityLog?.length
-    ? [...syncStatus.activityLog].reverse()
-    : [];
+  const entries = syncStatus?.activityLog?.length ? [...syncStatus.activityLog].reverse() : [];
 
   return (
     <div
@@ -130,7 +128,9 @@ export function WatcherActivityPanel({
           </div>
           {syncStatus.lastEventTime && (
             <div className="flex-1 px-4 py-2 min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500">Last event</p>
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500">
+                Last event
+              </p>
               <p className="text-xs font-medium text-gray-700 dark:text-zinc-300 tabular-nums truncate leading-tight mt-0.5">
                 {formatActivityTime(syncStatus.lastEventTime)}
               </p>
@@ -141,7 +141,9 @@ export function WatcherActivityPanel({
 
       {syncStatus?.lastEvent && (
         <div className="px-4 py-2 shrink-0">
-          <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500 mb-0.5">Latest</p>
+          <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500 mb-0.5">
+            Latest
+          </p>
           <p className="text-xs text-gray-600 dark:text-zinc-400 truncate" title={syncStatus.lastEvent}>
             {syncStatus.lastEvent}
           </p>
@@ -159,9 +161,8 @@ export function WatcherActivityPanel({
             <ul>
               {entries.map((entry) => {
                 const label = TYPE_LABELS[entry.type] || entry.type;
-                const displayText = entry.photoName && entry.photoName !== entry.message
-                  ? entry.photoName
-                  : entry.message;
+                const displayText =
+                  entry.photoName && entry.photoName !== entry.message ? entry.photoName : entry.message;
 
                 return (
                   <li
@@ -173,7 +174,10 @@ export function WatcherActivityPanel({
                     >
                       {label}
                     </span>
-                    <span className="flex-1 min-w-0 text-xs text-gray-700 dark:text-zinc-300 truncate" title={displayText}>
+                    <span
+                      className="flex-1 min-w-0 text-xs text-gray-700 dark:text-zinc-300 truncate"
+                      title={displayText}
+                    >
                       {displayText}
                     </span>
                     <time className="shrink-0 text-[10px] text-gray-400 dark:text-zinc-500 tabular-nums">

@@ -1,8 +1,20 @@
 import React from 'react';
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  AreaChart, Area, Line, ComposedChart,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  AreaChart,
+  Area,
+  Line,
+  ComposedChart,
 } from 'recharts';
 import { formatBytes } from '@/utils/formatBytes';
 import type { DashboardStats } from './types';
@@ -23,7 +35,14 @@ import {
   GROUP_COLORS,
   ORIENTATION_COLORS,
 } from './chartUtils';
-import { CHART_ANIMATION, CHART_MARGINS, ChartTooltip, BAR_HOVER, createPieLabelRenderer, formatPercent } from './ChartTooltip';
+import {
+  CHART_ANIMATION,
+  CHART_MARGINS,
+  ChartTooltip,
+  BAR_HOVER,
+  createPieLabelRenderer,
+  formatPercent,
+} from './ChartTooltip';
 import { TagCloud } from './TagCloud';
 
 interface ChartCardProps {
@@ -114,8 +133,21 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="label" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+                <XAxis
+                  dataKey="label"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                  width={32}
+                />
                 <Tooltip
                   content={({ active, payload, label }) => (
                     <ChartTooltip
@@ -151,8 +183,21 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={cumulativeData} margin={CHART_MARGINS.default}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="label" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={40} />
+                <XAxis
+                  dataKey="label"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                  width={40}
+                />
                 <Tooltip
                   content={({ active, payload, label }) => (
                     <ChartTooltip
@@ -160,11 +205,21 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
                       payload={payload}
                       label={label}
                       theme={theme}
-                      valueFormatter={(v, name) => `${v.toLocaleString()} ${name === 'cumulative' ? 'total' : 'new'}`}
+                      valueFormatter={(v, name) =>
+                        `${v.toLocaleString()} ${name === 'cumulative' ? 'total' : 'new'}`
+                      }
                     />
                   )}
                 />
-                <Bar dataKey="count" name="New" fill={`${accentHex}40`} radius={[3, 3, 0, 0]} maxBarSize={28} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER} />
+                <Bar
+                  dataKey="count"
+                  name="New"
+                  fill={`${accentHex}40`}
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={28}
+                  animationDuration={CHART_ANIMATION.duration}
+                  {...BAR_HOVER}
+                />
                 <Line
                   type="monotone"
                   dataKey="cumulative"
@@ -190,8 +245,23 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={storageData} layout="vertical" margin={CHART_MARGINS.horizontal}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
-                <XAxis type="number" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => formatBytes(v)} />
-                <YAxis type="category" dataKey="name" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} width={68} />
+                <XAxis
+                  type="number"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => formatBytes(v)}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={68}
+                />
                 <Tooltip
                   content={({ active, payload, label }) => (
                     <ChartTooltip
@@ -201,13 +271,21 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
                       theme={theme}
                       valueFormatter={(v, name) => {
                         const row = payload?.[0]?.payload as { prettySize?: string; count?: number };
-                        if (name === 'totalSize') return `${row?.prettySize || formatBytes(v)} (${row?.count?.toLocaleString()} files)`;
+                        if (name === 'totalSize')
+                          return `${row?.prettySize || formatBytes(v)} (${row?.count?.toLocaleString()} files)`;
                         return formatBytes(v);
                       }}
                     />
                   )}
                 />
-                <Bar dataKey="totalSize" name="Storage" radius={[0, 4, 4, 0]} maxBarSize={22} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER}>
+                <Bar
+                  dataKey="totalSize"
+                  name="Storage"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={22}
+                  animationDuration={CHART_ANIMATION.duration}
+                  {...BAR_HOVER}
+                >
                   {storageData.map((entry) => (
                     <Cell key={entry.name} fill={GROUP_COLORS[entry.name] || accentHex} />
                   ))}
@@ -224,14 +302,40 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={countByGroup} margin={CHART_MARGINS.vertical}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="name" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+                <XAxis
+                  dataKey="name"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                  width={32}
+                />
                 <Tooltip
                   content={({ active, payload, label }) => (
-                    <ChartTooltip active={active} payload={payload} label={label} theme={theme} valueFormatter={(v) => `${v.toLocaleString()} files`} />
+                    <ChartTooltip
+                      active={active}
+                      payload={payload}
+                      label={label}
+                      theme={theme}
+                      valueFormatter={(v) => `${v.toLocaleString()} files`}
+                    />
                   )}
                 />
-                <Bar dataKey="count" name="Files" radius={[4, 4, 0, 0]} maxBarSize={48} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER}>
+                <Bar
+                  dataKey="count"
+                  name="Files"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={48}
+                  animationDuration={CHART_ANIMATION.duration}
+                  {...BAR_HOVER}
+                >
                   {countByGroup.map((entry) => (
                     <Cell key={entry.name} fill={GROUP_COLORS[entry.name] || accentHex} />
                   ))}
@@ -312,7 +416,11 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
                   labelLine={{ stroke: theme === 'dark' ? '#52525b' : '#a1a1aa', strokeWidth: 1 }}
                 >
                   {orientationData.map((_, index) => (
-                    <Cell key={`orient-${index}`} fill={ORIENTATION_COLORS[index % ORIENTATION_COLORS.length]} stroke="transparent" />
+                    <Cell
+                      key={`orient-${index}`}
+                      fill={ORIENTATION_COLORS[index % ORIENTATION_COLORS.length]}
+                      stroke="transparent"
+                    />
                   ))}
                 </Pie>
                 <Tooltip
@@ -344,14 +452,41 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={resolutionData} margin={CHART_MARGINS.vertical}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="name" stroke="transparent" tick={{ fill: axisColor, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+                <XAxis
+                  dataKey="name"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                  width={32}
+                />
                 <Tooltip
                   content={({ active, payload, label }) => (
-                    <ChartTooltip active={active} payload={payload} label={label} theme={theme} valueFormatter={(v) => `${v.toLocaleString()} images`} />
+                    <ChartTooltip
+                      active={active}
+                      payload={payload}
+                      label={label}
+                      theme={theme}
+                      valueFormatter={(v) => `${v.toLocaleString()} images`}
+                    />
                   )}
                 />
-                <Bar dataKey="count" name="Images" fill="#06b6d4" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER} />
+                <Bar
+                  dataKey="count"
+                  name="Images"
+                  fill="#06b6d4"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={40}
+                  animationDuration={CHART_ANIMATION.duration}
+                  {...BAR_HOVER}
+                />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -364,8 +499,23 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={storageByExt} layout="vertical" margin={CHART_MARGINS.horizontal}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
-                <XAxis type="number" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => formatBytes(v)} />
-                <YAxis type="category" dataKey="name" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} width={44} />
+                <XAxis
+                  type="number"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => formatBytes(v)}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  stroke="transparent"
+                  tick={{ fill: axisColor, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={44}
+                />
                 <Tooltip
                   content={({ active, payload, label }) => (
                     <ChartTooltip
@@ -380,7 +530,15 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
                     />
                   )}
                 />
-                <Bar dataKey="totalSize" name="Storage" fill={accentHex} radius={[0, 4, 4, 0]} maxBarSize={16} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER} />
+                <Bar
+                  dataKey="totalSize"
+                  name="Storage"
+                  fill={accentHex}
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={16}
+                  animationDuration={CHART_ANIMATION.duration}
+                  {...BAR_HOVER}
+                />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -395,7 +553,13 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={avgSizeData} margin={CHART_MARGINS.vertical}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-              <XAxis dataKey="name" stroke="transparent" tick={{ fill: axisColor, fontSize: 11 }} axisLine={false} tickLine={false} />
+              <XAxis
+                dataKey="name"
+                stroke="transparent"
+                tick={{ fill: axisColor, fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+              />
               <YAxis
                 stroke="transparent"
                 tick={{ fill: axisColor, fontSize: 11 }}
@@ -416,7 +580,15 @@ export function DashboardCharts({ stats, theme, accentHex }: DashboardChartsProp
                   />
                 )}
               />
-              <Bar dataKey="size" name="Avg size" fill={accentHex} radius={[4, 4, 0, 0]} maxBarSize={36} animationDuration={CHART_ANIMATION.duration} {...BAR_HOVER} />
+              <Bar
+                dataKey="size"
+                name="Avg size"
+                fill={accentHex}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={36}
+                animationDuration={CHART_ANIMATION.duration}
+                {...BAR_HOVER}
+              />
             </BarChart>
           </ResponsiveContainer>
         ) : (

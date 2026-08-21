@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Database, RefreshCw, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/store';
 import { getAccentHex } from '@/utils/accentColors';
 import { useDashboardData } from './useDashboardData';
 import { DashboardStatCards } from './DashboardStatCards';
-import { DashboardCharts } from './DashboardCharts';
 import { DashboardFileTypes } from './DashboardFileTypes';
 import { WelcomeBanner } from '@/components/WelcomeBanner/WelcomeBanner';
+
+const DashboardCharts = lazy(() =>
+  import('./DashboardCharts').then((module) => ({ default: module.DashboardCharts })),
+);
 
 export const DashboardPage: React.FC = () => {
   const { accentColor, theme } = useAppStore();
@@ -76,7 +79,16 @@ export const DashboardPage: React.FC = () => {
 
       <DashboardFileTypes stats={stats} />
 
-      <DashboardCharts stats={stats} theme={theme} accentHex={accentHex} />
+      <Suspense
+        fallback={
+          <div
+            className="h-72 animate-pulse rounded-xl bg-gray-100 dark:bg-zinc-900"
+            aria-label="Loading charts"
+          />
+        }
+      >
+        <DashboardCharts stats={stats} theme={theme} accentHex={accentHex} />
+      </Suspense>
     </div>
   );
 };

@@ -1,46 +1,17 @@
-export interface TagCluster {
-  id: number;
-  color: string;
-  hull: Array<{ x: number; y: number }>;
-  nodeCount: number;
-  label: string;
-  labelCount: number;
-  cx: number;
-  cy: number;
-}
+import type {
+  TagCluster as SharedTagCluster,
+  TagNetworkGraph as SharedTagNetworkGraph,
+  TagNetworkLink as SharedTagNetworkLink,
+  TagNetworkNode as SharedTagNetworkNode,
+} from '@kiwi/contracts';
 
-export interface TagNetworkNode {
-  id: string;
-  count: number;
-  community: number;
-  color: string;
-  val: number;
-  x: number;
-  y: number;
-  fx: number;
-  fy: number;
-}
+export type TagCluster = SharedTagCluster;
+export type TagNetworkNode = SharedTagNetworkNode;
+export type TagNetworkLink = SharedTagNetworkLink;
 
-export interface TagNetworkLink {
-  source: string;
-  target: string;
-  weight: number;
-  pmi?: number;
-}
+export type TagCoOccurrenceEdge = TagNetworkLink;
 
-export interface TagNetworkGraph {
-  nodes: TagNetworkNode[];
-  links: TagNetworkLink[];
-  interLinks: TagNetworkLink[];
-  clusters: TagCluster[];
-  stats: {
-    tags: number;
-    links: number;
-    interLinks: number;
-    communities: number;
-    prunedMegaTags: number;
-  };
-}
+export type TagNetworkGraph = SharedTagNetworkGraph;
 
 export interface ForceGraphNode extends TagNetworkNode {
   degree?: number;
@@ -62,9 +33,7 @@ export interface ForceGraphData {
 }
 
 export type NetworkSelection =
-  | { kind: 'tag'; tag: string }
-  | { kind: 'link'; source: string; target: string }
-  | null;
+  { kind: 'tag'; tag: string } | { kind: 'link'; source: string; target: string } | null;
 
 export function linkSelectionKey(source: string, target: string): string {
   return source < target ? `${source}:${target}` : `${target}:${source}`;

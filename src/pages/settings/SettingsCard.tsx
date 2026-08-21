@@ -15,9 +15,7 @@ export function SettingsCard({ title, description, children, className = '' }: S
       {title && (
         <div className="mb-4">
           <h3 className="text-base font-semibold text-gray-900 dark:text-zinc-100">{title}</h3>
-          {description && (
-            <p className="mt-0.5 text-sm text-gray-500 dark:text-zinc-400">{description}</p>
-          )}
+          {description && <p className="mt-0.5 text-sm text-gray-500 dark:text-zinc-400">{description}</p>}
         </div>
       )}
       {children}
@@ -45,9 +43,7 @@ export function SettingsToggle({ label, description, checked, onChange, accentHe
       />
       <div className="min-w-0">
         <div className="font-medium text-gray-900 dark:text-zinc-100">{label}</div>
-        {description && (
-          <div className="mt-0.5 text-sm text-gray-500 dark:text-zinc-400">{description}</div>
-        )}
+        {description && <div className="mt-0.5 text-sm text-gray-500 dark:text-zinc-400">{description}</div>}
       </div>
     </label>
   );
@@ -80,9 +76,7 @@ export function SettingsSlider({
     <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <div className="font-medium text-gray-900 dark:text-zinc-100">{label}</div>
-        {description && (
-          <div className="mt-0.5 text-sm text-gray-500 dark:text-zinc-400">{description}</div>
-        )}
+        {description && <div className="mt-0.5 text-sm text-gray-500 dark:text-zinc-400">{description}</div>}
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <input

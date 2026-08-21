@@ -13,26 +13,22 @@ interface FileCardProps {
   isMobile?: boolean;
 }
 
-export const FileCard: React.FC<FileCardProps> = ({
-  file,
-  size,
-  onDoubleClick,
-  isMobile = false,
-}) => {
+export const FileCard: React.FC<FileCardProps> = ({ file, size, onDoubleClick, isMobile = false }) => {
   const { setDetailedPhoto, accentColor, podcastMode, getAudioTime } = useAppStore();
   const fileTypeInfo = getFileTypeInfo(file.ext);
   const [imageError, setImageError] = React.useState(false);
   const [videoError, setVideoError] = React.useState(false);
 
   // Check if this audio file has a saved position
-  const hasSavedPosition = fileTypeInfo.category === 'audio' && podcastMode.enabled && getAudioTime(file.id) > 0;
+  const hasSavedPosition =
+    fileTypeInfo.category === 'audio' && podcastMode.enabled && getAudioTime(file.id) > 0;
   const isAudioFile = fileTypeInfo.category === 'audio';
-  
+
   // Get saved time and calculate progress
   const savedTime = hasSavedPosition ? getAudioTime(file.id) : 0;
   const audioDuration = file.duration || 0;
   const progressPercentage = audioDuration > 0 ? (savedTime / audioDuration) * 100 : 0;
-  
+
   // Format time for display (rounded to nearest minute)
   const formatResumeTime = (time: number) => {
     const minutes = Math.round(time / 60);
@@ -45,21 +41,18 @@ export const FileCard: React.FC<FileCardProps> = ({
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    console.log('FileCard clicked:', { fileId: file.id, fileName: file.name });
-    
+
     // For audio files, open the audio player
     if (fileTypeInfo.category === 'audio') {
       const { openAudioPlayer } = useAppStore.getState();
-      console.log('Opening audio player for:', file.name);
       openAudioPlayer(file);
       return;
     }
-    
+
     // For files that can be previewed, open in detailed view
     if (fileTypeInfo.canPreview) {
       const { saveScrollPosition } = useAppStore.getState();
       saveScrollPosition(window.scrollY);
-      console.log('Setting detailed file:', file.id);
       setDetailedPhoto(file.id);
     } else {
       // For files that can't be previewed, download them
@@ -71,24 +64,21 @@ export const FileCard: React.FC<FileCardProps> = ({
     }
   };
 
-
   const handleVideoError = () => {
-    console.log('Video failed to load, falling back to icon view');
     setVideoError(true);
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // For audio files, open the audio player (same as single click)
     if (fileTypeInfo.category === 'audio') {
       const { openAudioPlayer } = useAppStore.getState();
-      console.log('Opening audio player for (double-click):', file.name);
       openAudioPlayer(file);
       return;
     }
-    
+
     // For other files, call the parent's onDoubleClick
     onDoubleClick(file);
   };
@@ -112,11 +102,11 @@ export const FileCard: React.FC<FileCardProps> = ({
       w-full
       hover:shadow-md hover:scale-105
     `;
-    
+
     if (isMobile) {
       return `${baseClasses} h-48`;
     }
-    
+
     return `${baseClasses} ${getSizeClasses()}`;
   };
 
@@ -184,27 +174,25 @@ export const FileCard: React.FC<FileCardProps> = ({
     return (
       <>
         {/* File icon */}
-        <div className={`${getIconSize()} mb-2 opacity-80`}>
-          {fileTypeInfo.icon}
-        </div>
-        
+        <div className={`${getIconSize()} mb-2 opacity-80`}>{fileTypeInfo.icon}</div>
+
         {/* File name */}
         <h3 className="font-medium text-sm text-center text-gray-800 dark:text-gray-200 mb-1 line-clamp-3 px-1">
           {file.name}
         </h3>
-        
+
         {/* File type */}
-        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-          {fileTypeInfo.displayName}
-        </p>
-        
+        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">{fileTypeInfo.displayName}</p>
+
         {/* Action button */}
-        <button className={`
+        <button
+          className={`
           px-2 py-1 rounded-full text-xs font-medium transition-all duration-200
           ${getAccentColor(accentColor)} bg-opacity-90
           hover:bg-opacity-100 hover:scale-105
           flex items-center gap-1
-        `}>
+        `}
+        >
           {getActionIcon()}
           {getActionText()}
         </button>
@@ -213,14 +201,23 @@ export const FileCard: React.FC<FileCardProps> = ({
   };
 
   return (
-    <div 
-      className={getCardClasses()} 
-      onClick={handleClick} 
+    <div
+      className={getCardClasses()}
+      role="button"
+      tabIndex={0}
+      aria-label={`${getActionText()} ${file.name}`}
+      onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onDoubleClick(file);
+        }
+      }}
     >
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20" />
-      
+
       {/* File icon */}
       <div className="relative z-10 flex flex-col items-center justify-center h-full p-4">
         {/* Podcast Mode Progress Bar - show on all audio files when podcast mode is enabled */}
@@ -229,16 +226,16 @@ export const FileCard: React.FC<FileCardProps> = ({
             {/* Progress bar */}
             {audioDuration > 0 && (
               <div className="w-full bg-gray-600/30 dark:bg-gray-700/50 rounded-full h-1.5">
-                <div 
+                <div
                   className="h-1.5 rounded-full transition-all duration-300"
-                  style={{ 
+                  style={{
                     width: `${Math.min(progressPercentage, 100)}%`,
-                    background: `linear-gradient(to right, ${getAccentHex(accentColor)}, ${getAccentHex(accentColor)}CC)`
+                    background: `linear-gradient(to right, ${getAccentHex(accentColor)}, ${getAccentHex(accentColor)}CC)`,
                   }}
                 />
               </div>
             )}
-            
+
             {/* Resume info - only show if there's a saved position */}
             {hasSavedPosition && (
               <div className="flex items-center gap-1 justify-center">
@@ -250,17 +247,18 @@ export const FileCard: React.FC<FileCardProps> = ({
             )}
           </div>
         )}
-        
+
         {renderFileContent()}
       </div>
-      
-      
+
       {/* Info overlay on hover */}
-      <div className={`
+      <div
+        className={`
         absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent
         opacity-0 group-hover:opacity-100 transition-opacity duration-200
         ${isMobile ? 'opacity-100' : ''}
-      `}>
+      `}
+      >
         <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
@@ -272,9 +270,8 @@ export const FileCard: React.FC<FileCardProps> = ({
                 <span>{libraryService.formatDate(file.mtime)}</span>
               </div>
             </div>
-            
           </div>
-          
+
           {/* Tags */}
           {file.tags && file.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
@@ -297,4 +294,4 @@ export const FileCard: React.FC<FileCardProps> = ({
       </div>
     </div>
   );
-}; 
+};

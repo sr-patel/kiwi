@@ -1,32 +1,34 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
+import { kiwiApi } from '@/services/kiwiApi';
 import type { FolderNode } from '@/types';
-import type { SyncStatus, WatcherActivityEntry } from '@/pages/dashboard/types';
+import type { WatcherActivityEntry } from '@/pages/dashboard/types';
+import { queryKeys } from './queryKeys';
 
 const TAG_ACTIVITY_TYPES = new Set(['photo_added', 'photo_updated', 'photo_removed', 'reconcile']);
 
 function folderExistsInTree(folders: FolderNode[], folderId: string): boolean {
-  for (const folder of folders) {
-    if (folder.id === folderId) return true;
-    if (folder.children?.length && folderExistsInTree(folder.children, folderId)) return true;
-  }
-  return false;
+  return folders.some(
+    (folder) =>
+      folder.id === folderId ||
+      Boolean(folder.children?.length && folderExistsInTree(folder.children, folderId)),
+  );
 }
 
 function shouldInvalidateTags(activities: WatcherActivityEntry[]): boolean {
-  return activities.some((activity) => {
-    if (TAG_ACTIVITY_TYPES.has(activity.type)) return true;
-    return activity.type === 'library_updated' && activity.message.includes('Tags');
-  });
+  return activities.some(
+    (activity) =>
+      TAG_ACTIVITY_TYPES.has(activity.type) ||
+      (activity.type === 'library_updated' && activity.message.includes('Tags')),
+  );
 }
 
 function shouldRefreshFolders(activities: WatcherActivityEntry[]): boolean {
   return activities.some(
-    (activity) =>
-      activity.type === 'library_updated' && activity.message.includes('Library folders'),
+    (activity) => activity.type === 'library_updated' && activity.message.includes('Library folders'),
   );
 }
 
@@ -36,81 +38,50 @@ export function useLibrarySyncRefresh(enabled: boolean) {
   const lastActivityIdRef = useRef<number | null>(null);
   const processedCountRef = useRef<number | null>(null);
   const initializedRef = useRef(false);
-
-  const { allPhotos, currentFolder, setFolderTree, setCurrentFolder } = useAppStore();
+  const { currentFolder, setFolderTree, setCurrentFolder } = useAppStore();
+  const syncQuery = useQuery({
+    queryKey: queryKeys.sync(),
+    queryFn: ({ signal }) => kiwiApi.system.syncStatus(signal),
+    enabled,
+    refetchInterval: enabled ? 5_000 : false,
+  });
 
   const refreshFolderTree = useCallback(async () => {
-    const photos = allPhotos ?? [];
-    const tree = await libraryService.refreshFolderTree(photos);
+    const tree = await libraryService.refreshFolderTree();
     if (!tree) return;
-
-    await setFolderTree(tree);
-
+    setFolderTree(tree);
     if (currentFolder && !folderExistsInTree(tree, currentFolder)) {
       setCurrentFolder(null);
       navigate('/all');
     }
-  }, [allPhotos, currentFolder, setFolderTree, setCurrentFolder, navigate]);
+  }, [currentFolder, navigate, setCurrentFolder, setFolderTree]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      initializedRef.current = false;
+      return;
+    }
+    const data = syncQuery.data;
+    if (!data) return;
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      processedCountRef.current = data.processedCount;
+      lastActivityIdRef.current = data.activityLog[0]?.id ?? null;
+      return;
+    }
 
-    let cancelled = false;
+    const processedCountIncreased = data.processedCount > (processedCountRef.current ?? 0);
+    processedCountRef.current = data.processedCount;
+    const lastSeenId = lastActivityIdRef.current;
+    const newActivities =
+      lastSeenId === null ? data.activityLog : data.activityLog.filter((entry) => entry.id > lastSeenId);
+    lastActivityIdRef.current = data.activityLog[0]?.id ?? lastSeenId;
 
-    const poll = async () => {
-      try {
-        const res = await fetch('/api/sync/status');
-        if (!res.ok || cancelled) return;
-
-        const data: SyncStatus = await res.json();
-
-        if (!initializedRef.current) {
-          initializedRef.current = true;
-          processedCountRef.current = data.processedCount;
-          if (data.activityLog.length > 0) {
-            lastActivityIdRef.current = data.activityLog[0].id;
-          }
-          return;
-        }
-
-        const prevProcessed = processedCountRef.current ?? 0;
-        const processedCountIncreased = data.processedCount > prevProcessed;
-        processedCountRef.current = data.processedCount;
-
-        const lastSeenId = lastActivityIdRef.current;
-        const newActivities =
-          lastSeenId !== null
-            ? data.activityLog.filter((entry) => entry.id > lastSeenId)
-            : data.activityLog;
-
-        if (data.activityLog.length > 0) {
-          lastActivityIdRef.current = data.activityLog[0].id;
-        }
-
-        const invalidateTags = processedCountIncreased || shouldInvalidateTags(newActivities);
-        const refreshFolders = shouldRefreshFolders(newActivities);
-
-        if (invalidateTags) {
-          queryClient.invalidateQueries({ queryKey: ['tags'] });
-          queryClient.invalidateQueries({ queryKey: ['tagCounts'] });
-          queryClient.invalidateQueries({ queryKey: ['tagCoOccurrences'] });
-          queryClient.invalidateQueries({ queryKey: ['tagNetwork'] });
-        }
-
-        if (refreshFolders) {
-          await refreshFolderTree();
-        }
-      } catch {
-        // non-critical
-      }
-    };
-
-    poll();
-    const interval = setInterval(poll, 5000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [enabled, queryClient, refreshFolderTree]);
+    if (processedCountIncreased || shouldInvalidateTags(newActivities)) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tags() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.photos() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard() });
+    }
+    if (shouldRefreshFolders(newActivities)) void refreshFolderTree();
+  }, [enabled, queryClient, refreshFolderTree, syncQuery.data]);
 }

@@ -89,13 +89,23 @@ export interface AppState {
   isLoading: boolean;
   theme: 'light' | 'dark';
   isMobile: boolean;
-  accentColor: 'kiwi' | 'orange' | 'blue' | 'green' | 'purple' | 'red' | 'pink' | 'teal' | 'indigo' | 'cyan' | 'lime' | 'amber';
+  accentColor:
+    | 'kiwi'
+    | 'orange'
+    | 'blue'
+    | 'green'
+    | 'purple'
+    | 'red'
+    | 'pink'
+    | 'teal'
+    | 'indigo'
+    | 'cyan'
+    | 'lime'
+    | 'amber';
   settingsOpen: boolean;
   currentFolder: string | null;
   currentTag: string | null;
-  folderCache: FolderCache | null;
   folderTree: FolderNode[] | null;
-  allPhotos: PhotoMetadata[] | null;
   currentView: {
     type: 'grid' | 'list';
     thumbnailSize: 'small' | 'medium' | 'large';
@@ -105,7 +115,8 @@ export interface AppState {
     fileTypes: string[];
   };
   sortOptions: {
-    field: 'name' | 'date' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
+    field:
+      'name' | 'date' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
     direction: 'asc' | 'desc';
     randomSeed?: number;
   };
@@ -113,19 +124,14 @@ export interface AppState {
   navigationList: string[]; // exact order from grid used for detailed navigation
   detailedPhoto: string | null;
   searchQuery: string;
-  cacheProgress: {
-    current: number;
-    total: number;
-    isCaching: boolean;
-  };
   scrollPositions: { [folderId: string]: number };
-  
+
   // Podcast Mode State
   podcastMode: {
     enabled: boolean;
     audioTimeTracking: { [audioId: string]: number }; // Track last played time for each audio file
   };
-  
+
   // Audio Player State
   audioPlayer: {
     isOpen: boolean;
@@ -140,7 +146,7 @@ export interface AppState {
     currentTime: number;
   };
   isMiniPlayer: boolean;
-  
+
   // UI Preferences
   useFolderThumbnails?: boolean;
   enableColorIntegration?: boolean;
@@ -150,7 +156,7 @@ export interface AppState {
   infoBoxSize: number;
   hideControlsWithInfoBox?: boolean;
   transitionEffect?: 'none' | 'slide' | 'fade' | 'zoom';
-  
+
   // Visualizer Settings
   visualizerSettings: {
     visBarCount: number;
@@ -183,9 +189,7 @@ export interface AppActions {
   setSettingsOpen: (open: boolean) => void;
   setCurrentFolder: (folderId: string | null) => void;
   setCurrentTag: (tag: string | null) => void;
-  setFolderCache: (cache: FolderCache | null) => Promise<void>;
-  setFolderTree: (tree: FolderNode[] | null) => Promise<void>;
-  setAllPhotos: (photos: PhotoMetadata[] | null) => Promise<void>;
+  setFolderTree: (tree: FolderNode[] | null) => void;
   setCurrentView: (view: AppState['currentView']) => void;
   setFilters: (filters: AppState['filters']) => void;
   setSortOptions: (sortOptions: AppState['sortOptions']) => void;
@@ -193,22 +197,17 @@ export interface AppActions {
   toggleSelectedItem: (itemId: string) => void;
   setDetailedPhoto: (photoId: string | null) => void;
   setSearchQuery: (query: string) => void;
-  // Cache management actions
-  loadFromCache: () => Promise<boolean>;
-  clearCache: () => Promise<void>;
-  getCacheSize: () => Promise<number>;
-  isCacheValid: (maxAge?: number) => Promise<boolean>;
   saveScrollPosition: (position: number) => void;
   restoreScrollPosition: () => void;
   clearScrollPosition: (folderId?: string) => void;
-  
+
   // Podcast Mode Actions
   togglePodcastMode: () => void;
   saveAudioTime: (audioId: string, time: number) => void;
   getAudioTime: (audioId: string) => number;
   clearAudioTime: (audioId: string) => void;
   clearAllAudioTimes: () => void;
-  
+
   // Audio Player Actions
   openAudioPlayer: (audio: PhotoMetadata, playlist?: PhotoMetadata[]) => void;
   closeAudioPlayer: () => void;
@@ -216,10 +215,10 @@ export interface AppActions {
   playNextAudio: () => void;
   playPreviousAudio: () => void;
   setMiniPlayer: (value: boolean) => void;
-  
+
   // Visualizer Settings Actions
   setVisualizerSettings: (settings: Partial<AppState['visualizerSettings']>) => void;
-  
+
   // UI Preferences Actions
   setUseFolderThumbnails: (value: boolean) => void;
   setEnableColorIntegration: (value: boolean) => void;
@@ -255,7 +254,8 @@ export interface FilterOptions {
 }
 
 export interface SortOptions {
-  field: 'name' | 'date' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
+  field:
+    'name' | 'date' | 'date_created' | 'date_updated' | 'size' | 'type' | 'dimensions' | 'tags' | 'random';
   direction: 'asc' | 'desc';
 }
 
@@ -276,4 +276,5 @@ export interface PaginatedPhotosResponse {
   photos: PhotoMetadata[];
   total: number;
   totalSize: number;
-} 
+  hasMore: boolean;
+}

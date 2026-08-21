@@ -1,20 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  ArrowLeft,
-  Eye,
-  Moon,
-  Palette,
-  Settings2,
-  Sun,
-  Zap,
-} from 'lucide-react';
+import { ArrowLeft, Eye, Moon, Palette, Settings2, Sun, Zap } from 'lucide-react';
 import { useAppStore } from '@/store';
-import {
-  getAccentColor,
-  getAccentHex,
-  getAccentRing,
-} from '@/utils/accentColors';
+import { getAccentColor, getAccentHex, getAccentRing } from '@/utils/accentColors';
 import { SettingsCard, SettingsSlider, SettingsToggle } from '@/pages/settings/SettingsCard';
 import { SettingsLibraryAdmin } from '@/pages/settings/SettingsLibraryAdmin';
 
@@ -85,9 +73,7 @@ export const SettingsPage: React.FC = () => {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Settings</h1>
-            <p className="text-sm text-gray-500 dark:text-zinc-400">
-              Customize Kiwi and manage your library
-            </p>
+            <p className="text-sm text-gray-500 dark:text-zinc-400">Customize Kiwi and manage your library</p>
           </div>
         </div>
 
@@ -140,6 +126,7 @@ export const SettingsPage: React.FC = () => {
                   <div className="flex items-center gap-3">
                     <input
                       type="number"
+                      aria-label="Items per request"
                       min={10}
                       max={500}
                       step={10}
@@ -248,9 +235,7 @@ export const SettingsPage: React.FC = () => {
                   />
 
                   <div className="mt-4 border-t border-gray-100 pt-4 dark:border-zinc-800">
-                    <div className="mb-3 font-medium text-gray-900 dark:text-zinc-100">
-                      Image transition
-                    </div>
+                    <div className="mb-3 font-medium text-gray-900 dark:text-zinc-100">Image transition</div>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {(['none', 'slide', 'fade', 'zoom'] as const).map((effect) => (
                         <button
@@ -262,9 +247,7 @@ export const SettingsPage: React.FC = () => {
                               ? 'text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
                           }`}
-                          style={
-                            transitionEffect === effect ? { backgroundColor: accentHex } : undefined
-                          }
+                          style={transitionEffect === effect ? { backgroundColor: accentHex } : undefined}
                         >
                           {effect}
                         </button>

@@ -1,25 +1,64 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
-import { X, ArrowLeft, ArrowRight, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Play, Pause, BookOpen, Download, FileText, Volume2, VolumeX, Repeat, Rewind, FastForward, Loader2 } from 'lucide-react';
+import {
+  X,
+  ArrowLeft,
+  ArrowRight,
+  Maximize2,
+  Minimize2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Play,
+  Pause,
+  BookOpen,
+  Download,
+  FileText,
+  Volume2,
+  VolumeX,
+  Repeat,
+  Rewind,
+  FastForward,
+  Loader2,
+} from 'lucide-react';
 import { useInfinitePhotos } from '@/hooks/useInfinitePhotos';
 import { usePhotosByTag } from '@/hooks/usePhotosByTag';
 import { useFastSearch } from '@/hooks/useFastSearch';
 import { useTagCounts } from '@/hooks/useTagCounts';
-import { useAllPhotos } from '@/hooks/useAllPhotos';
-import { useAllPhotosByTag } from '@/hooks/useAllPhotosByTag';
-import { imagePreloadingService } from '@/services/imagePreloadingService';
+import { useMediaPreload } from '@/hooks/useMediaPreload';
 import { getFileTypeInfo, shouldUseFileCard } from '@/utils/fileTypes';
 import { generateTagUrl } from '@/utils/tagUrls';
 import { generateFolderUrl } from '@/utils/folderUrls';
 import { useNavigate } from 'react-router-dom';
-import { fetchWithRetry } from '@/utils/fetchWithTimeout';
-import { EpubViewer } from './EpubViewer';
+import { kiwiApi } from '@/services/kiwiApi';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/queryKeys';
 import { PhotoInfoBox } from './PhotoInfoBox';
+
+const EpubViewer = React.lazy(() =>
+  import('./EpubViewer').then((module) => ({ default: module.EpubViewer })),
+);
 
 export const DetailedPhotoModal: React.FC = () => {
   const navigate = useNavigate();
-  const { detailedPhoto, setDetailedPhoto, currentFolder, currentTag, sortOptions, restoreScrollPosition, folderTree, setCurrentFolder, setCurrentTag, saveScrollPosition, filters, searchQuery, navigationList, infoBoxSize, transitionEffect = 'slide' } = useAppStore();
+  const {
+    detailedPhoto,
+    setDetailedPhoto,
+    currentFolder,
+    currentTag,
+    sortOptions,
+    restoreScrollPosition,
+    folderTree,
+    setCurrentFolder,
+    setCurrentTag,
+    saveScrollPosition,
+    filters,
+    searchQuery,
+    navigationList,
+    infoBoxSize,
+    transitionEffect = 'slide',
+  } = useAppStore();
   const { accentColor } = useAppStore();
   const [photo, setPhoto] = React.useState<any>(null);
   const [currentIndex, setCurrentIndex] = React.useState<number>(-1);
@@ -28,8 +67,13 @@ export const DetailedPhotoModal: React.FC = () => {
   const [pan, setPan] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = React.useState<boolean>(false);
   const [dragStart, setDragStart] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [fetchingPhotoId, setFetchingPhotoId] = React.useState<string | null>(null);
   const modalRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!detailedPhoto) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    requestAnimationFrame(() => modalRef.current?.focus());
+    return () => previousFocus?.focus();
+  }, [detailedPhoto]);
   const imageRef = React.useRef<HTMLDivElement>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const imageContainerRef = React.useRef<HTMLDivElement>(null);
@@ -41,15 +85,20 @@ export const DetailedPhotoModal: React.FC = () => {
   const [videoVolume, setVideoVolume] = React.useState<number>(1);
   const [playbackRate, setPlaybackRate] = React.useState<number>(1);
   const [isInfoBoxVisible, setIsInfoBoxVisible] = React.useState<boolean>(true);
-  const [videoDimensions, setVideoDimensions] = React.useState<{width: number, height: number} | null>(null);
+  const [videoDimensions, setVideoDimensions] = React.useState<{ width: number; height: number } | null>(
+    null,
+  );
   const [videoProgress, setVideoProgress] = React.useState<number>(0);
   const [videoDuration, setVideoDuration] = React.useState<number>(0);
   const [isSeeking, setIsSeeking] = React.useState<boolean>(false);
-  const [pendingNavigation, setPendingNavigation] = React.useState<{ direction: 'next'; anchorId: string } | null>(null);
+  const [pendingNavigation, setPendingNavigation] = React.useState<{
+    direction: 'next';
+    anchorId: string;
+  } | null>(null);
   const [isFullResReady, setIsFullResReady] = React.useState(false);
   const [isLoadingFullRes, setIsLoadingFullRes] = React.useState(false);
   const [thumbnailFailed, setThumbnailFailed] = React.useState(false);
-  
+
   // Touch/swipe support for mobile navigation with animations
   const [touchStart, setTouchStart] = React.useState<{ x: number; y: number } | null>(null);
   const [touchEnd, setTouchEnd] = React.useState<{ x: number; y: number } | null>(null);
@@ -83,7 +132,7 @@ export const DetailedPhotoModal: React.FC = () => {
     field: sortOptions.field,
     direction: sortOptions.direction,
     randomSeed: sortOptions.field === 'random' ? sortOptions.randomSeed : undefined,
-    enabled: searchQuery.trim().length === 0 && !currentTag && sortOptions.field !== 'random'
+    enabled: searchQuery.trim().length === 0 && !currentTag,
   });
 
   const tagPhotosQuery = usePhotosByTag({
@@ -92,22 +141,7 @@ export const DetailedPhotoModal: React.FC = () => {
     sortField: sortOptions.field,
     sortDirection: sortOptions.direction,
     randomSeed: sortOptions.field === 'random' ? sortOptions.randomSeed : undefined,
-    enabled: !!currentTag // Enable for all sorts including random, just like PhotoGrid
-  });
-
-  // For random sort, use special hooks that load all photos at once
-  const allPhotosQuery = useAllPhotos(currentFolder, {
-    field: sortOptions.field,
-    direction: sortOptions.direction,
-    randomSeed: sortOptions.randomSeed
-  });
-
-  const allPhotosByTagQuery = useAllPhotosByTag({
-    tag: currentTag,
-    sortField: sortOptions.field,
-    sortDirection: sortOptions.direction,
-    randomSeed: sortOptions.randomSeed,
-    enabled: !!currentTag
+    enabled: !!currentTag, // Enable for all sorts including random, just like PhotoGrid
   });
 
   // Get search results if there's a search query
@@ -117,7 +151,8 @@ export const DetailedPhotoModal: React.FC = () => {
     limit: 50,
     orderBy: sortOptions.field,
     orderDirection: sortOptions.direction === 'asc' ? 'ASC' : 'DESC',
-    enabled: searchQuery.trim().length > 0
+    randomSeed: sortOptions.field === 'random' ? sortOptions.randomSeed : undefined,
+    enabled: searchQuery.trim().length > 0,
   });
 
   // Use the appropriate query based on current selection
@@ -127,23 +162,13 @@ export const DetailedPhotoModal: React.FC = () => {
     if (searchQuery.trim().length > 0) return false;
     if (currentTag) return Boolean(tagPhotosQuery.hasNextPage);
     return Boolean(folderPhotosQuery.hasNextPage);
-  }, [
-    searchQuery,
-    currentTag,
-    tagPhotosQuery.hasNextPage,
-    folderPhotosQuery.hasNextPage
-  ]);
+  }, [searchQuery, currentTag, tagPhotosQuery.hasNextPage, folderPhotosQuery.hasNextPage]);
 
   const isFetchingNextPage = React.useMemo(() => {
     if (searchQuery.trim().length > 0) return false;
     if (currentTag) return Boolean(tagPhotosQuery.isFetchingNextPage);
     return Boolean(folderPhotosQuery.isFetchingNextPage);
-  }, [
-    searchQuery,
-    currentTag,
-    tagPhotosQuery.isFetchingNextPage,
-    folderPhotosQuery.isFetchingNextPage
-  ]);
+  }, [searchQuery, currentTag, tagPhotosQuery.isFetchingNextPage, folderPhotosQuery.isFetchingNextPage]);
 
   const triggerFetchNextPage = React.useCallback(() => {
     if (searchQuery.trim().length > 0) return;
@@ -164,9 +189,9 @@ export const DetailedPhotoModal: React.FC = () => {
     tagPhotosQuery.fetchNextPage,
     folderPhotosQuery.hasNextPage,
     folderPhotosQuery.isFetchingNextPage,
-    folderPhotosQuery.fetchNextPage
+    folderPhotosQuery.fetchNextPage,
   ]);
-  
+
   // Source of truth for navigation order:
   // 1) If we have a captured navigationList from the grid, build the list strictly
   //    in that order from the union of available photos.
@@ -174,60 +199,26 @@ export const DetailedPhotoModal: React.FC = () => {
   // 3) Else, fall back to current paginated data or search.
   const unionPool = React.useMemo(() => {
     const sets: any[] = [];
-    
+
     // Always include current folder photos (paged data)
-    const paged = photosQuery.data?.pages.flatMap(page => page.photos) || [];
+    const paged = photosQuery.data?.pages.flatMap((page) => page.photos) || [];
     sets.push(paged);
-    
+
     // Include search results if there's a search query
     if (searchQuery.trim().length > 0) {
       sets.push(fastSearchQuery.photos || []);
     }
-    
-    // Include random sort data if applicable
-    if (sortOptions.field === 'random' && !currentTag) {
-      sets.push(allPhotosQuery.data || []);
-    }
-    if (sortOptions.field === 'random' && currentTag) {
-      sets.push(allPhotosByTagQuery.data || []);
-    }
-    
-    console.log('DetailedPhotoModal: unionPool debug:', {
-      currentTag,
-      photosQueryData: photosQuery.data,
-      pagedLength: paged.length,
-      searchQuery: searchQuery.trim(),
-      sortOptionsField: sortOptions.field,
-      allPhotosByTagQueryData: allPhotosByTagQuery.data,
-      allPhotosByTagQueryDataLength: allPhotosByTagQuery.data?.length || 0
-    });
-    
-    console.log('DetailedPhotoModal: unionPool sets debug:', {
-      setsLength: sets.length,
-      setsSizes: sets.map((set, i) => ({ index: i, size: set.length })),
-      isRandom: sortOptions.field === 'random',
-      hasCurrentTag: !!currentTag
-    });
-    
+
     const map = new Map<string, any>();
     for (const arr of sets) {
       for (const p of arr) {
         if (p && !map.has(p.id)) map.set(p.id, p);
       }
     }
-    console.log('DetailedPhotoModal: unionPool result:', { mapSize: map.size, firstFewIds: Array.from(map.keys()).slice(0, 3) });
     return map; // id -> photo
-  }, [searchQuery, fastSearchQuery.photos, photosQuery.data, allPhotosQuery.data, allPhotosByTagQuery.data, sortOptions.field, currentTag]);
+  }, [searchQuery, fastSearchQuery.photos, photosQuery.data]);
 
   const photos = React.useMemo(() => {
-    console.log('DetailedPhotoModal: photos assembly debug:', {
-      navigationListLength: navigationList?.length || 0,
-      unionPoolSize: unionPool.size,
-      searchQuery: searchQuery.trim(),
-      sortOptionsField: sortOptions.field,
-      currentTag
-    });
-    
     // If we have a navigation list, try to use it first
     if (navigationList && navigationList.length > 0) {
       const ordered: any[] = [];
@@ -235,40 +226,40 @@ export const DetailedPhotoModal: React.FC = () => {
         const p = unionPool.get(id);
         if (p) ordered.push(p);
       }
-      console.log('DetailedPhotoModal: Navigation list assembly result:', { orderedLength: ordered.length });
       if (ordered.length > 0) return ordered;
-      
+
       // If navigation list assembly failed, try to get photos from the current query
-      console.log('DetailedPhotoModal: Navigation list assembly failed, trying current query');
     }
-    
+
     // Fallback to current query data
     if (searchQuery.trim().length > 0) return fastSearchQuery.photos || [];
-    if (sortOptions.field === 'random' && currentTag) return allPhotosByTagQuery.data || [];
-    if (sortOptions.field === 'random' && !currentTag) return allPhotosQuery.data || [];
-    
     // For tag views, try to get photos from tagPhotosQuery directly
     if (currentTag) {
-      const tagPhotos = tagPhotosQuery.data?.pages.flatMap(page => page.photos) || [];
-      console.log('DetailedPhotoModal: Tag photos from tagPhotosQuery:', { tagPhotosLength: tagPhotos.length });
+      const tagPhotos = tagPhotosQuery.data?.pages.flatMap((page) => page.photos) || [];
       if (tagPhotos.length > 0) return tagPhotos;
-      
-      // If tagPhotosQuery is empty (e.g., for random sort), try allPhotosByTagQuery
-      if (sortOptions.field === 'random') {
-        const allTagPhotos = allPhotosByTagQuery.data || [];
-        console.log('DetailedPhotoModal: All tag photos from allPhotosByTagQuery:', { allTagPhotosLength: allTagPhotos.length });
-        if (allTagPhotos.length > 0) return allTagPhotos;
-      }
     }
-    
-    const fallbackPhotos = photosQuery.data?.pages.flatMap(page => page.photos) || [];
-    console.log('DetailedPhotoModal: Fallback photos result:', { fallbackPhotosLength: fallbackPhotos.length });
+
+    const fallbackPhotos = photosQuery.data?.pages.flatMap((page) => page.photos) || [];
     return fallbackPhotos;
-  }, [navigationList, unionPool, searchQuery, fastSearchQuery.photos, sortOptions.field, currentTag, allPhotosByTagQuery.data, allPhotosQuery.data, photosQuery.data, tagPhotosQuery.data]);
+  }, [
+    navigationList,
+    unionPool,
+    searchQuery,
+    fastSearchQuery.photos,
+    currentTag,
+    photosQuery.data,
+    tagPhotosQuery.data,
+  ]);
+
+  const preloadWindow = React.useMemo(() => {
+    if (currentIndex < 0) return photo ? [photo] : [];
+    return [photos[currentIndex], photos[currentIndex - 1], photos[currentIndex + 1]].filter(Boolean);
+  }, [currentIndex, photo, photos]);
+  useMediaPreload(preloadWindow, 3);
 
   // Debug logging (disabled for performance)
-  // console.log('DetailedPhotoModal photos data:', { 
-  //   photosLength: photos.length, 
+  // console.log('DetailedPhotoModal photos data:', {
+  //   photosLength: photos.length,
   //   usingSearchResults: searchQuery.trim().length > 0,
   //   currentTag,
   //   currentFolder,
@@ -276,36 +267,22 @@ export const DetailedPhotoModal: React.FC = () => {
   //   detailedPhoto
   // });
 
-  // Track the latest requested detailed photo id to avoid stale closures in async flows
   const detailedPhotoRef = React.useRef<string | null>(detailedPhoto);
   useEffect(() => {
     detailedPhotoRef.current = detailedPhoto;
   }, [detailedPhoto]);
-
-  // Track in-flight fetches to prevent duplicate requests for the same id
-  const inFlightFetchesRef = React.useRef<Set<string>>(new Set());
+  const photoIsInList = Boolean(detailedPhoto && photos.some((candidate) => candidate.id === detailedPhoto));
+  const directPhotoQuery = useQuery({
+    queryKey: queryKeys.photo(detailedPhoto),
+    queryFn: ({ signal }) => kiwiApi.photos.metadata(detailedPhoto!, signal),
+    enabled: Boolean(detailedPhoto && photos.length > 0 && !photoIsInList),
+  });
 
   useEffect(() => {
-    console.log('DetailedPhotoModal useEffect triggered:', { 
-      detailedPhoto, 
-      photosLength: photos.length, 
-      fetchingPhotoId,
-      currentTag,
-      currentFolder,
-      navigationListLength: navigationList?.length || 0
-    });
     if (!detailedPhoto) {
-      console.log('DetailedPhotoModal: No detailedPhoto, setting photo to null');
       setPhoto(null);
       setCurrentIndex(-1);
-      setFetchingPhotoId(null);
       return;
-    }
-
-    // Reset fetching state if we're looking for a different photo than what's currently being fetched
-    if (fetchingPhotoId && fetchingPhotoId !== detailedPhoto) {
-      console.log('Resetting stale fetch state:', { oldFetchingPhotoId: fetchingPhotoId, newPhotoId: detailedPhoto });
-      setFetchingPhotoId(null);
     }
 
     // If we have a navigationList, derive index from it for stability
@@ -316,67 +293,19 @@ export const DetailedPhotoModal: React.FC = () => {
 
     // Also compute index within our current assembled photos array
     const idx = photos.findIndex((p) => p.id === detailedPhoto);
-    console.log('DetailedPhotoModal: Photo search debug:', { 
-      detailedPhoto, 
-      foundIndex: idx, 
-      fetchingPhotoId, 
-      photosLength: photos.length,
-      firstFewPhotoIds: photos.slice(0, 3).map(p => p.id),
-      currentTag,
-      currentFolder
-    });
 
     if (idx !== -1) {
       // Photo found in current dataset
       setCurrentIndex(idx);
       setPhoto(photos[idx]);
-      setFetchingPhotoId(null); // Clear any previous fetch state
-      
-      // Immediately prioritize the current image for loading
-      const currentPhoto = photos[idx];
-      if (currentPhoto && !imagePreloadingService.isPreloaded(currentPhoto.id)) {
-        imagePreloadingService.forceLoadImage(currentPhoto);
-      }
-      
-      // Preload neighbor images for smooth navigation
-      const neighbors = [];
-      if (idx > 0) neighbors.push(photos[idx - 1]);
-      if (idx < photos.length - 1) neighbors.push(photos[idx + 1]);
-      
-      if (neighbors.length > 0) {
-        imagePreloadingService.addToQueue(neighbors, 'high');
-      }
-    } else if (photo && photo.id === detailedPhoto) {
-      // Already have the specifically-fetched photo in state; avoid re-fetch loop
+    } else if (directPhotoQuery.data) {
+      setPhoto(directPhotoQuery.data);
       setCurrentIndex(-1);
-      setFetchingPhotoId(null);
-      
-      // Still prioritize this image for loading if not already preloaded
-      if (!imagePreloadingService.isPreloaded(photo.id)) {
-        imagePreloadingService.forceLoadImage(photo);
-      }
-    } else if (photos.length > 0) {
-      // Photo not found in current dataset, try to fetch it specifically
-      if (!inFlightFetchesRef.current.has(detailedPhoto)) {
-        console.log('Photo not found in current dataset, fetching specifically:', detailedPhoto);
-        inFlightFetchesRef.current.add(detailedPhoto);
-        setFetchingPhotoId(detailedPhoto);
-        fetchSpecificPhoto(detailedPhoto)
-          .finally(() => {
-            inFlightFetchesRef.current.delete(detailedPhoto);
-          });
-      } else {
-        // Already fetching this photo in-flight, waiting for result
-        console.log('Fetch already in-flight (ref), waiting...', { detailedPhoto });
-      }
-    } else if (photos.length === 0) {
-      // No photos in dataset yet, wait for them to load
-      // console.log('No photos in dataset yet, waiting...');
+    } else {
       setPhoto(null);
       setCurrentIndex(-1);
-      setFetchingPhotoId(null);
     }
-  }, [detailedPhoto, photos, photo?.id]);
+  }, [detailedPhoto, directPhotoQuery.data, navigationList, photos]);
 
   useEffect(() => {
     if (!pendingNavigation) return;
@@ -396,55 +325,7 @@ export const DetailedPhotoModal: React.FC = () => {
     }
   }, [pendingNavigation, hasNextPageAvailable, isFetchingNextPage]);
 
-  // Function to fetch a specific photo when it's not in the current dataset
-  const fetchSpecificPhoto = async (photoId: string) => {
-    try {
-      const response = await fetchWithRetry(`/api/photos/${photoId}/metadata`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch photo metadata: ${response.statusText}`);
-      }
-      const photoData = await response.json();
-      console.log('Fetched specific photo:', photoData);
-      
-      // Only set the photo if we're still looking for this specific photo
-      const stillNeeded = detailedPhotoRef.current === photoId;
-      console.log('Fetch complete, checking if still needed:', { currentRequested: detailedPhotoRef.current, photoId, stillNeeded });
-      if (stillNeeded) {
-        console.log('Setting photo data:', { photoId: photoData.id, photoName: photoData.name });
-        setPhoto(photoData);
-        setCurrentIndex(-1); // Indicate this photo is not in the main navigation array
-        if (detailedPhotoRef.current === photoId) {
-          setFetchingPhotoId(null); // Clear the fetching state only if still current
-        }
-      } else {
-        console.log('Ignoring fetch result, photo no longer needed:', { currentRequested: detailedPhotoRef.current, photoId });
-      }
-    } catch (error) {
-      console.error('Failed to fetch specific photo:', error, { photoId, currentRequested: detailedPhotoRef.current });
-      if (detailedPhotoRef.current === photoId) {
-        setPhoto(null);
-        setCurrentIndex(-1);
-        setFetchingPhotoId(null);
-      }
-    }
-  };
-
-  // Debug the photo URL when photo changes
-  useEffect(() => {
-    console.log('Photo state changed:', { photo: photo ? `${photo.id} (${photo.name})` : null });
-    if (photo) {
-      const photoUrl = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
-      console.log('Photo URL debug:', {
-        photoId: photo.id,
-        photoExt: photo.ext,
-        photoName: photo.name,
-        generatedUrl: photoUrl
-      });
-    }
-  }, [photo]);
-
   const closeModal = () => {
-    console.log('Closing detailed modal, restoring scroll position for folder:', currentFolder);
     setDetailedPhoto(null);
   };
 
@@ -524,10 +405,10 @@ export const DetailedPhotoModal: React.FC = () => {
   const onTouchStart = (e: React.TouchEvent) => {
     // Only handle single touch
     if (e.targetTouches.length !== 1) return;
-    
+
     // Don't interfere with zoom/pan gestures when zoomed in
     if (zoom > 1) return;
-    
+
     setTouchEnd(null);
     setTouchStart({
       x: e.targetTouches[0].clientX,
@@ -538,23 +419,23 @@ export const DetailedPhotoModal: React.FC = () => {
   const onTouchMove = (e: React.TouchEvent) => {
     // Only handle single touch
     if (e.targetTouches.length !== 1) return;
-    
+
     // Don't interfere with zoom/pan gestures when zoomed in
     if (zoom > 1) return;
-    
+
     const currentTouch = {
       x: e.targetTouches[0].clientX,
       y: e.targetTouches[0].clientY,
     };
-    
+
     setTouchEnd(currentTouch);
-    
+
     // Calculate drag offset for visual feedback
     if (touchStart) {
       const distanceX = currentTouch.x - touchStart.x;
       const distanceY = currentTouch.y - touchStart.y;
       const isHorizontalSwipe = Math.abs(distanceX) > Math.abs(distanceY);
-      
+
       // Only show drag feedback for horizontal swipes
       if (isHorizontalSwipe) {
         // Apply resistance at edges
@@ -570,7 +451,7 @@ export const DetailedPhotoModal: React.FC = () => {
 
   const onTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
-    
+
     // Don't interfere with zoom/pan gestures when zoomed in
     if (zoom > 1) {
       setTouchStart(null);
@@ -578,16 +459,16 @@ export const DetailedPhotoModal: React.FC = () => {
       setSwipeOffset(0);
       return;
     }
-    
+
     const distanceX = touchStart.x - touchEnd.x;
     const distanceY = touchStart.y - touchEnd.y;
     const isHorizontalSwipe = Math.abs(distanceX) > Math.abs(distanceY);
-    
+
     // Only trigger swipe if it's clearly horizontal and meets minimum distance
     if (isHorizontalSwipe && Math.abs(distanceX) > minSwipeDistance && Math.abs(distanceY) < 100) {
       // Trigger transition animation
       setIsSwipeTransitioning(true);
-      
+
       if (distanceX > 0) {
         // Swiped left - show next image
         // Complete the slide animation to show the next image
@@ -617,7 +498,7 @@ export const DetailedPhotoModal: React.FC = () => {
         setIsSwipeTransitioning(false);
       }, 200);
     }
-    
+
     // Reset touch state
     setTouchStart(null);
     setTouchEnd(null);
@@ -663,7 +544,7 @@ export const DetailedPhotoModal: React.FC = () => {
 
   const getImageStyle = () => {
     const baseStyle = {}; // Removed black background
-    
+
     // Apply swipe offset for touch drag animation
     if (swipeOffset !== 0) {
       const progress = Math.abs(swipeOffset) / window.innerWidth;
@@ -676,7 +557,7 @@ export const DetailedPhotoModal: React.FC = () => {
           transformOrigin: 'center',
           transition: baseTransition,
           opacity: Math.max(0, 1 - progress),
-          cursor: isDragging ? 'grabbing' : 'grab'
+          cursor: isDragging ? 'grabbing' : 'grab',
         };
       } else if (transitionEffect === 'zoom') {
         const scale = Math.max(0.5, 1 - progress * 0.5);
@@ -686,7 +567,7 @@ export const DetailedPhotoModal: React.FC = () => {
           transformOrigin: 'center',
           transition: baseTransition,
           opacity: Math.max(0, 1 - progress),
-          cursor: isDragging ? 'grabbing' : 'grab'
+          cursor: isDragging ? 'grabbing' : 'grab',
         };
       } else {
         // Slide (Default)
@@ -697,21 +578,21 @@ export const DetailedPhotoModal: React.FC = () => {
           transformOrigin: 'center',
           transition: baseTransition,
           opacity: Math.max(0.3, opacity),
-          cursor: isDragging ? 'grabbing' : 'grab'
+          cursor: isDragging ? 'grabbing' : 'grab',
         };
       }
     }
-    
+
     if (zoom !== 1) {
       return {
         ...baseStyle,
         transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`,
         transformOrigin: 'center',
         transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-        cursor: isDragging ? 'grabbing' : 'grab'
+        cursor: isDragging ? 'grabbing' : 'grab',
       };
     }
-    
+
     return baseStyle;
   };
 
@@ -719,7 +600,7 @@ export const DetailedPhotoModal: React.FC = () => {
     const progress = swipeOffset > 0 ? swipeOffset / window.innerWidth : 0;
     const base = {
       transition: isSwipeTransitioning ? 'all 0.2s ease-out' : 'none',
-      zIndex: swipeOffset > 0 ? 1 : -1
+      zIndex: swipeOffset > 0 ? 1 : -1,
     };
 
     if (transitionEffect === 'fade') {
@@ -748,7 +629,7 @@ export const DetailedPhotoModal: React.FC = () => {
     const progress = swipeOffset < 0 ? Math.abs(swipeOffset) / window.innerWidth : 0;
     const base = {
       transition: isSwipeTransitioning ? 'all 0.2s ease-out' : 'none',
-      zIndex: swipeOffset < 0 ? 1 : -1
+      zIndex: swipeOffset < 0 ? 1 : -1,
     };
 
     if (transitionEffect === 'fade') {
@@ -794,7 +675,7 @@ export const DetailedPhotoModal: React.FC = () => {
   };
 
   const toggleMute = () => {
-    setIsVideoMuted(prev => {
+    setIsVideoMuted((prev) => {
       const newMuted = !prev;
       // If unmuting and volume is 0, set to a reasonable default
       if (!newMuted && videoVolume === 0) {
@@ -815,7 +696,7 @@ export const DetailedPhotoModal: React.FC = () => {
     }
   };
 
-  const toggleLoop = () => setIsVideoLoop(prev => !prev);
+  const toggleLoop = () => setIsVideoLoop((prev) => !prev);
   const cycleSpeed = () => {
     const speeds = [0.5, 1, 1.5, 2];
     const idx = speeds.indexOf(playbackRate);
@@ -830,19 +711,21 @@ export const DetailedPhotoModal: React.FC = () => {
   const formatVideoTime = (time: number) => {
     if (isNaN(time) || time < 0) return '0:00';
     const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60).toString().padStart(2, '0');
+    const seconds = Math.floor(time % 60)
+      .toString()
+      .padStart(2, '0');
     return `${minutes}:${seconds}`;
   };
 
   const handleSeekBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const v = videoRef.current;
     if (!v || !videoDuration) return;
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const percentage = clickX / rect.width;
     const newTime = percentage * videoDuration;
-    
+
     v.currentTime = Math.max(0, Math.min(newTime, videoDuration));
     setVideoProgress(newTime);
   };
@@ -856,7 +739,7 @@ export const DetailedPhotoModal: React.FC = () => {
     const image = imageRef.current;
     const imageRect = image.getBoundingClientRect();
     const modalRect = modalRef.current?.getBoundingClientRect();
-    
+
     if (!modalRect) {
       return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
     }
@@ -874,7 +757,7 @@ export const DetailedPhotoModal: React.FC = () => {
       minX: -maxPanX,
       maxX: maxPanX,
       minY: -maxPanY,
-      maxY: maxPanY
+      maxY: maxPanY,
     };
   };
 
@@ -882,22 +765,22 @@ export const DetailedPhotoModal: React.FC = () => {
     const limits = getPanLimits();
     return {
       x: Math.max(limits.minX, Math.min(limits.maxX, newPan.x)),
-      y: Math.max(limits.minY, Math.min(limits.maxY, newPan.y))
+      y: Math.max(limits.minY, Math.min(limits.maxY, newPan.y)),
     };
   };
 
   const handleWheel = (e: WheelEvent) => {
     e.preventDefault();
-    
+
     // Scale scroll speed based on zoom level
     // Higher zoom = slower, more precise scrolling
     const zoomFactor = Math.max(0.1, 1 / zoom);
     const scrollAmount = -e.deltaY * 0.5 * zoomFactor;
-    
-    setPan(prev => {
+
+    setPan((prev) => {
       const newPan = {
         ...prev,
-        y: prev.y + scrollAmount
+        y: prev.y + scrollAmount,
       };
       return constrainPan(newPan);
     });
@@ -916,10 +799,10 @@ export const DetailedPhotoModal: React.FC = () => {
       const zoomFactor = Math.max(0.1, 1 / zoom);
       const deltaX = (e.clientX - dragStart.x) * zoomFactor;
       const deltaY = (e.clientY - dragStart.y) * zoomFactor;
-      
+
       const newPan = {
         x: deltaX,
-        y: deltaY
+        y: deltaY,
       };
       setPan(constrainPan(newPan));
     }
@@ -961,7 +844,11 @@ export const DetailedPhotoModal: React.FC = () => {
 
     const clickX = e.clientX;
     const clickY = e.clientY;
-    const insideContent = clickX >= drawnLeft && clickX <= drawnLeft + drawnWidth && clickY >= drawnTop && clickY <= drawnTop + drawnHeight;
+    const insideContent =
+      clickX >= drawnLeft &&
+      clickX <= drawnLeft + drawnWidth &&
+      clickY >= drawnTop &&
+      clickY <= drawnTop + drawnHeight;
 
     if (insideContent) {
       // Clicking on the actual image content should not close
@@ -1003,7 +890,11 @@ export const DetailedPhotoModal: React.FC = () => {
 
     const clickX = e.clientX;
     const clickY = e.clientY;
-    const isInsideContent = clickX >= drawnLeft && clickX <= drawnLeft + drawnWidth && clickY >= drawnTop && clickY <= drawnTop + drawnHeight;
+    const isInsideContent =
+      clickX >= drawnLeft &&
+      clickX <= drawnLeft + drawnWidth &&
+      clickY >= drawnTop &&
+      clickY <= drawnTop + drawnHeight;
 
     if (!isInsideContent) {
       // The click was on the letterbox area. Prevent the video from playing/pausing, and close the modal.
@@ -1018,11 +909,11 @@ export const DetailedPhotoModal: React.FC = () => {
   // letterboxed areas before the video element can toggle play/pause.
 
   const handleZoomIn = () => {
-    setZoom(prev => Math.min(prev * 1.2, 5));
+    setZoom((prev) => Math.min(prev * 1.2, 5));
   };
 
   const handleZoomOut = () => {
-    setZoom(prev => Math.max(prev / 1.2, 0.1));
+    setZoom((prev) => Math.max(prev / 1.2, 0.1));
   };
 
   const handleResetZoom = () => {
@@ -1035,7 +926,7 @@ export const DetailedPhotoModal: React.FC = () => {
     if (!photo) return null;
 
     const fileTypeInfo = getFileTypeInfo(photo.ext);
-    
+
     if (shouldUseFileCard(photo.ext)) {
       // Render file-specific content
       if (fileTypeInfo.category === 'video') {
@@ -1059,7 +950,7 @@ export const DetailedPhotoModal: React.FC = () => {
               if (videoRef.current) {
                 setVideoDimensions({
                   width: videoRef.current.videoWidth,
-                  height: videoRef.current.videoHeight
+                  height: videoRef.current.videoHeight,
                 });
                 setVideoDuration(videoRef.current.duration);
               }
@@ -1075,9 +966,7 @@ export const DetailedPhotoModal: React.FC = () => {
                 videoRef.current.pause();
               }
             }}
-            onError={(e) => {
-              console.log('Video load error in detailed view:', e);
-            }}
+            onError={(e) => {}}
           />
         );
       }
@@ -1085,24 +974,30 @@ export const DetailedPhotoModal: React.FC = () => {
         const fileUrl = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
         return (
           <div className="flex flex-col items-center justify-center">
-            <EpubViewer fileUrl={fileUrl} />
+            <React.Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center" role="status">
+                  Loading book…
+                </div>
+              }
+            >
+              <EpubViewer fileUrl={fileUrl} />
+            </React.Suspense>
           </div>
         );
       }
-      
+
       return (
         <div className="flex flex-col items-center justify-center max-w-2xl mx-auto text-center">
           {/* File icon */}
-          <div className="text-8xl mb-6 opacity-80">
-            {fileTypeInfo.icon}
-          </div>
-          
+          <div className="text-8xl mb-6 opacity-80">{fileTypeInfo.icon}</div>
+
           {/* File name */}
           <h2 className="text-2xl font-bold text-white mb-4">{photo.name}</h2>
-          
+
           {/* File type */}
           <p className="text-lg text-gray-300 mb-6">{fileTypeInfo.displayName}</p>
-          
+
           {/* File info */}
           <div className="bg-black/50 backdrop-blur-sm rounded-lg p-6 mb-6">
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -1116,7 +1011,7 @@ export const DetailedPhotoModal: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           {/* Action buttons */}
           <div className="flex gap-4">
             {fileTypeInfo.canPreview ? (
@@ -1148,7 +1043,7 @@ export const DetailedPhotoModal: React.FC = () => {
               </button>
             )}
           </div>
-          
+
           {/* Tags */}
           {photo.tags && photo.tags.length > 0 && (
             <div className="mt-6">
@@ -1187,7 +1082,7 @@ export const DetailedPhotoModal: React.FC = () => {
               if (videoRef.current) {
                 setVideoDimensions({
                   width: videoRef.current.videoWidth,
-                  height: videoRef.current.videoHeight
+                  height: videoRef.current.videoHeight,
                 });
                 setVideoDuration(videoRef.current.duration);
               }
@@ -1203,9 +1098,7 @@ export const DetailedPhotoModal: React.FC = () => {
                 videoRef.current.pause();
               }
             }}
-            onError={(e) => {
-              console.log('Video load error in detailed view:', e);
-            }}
+            onError={(e) => {}}
           />
         );
       } else {
@@ -1281,7 +1174,7 @@ export const DetailedPhotoModal: React.FC = () => {
                 width={photo.width}
                 height={photo.height}
                 decoding="async"
-                fetchpriority="high"
+                fetchPriority="high"
                 loading="eager"
                 sizes="(max-width: 768px) 100vw, 80vw"
                 onLoad={handleFullResLoad}
@@ -1426,7 +1319,7 @@ export const DetailedPhotoModal: React.FC = () => {
 
     const preloadImage = (photoToPreload: any) => {
       if (!photoToPreload || preloadCacheRef.current.has(photoToPreload.id)) return;
-      
+
       // Skip videos and files - only preload images
       const fileType = getFileTypeInfo(photoToPreload.ext);
       if (fileType.category === 'video' || shouldUseFileCard(photoToPreload.ext)) return;
@@ -1434,8 +1327,6 @@ export const DetailedPhotoModal: React.FC = () => {
       const img = new Image();
       img.src = libraryService.getPhotoFileUrl(photoToPreload.id, photoToPreload.ext, photoToPreload.name);
       preloadCacheRef.current.add(photoToPreload.id);
-      
-      console.log('Preloading image:', { id: photoToPreload.id, name: photoToPreload.name });
     };
 
     // Preload next 2-3 images
@@ -1460,23 +1351,13 @@ export const DetailedPhotoModal: React.FC = () => {
     const shouldLoadMore = remainingPhotos <= 10;
 
     if (shouldLoadMore) {
-      console.log('DetailedView: Approaching end of chunk, checking for more photos...', {
-        currentIndex,
-        photosLength: photos.length,
-        remainingPhotos,
-        hasNextPage: hasNextPageAvailable,
-        isFetchingNextPage
-      });
-
       // Trigger pagination for the appropriate query
       if (searchQuery.trim().length > 0) {
         // Search results
         if (fastSearchQuery.hasNextPage && !fastSearchQuery.isLoading) {
-          console.log('DetailedView: Fetching next page of search results');
           // Note: fastSearchQuery doesn't have fetchNextPage, it's a single query
         }
       } else if (hasNextPageAvailable && !isFetchingNextPage) {
-        console.log('DetailedView: Fetching next page of results via auto-preload');
         triggerFetchNextPage();
       }
     }
@@ -1489,9 +1370,8 @@ export const DetailedPhotoModal: React.FC = () => {
     searchQuery,
     currentTag,
     fastSearchQuery,
-    triggerFetchNextPage
+    triggerFetchNextPage,
   ]);
-
 
   const isModalOpen = detailedPhoto !== null;
 
@@ -1501,7 +1381,12 @@ export const DetailedPhotoModal: React.FC = () => {
     const prevent = (e: Event) => {
       if (e.target && (e.target as Element).closest('[data-info-box-scroll]')) return;
       // Allow wheel/touchmove inside the image container ONLY when there's overflow on the active axis (and not zoomed)
-      if (imageContainerRef.current && e.target && imageContainerRef.current.contains(e.target as Node) && zoom <= 1) {
+      if (
+        imageContainerRef.current &&
+        e.target &&
+        imageContainerRef.current.contains(e.target as Node) &&
+        zoom <= 1
+      ) {
         if (viewMode === 'horizontal' && hasVerticalOverflow) return; // permit vertical scroll inside
         if (viewMode === 'vertical' && hasHorizontalOverflow) return; // permit horizontal scroll inside
       }
@@ -1568,23 +1453,25 @@ export const DetailedPhotoModal: React.FC = () => {
   };
 
   if (!photo) {
-    console.log('DetailedPhotoModal: No photo, returning null');
     return null;
   }
   if (!photos.length) {
-    console.log('DetailedPhotoModal: No photos array, returning null');
     return null;
   }
 
-  console.log('DetailedPhotoModal: Rendering modal with photo:', photo.name);
-
   const isWaitingForMorePhotos = Boolean(pendingNavigation) || isFetchingNextPage;
-  const shouldShowNextButton = photos.length > 0 && (currentIndex < photos.length - 1 || hasNextPageAvailable || Boolean(pendingNavigation));
+  const shouldShowNextButton =
+    photos.length > 0 &&
+    (currentIndex < photos.length - 1 || hasNextPageAvailable || Boolean(pendingNavigation));
 
   return (
-    <div 
+    <div
       ref={modalRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overscroll-contain" 
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Details for ${photo.name}`}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overscroll-contain"
       onClick={handleModalClick}
       onMouseMove={handleRootMouseMove}
       onTouchStart={onTouchStart}
@@ -1594,20 +1481,32 @@ export const DetailedPhotoModal: React.FC = () => {
       {/* Navigation */}
       {photos.length && currentIndex > 0 && (
         <button
+          type="button"
+          aria-label="Previous item"
           className={`absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white z-10 touch-manipulation transition-opacity ${
             isNearLeftEdge ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
-          onClick={(e) => { e.stopPropagation(); showPrev(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            showPrev();
+          }}
         >
           <ArrowLeft className="w-8 h-8" />
         </button>
       )}
       {shouldShowNextButton && (
         <button
+          type="button"
+          aria-label="Next item"
           className={`absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white z-10 touch-manipulation transition-opacity disabled:opacity-70 disabled:cursor-not-allowed ${
-            isNearRightEdge || currentIndex >= photos.length - 1 ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+            isNearRightEdge || currentIndex >= photos.length - 1
+              ? 'opacity-100 pointer-events-auto'
+              : 'opacity-0 pointer-events-none'
           }`}
-          onClick={(e) => { e.stopPropagation(); showNext(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            showNext();
+          }}
           disabled={currentIndex >= photos.length - 1 && (!hasNextPageAvailable || isWaitingForMorePhotos)}
         >
           {currentIndex >= photos.length - 1 && isWaitingForMorePhotos ? (
@@ -1617,12 +1516,12 @@ export const DetailedPhotoModal: React.FC = () => {
           )}
         </button>
       )}
-      
+
       {/* Swipe direction indicators - show during drag */}
       {swipeOffset !== 0 && !isSwipeTransitioning && (
         <>
           {swipeOffset > 0 && currentIndex > 0 && (
-            <div 
+            <div
               className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-white/20 to-transparent pointer-events-none z-10 flex items-center justify-start pl-4"
               style={{ opacity: Math.min(1, Math.abs(swipeOffset) / 100) }}
             >
@@ -1630,7 +1529,7 @@ export const DetailedPhotoModal: React.FC = () => {
             </div>
           )}
           {swipeOffset < 0 && currentIndex < photos.length - 1 && (
-            <div 
+            <div
               className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-white/20 to-transparent pointer-events-none z-10 flex items-center justify-end pr-4"
               style={{ opacity: Math.min(1, Math.abs(swipeOffset) / 100) }}
             >
@@ -1653,11 +1552,12 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Vertical expand button */}
           <button
             className={`p-3 rounded-full transition-colors ${
-              viewMode === 'vertical' 
-                ? 'bg-white/20 text-white' 
-                : 'bg-black/50 hover:bg-black/70 text-white'
+              viewMode === 'vertical' ? 'bg-white/20 text-white' : 'bg-black/50 hover:bg-black/70 text-white'
             }`}
-            onClick={(e) => { e.stopPropagation(); setViewMode('vertical'); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode('vertical');
+            }}
             title="Expand to full height (V)"
           >
             <div className="w-6 h-6 flex items-center justify-center">
@@ -1668,11 +1568,14 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Horizontal expand button */}
           <button
             className={`p-3 rounded-full transition-colors ${
-              viewMode === 'horizontal' 
-                ? 'bg-white/20 text-white' 
+              viewMode === 'horizontal'
+                ? 'bg-white/20 text-white'
                 : 'bg-black/50 hover:bg-black/70 text-white'
             }`}
-            onClick={(e) => { e.stopPropagation(); setViewMode('horizontal'); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode('horizontal');
+            }}
             title="Expand to full width (H)"
           >
             <div className="w-6 h-6 flex items-center justify-center">
@@ -1683,11 +1586,12 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Fit to screen button */}
           <button
             className={`p-3 rounded-full transition-colors ${
-              viewMode === 'fit' 
-                ? 'bg-white/20 text-white' 
-                : 'bg-black/50 hover:bg-black/70 text-white'
+              viewMode === 'fit' ? 'bg-white/20 text-white' : 'bg-black/50 hover:bg-black/70 text-white'
             }`}
-            onClick={(e) => { e.stopPropagation(); setViewMode('fit'); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode('fit');
+            }}
             title="Fit to screen (F)"
           >
             <Minimize2 className="w-6 h-6" />
@@ -1696,7 +1600,10 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Exit button */}
           <button
             className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
-            onClick={(e) => { e.stopPropagation(); closeModal(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              closeModal();
+            }}
             title="Exit (Esc)"
           >
             <X className="w-6 h-6" />
@@ -1710,7 +1617,10 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Exit button */}
           <button
             className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
-            onClick={(e) => { e.stopPropagation(); closeModal(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              closeModal();
+            }}
             title="Exit (Esc)"
           >
             <X className="w-6 h-6" />
@@ -1724,36 +1634,71 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Seek bar */}
           <div className="flex items-center gap-2 w-full max-w-sm">
             <span className="text-xs text-gray-300 min-w-[30px]">{formatVideoTime(videoProgress)}</span>
-            <div 
+            <div
               className="flex-1 h-1.5 bg-white/20 rounded-full cursor-pointer relative"
-              onClick={(e) => { e.stopPropagation(); handleSeekBarClick(e); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSeekBarClick(e);
+              }}
             >
-              <div 
+              <div
                 className="h-full bg-white rounded-full transition-all duration-100"
                 style={{ width: videoDuration ? `${(videoProgress / videoDuration) * 100}%` : '0%' }}
               />
             </div>
             <span className="text-xs text-gray-300 min-w-[30px]">{formatVideoTime(videoDuration)}</span>
           </div>
-          
+
           {/* Control buttons */}
           <div className="flex items-center gap-1.5">
-            <button className="p-1.5 hover:bg-white/10 rounded-full" onClick={(e) => { e.stopPropagation(); seekBy(-5); }} title="Rewind 5s">
+            <button
+              className="p-1.5 hover:bg-white/10 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                seekBy(-5);
+              }}
+              title="Rewind 5s"
+            >
               <Rewind className="w-4 h-4" />
             </button>
-            <button className="p-1.5 hover:bg-white/10 rounded-full" onClick={(e) => { e.stopPropagation(); togglePlayPause(); }} title="Play/Pause">
-              {videoRef.current && videoRef.current.paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            <button
+              className="p-1.5 hover:bg-white/10 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePlayPause();
+              }}
+              title="Play/Pause"
+            >
+              {videoRef.current && videoRef.current.paused ? (
+                <Play className="w-4 h-4" />
+              ) : (
+                <Pause className="w-4 h-4" />
+              )}
             </button>
-            <button className="p-1.5 hover:bg-white/10 rounded-full" onClick={(e) => { e.stopPropagation(); seekBy(5); }} title="Forward 5s">
+            <button
+              className="p-1.5 hover:bg-white/10 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                seekBy(5);
+              }}
+              title="Forward 5s"
+            >
               <FastForward className="w-4 h-4" />
             </button>
 
             <div className="w-px h-4 bg-white/30 mx-0.5" />
 
-            <button className={`p-1.5 rounded-full ${isVideoMuted ? 'bg-white/10' : 'hover:bg-white/10'}`} onClick={(e) => { e.stopPropagation(); toggleMute(); }} title={isVideoMuted ? 'Unmute' : 'Mute'}>
+            <button
+              className={`p-1.5 rounded-full ${isVideoMuted ? 'bg-white/10' : 'hover:bg-white/10'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleMute();
+              }}
+              title={isVideoMuted ? 'Unmute' : 'Mute'}
+            >
               {isVideoMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </button>
-            
+
             {/* Volume Slider */}
             <div className="flex items-center gap-1 min-w-[60px]">
               <input
@@ -1762,10 +1707,13 @@ export const DetailedPhotoModal: React.FC = () => {
                 max="1"
                 step="0.1"
                 value={videoVolume}
-                onChange={(e) => { e.stopPropagation(); handleVolumeChange(parseFloat(e.target.value)); }}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  handleVolumeChange(parseFloat(e.target.value));
+                }}
                 className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
                 style={{
-                  background: `linear-gradient(to right, #ffffff 0%, #ffffff ${videoVolume * 100}%, rgba(255,255,255,0.2) ${videoVolume * 100}%, rgba(255,255,255,0.2) 100%)`
+                  background: `linear-gradient(to right, #ffffff 0%, #ffffff ${videoVolume * 100}%, rgba(255,255,255,0.2) ${videoVolume * 100}%, rgba(255,255,255,0.2) 100%)`,
                 }}
                 title={`Volume: ${Math.round(videoVolume * 100)}%`}
               />
@@ -1774,10 +1722,24 @@ export const DetailedPhotoModal: React.FC = () => {
               </span>
             </div>
 
-            <button className={`p-1.5 rounded-full ${isVideoLoop ? 'bg-white/10' : 'hover:bg-white/10'}`} onClick={(e) => { e.stopPropagation(); toggleLoop(); }} title={isVideoLoop ? 'Loop: On' : 'Loop: Off'}>
+            <button
+              className={`p-1.5 rounded-full ${isVideoLoop ? 'bg-white/10' : 'hover:bg-white/10'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleLoop();
+              }}
+              title={isVideoLoop ? 'Loop: On' : 'Loop: Off'}
+            >
               <Repeat className="w-4 h-4" />
             </button>
-            <button className="px-2 py-1 text-xs bg-white/10 hover:bg-white/15 rounded-full" onClick={(e) => { e.stopPropagation(); cycleSpeed(); }} title="Playback speed">
+            <button
+              className="px-2 py-1 text-xs bg-white/10 hover:bg-white/15 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                cycleSpeed();
+              }}
+              title="Playback speed"
+            >
               {playbackRate}x
             </button>
           </div>
@@ -1790,11 +1752,14 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Zoom out button */}
           <button
             className={`p-3 rounded-full transition-colors ${
-              zoom <= 0.1 
-                ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed' 
+              zoom <= 0.1
+                ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed'
                 : 'bg-black/50 hover:bg-black/70 text-white'
             }`}
-            onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleZoomOut();
+            }}
             disabled={zoom <= 0.1}
             title="Zoom out (-)"
           >
@@ -1809,11 +1774,14 @@ export const DetailedPhotoModal: React.FC = () => {
           {/* Zoom in button */}
           <button
             className={`p-3 rounded-full transition-colors ${
-              zoom >= 5 
-                ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed' 
+              zoom >= 5
+                ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed'
                 : 'bg-black/50 hover:bg-black/70 text-white'
             }`}
-            onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleZoomIn();
+            }}
             disabled={zoom >= 5}
             title="Zoom in (+)"
           >
@@ -1827,7 +1795,10 @@ export const DetailedPhotoModal: React.FC = () => {
                 ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed'
                 : 'bg-black/50 hover:bg-black/70 text-white'
             }`}
-            onClick={(e) => { e.stopPropagation(); handleResetZoom(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleResetZoom();
+            }}
             disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
             title="Reset zoom (0)"
           >
@@ -1837,21 +1808,24 @@ export const DetailedPhotoModal: React.FC = () => {
       )}
 
       {/* Navigation hint when zoomed in - only for images */}
-      {photo && getFileTypeInfo(photo.ext).category !== 'video' && !shouldUseFileCard(photo.ext) && zoom > 1 && (
-        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-black/70 text-white text-sm px-4 py-2 rounded-full z-10">
-          Scroll to navigate • Drag to pan
-        </div>
-      )}
+      {photo &&
+        getFileTypeInfo(photo.ext).category !== 'video' &&
+        !shouldUseFileCard(photo.ext) &&
+        zoom > 1 && (
+          <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-black/70 text-white text-sm px-4 py-2 rounded-full z-10">
+            Scroll to navigate • Drag to pan
+          </div>
+        )}
 
       {/* Image container */}
-      <div 
+      <div
         ref={imageContainerRef}
         className={`relative z-0 flex overscroll-contain w-full h-full ${
           viewMode === 'horizontal'
             ? `${hasVerticalOverflow ? 'items-start' : 'items-center'} justify-center p-0 ${zoom <= 1 && hasVerticalOverflow ? 'overflow-y-auto' : 'overflow-y-hidden'} overflow-x-hidden`
             : viewMode === 'vertical'
-            ? `items-center ${hasHorizontalOverflow ? 'justify-start' : 'justify-center'} p-0 ${zoom <= 1 && hasHorizontalOverflow ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden`
-            : 'items-center justify-center overflow-hidden'
+              ? `items-center ${hasHorizontalOverflow ? 'justify-start' : 'justify-center'} p-0 ${zoom <= 1 && hasHorizontalOverflow ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden`
+              : 'items-center justify-center overflow-hidden'
         }`}
         onClick={handleModalClick}
         onClickCapture={handleContainerClickCapture}
@@ -1872,49 +1846,66 @@ export const DetailedPhotoModal: React.FC = () => {
               const el = imageContainerRef.current;
               const prev = el.scrollLeft;
               const next = prev + e.deltaY;
-              const maxScroll = horizontalMaxScroll > 0 ? horizontalMaxScroll : Math.max(0, el.scrollWidth - el.clientWidth);
+              const maxScroll =
+                horizontalMaxScroll > 0 ? horizontalMaxScroll : Math.max(0, el.scrollWidth - el.clientWidth);
               const clamped = Math.max(0, Math.min(next, maxScroll));
               if (clamped !== prev) el.scrollLeft = clamped;
               return;
             }
           }
           // Lock scroll when not overflow mode
-          if (viewMode === 'horizontal' && !hasVerticalOverflow) { e.preventDefault(); e.stopPropagation(); return; }
-          if (viewMode === 'vertical' && !hasHorizontalOverflow) { e.preventDefault(); e.stopPropagation(); return; }
+          if (viewMode === 'horizontal' && !hasVerticalOverflow) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (viewMode === 'vertical' && !hasHorizontalOverflow) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
           // Otherwise allow native scroll on the active axis but don't bubble to the background
           e.stopPropagation();
         }}
       >
         {/* Previous image preview - always rendered for preloading, positioned based on swipe */}
         {currentIndex > 0 && photos[currentIndex - 1] && (
-          <div 
+          <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
             style={getPrevPreviewStyle()}
           >
             <img
-              src={libraryService.getPhotoFileUrl(photos[currentIndex - 1].id, photos[currentIndex - 1].ext, photos[currentIndex - 1].name)}
+              src={libraryService.getPhotoFileUrl(
+                photos[currentIndex - 1].id,
+                photos[currentIndex - 1].ext,
+                photos[currentIndex - 1].name,
+              )}
               alt={photos[currentIndex - 1].name}
               className={getImageClasses()}
               draggable={false}
             />
           </div>
         )}
-        
+
         {/* Next image preview - always rendered for preloading, positioned based on swipe */}
         {currentIndex < photos.length - 1 && photos[currentIndex + 1] && (
-          <div 
+          <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
             style={getNextPreviewStyle()}
           >
             <img
-              src={libraryService.getPhotoFileUrl(photos[currentIndex + 1].id, photos[currentIndex + 1].ext, photos[currentIndex + 1].name)}
+              src={libraryService.getPhotoFileUrl(
+                photos[currentIndex + 1].id,
+                photos[currentIndex + 1].ext,
+                photos[currentIndex + 1].name,
+              )}
               alt={photos[currentIndex + 1].name}
               className={getImageClasses()}
               draggable={false}
             />
           </div>
         )}
-        
+
         {/* Current image */}
         {renderFileContent()}
       </div>
@@ -1939,4 +1930,4 @@ export const DetailedPhotoModal: React.FC = () => {
       )}
     </div>
   );
-}; 
+};

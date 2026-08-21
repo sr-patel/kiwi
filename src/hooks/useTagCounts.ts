@@ -1,17 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-
-async function fetchTagCounts(): Promise<Record<string, number>> {
-  const res = await fetch('/api/tags/counts');
-  if (!res.ok) {
-    throw new Error(`Failed to fetch tag counts: ${res.statusText}`);
-  }
-  return res.json();
-}
+import { queryKeys } from './queryKeys';
+import { kiwiApi } from '@/services/kiwiApi';
 
 export const useTagCounts = () => {
   return useQuery({
-    queryKey: ['tagCounts'],
-    queryFn: fetchTagCounts,
+    queryKey: queryKeys.tagCounts(),
+    queryFn: ({ signal }) => kiwiApi.tags.counts(signal),
     staleTime: 30_000,
   });
 };

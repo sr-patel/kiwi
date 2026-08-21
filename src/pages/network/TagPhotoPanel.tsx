@@ -29,10 +29,7 @@ function PanelThumbnail({
   onOpen: (photo: PhotoMetadata) => void;
 }) {
   const [src, setSrc] = useState<string | null>(null);
-  const aspectRatio =
-    photo.width && photo.height && photo.height > 0
-      ? photo.width / photo.height
-      : 1;
+  const aspectRatio = photo.width && photo.height && photo.height > 0 ? photo.width / photo.height : 1;
 
   useEffect(() => {
     const url = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
@@ -51,20 +48,12 @@ function PanelThumbnail({
     >
       {src ? (
         isVideoFile(photo.ext) ? (
-          <video
-            src={src}
-            className="h-full w-full object-cover"
-            muted
-            playsInline
-            preload="metadata"
-          />
+          <video src={src} className="h-full w-full object-cover" muted playsInline preload="metadata" />
         ) : (
           <img src={src} alt={photo.name} className="h-full w-full object-cover" loading="lazy" />
         )
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-xs text-zinc-600">
-          …
-        </div>
+        <div className="flex h-full w-full items-center justify-center text-xs text-zinc-600">…</div>
       )}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
         <p className="truncate text-left text-[10px] text-zinc-200">{photo.name}</p>
@@ -76,17 +65,11 @@ function PanelThumbnail({
 export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPhotoPanelProps) {
   const navigate = useNavigate();
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const {
-    setCurrentTag,
-    setCurrentFolder,
-    setDetailedPhoto,
-    setNavigationList,
-    saveScrollPosition,
-  } = useAppStore();
+  const { setCurrentTag, setCurrentFolder, setDetailedPhoto, setNavigationList, saveScrollPosition } =
+    useAppStore();
 
   const singleTag = selection?.kind === 'tag' ? selection.tag : null;
-  const linkTags =
-    selection?.kind === 'link' ? [selection.source, selection.target] : [];
+  const linkTags = selection?.kind === 'link' ? [selection.source, selection.target] : [];
 
   const tagQuery = usePhotosByTag({
     tag: singleTag,
@@ -118,11 +101,7 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (
-          entries[0]?.isIntersecting &&
-          hasNextPageRef.current &&
-          !isFetchingRef.current
-        ) {
+        if (entries[0]?.isIntersecting && hasNextPageRef.current && !isFetchingRef.current) {
           fetchNextPageRef.current();
         }
       },
@@ -145,7 +124,15 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
       setNavigationList(photos.map((p) => p.id));
       setDetailedPhoto(photo.id);
     },
-    [selection, photos, saveScrollPosition, setCurrentFolder, setCurrentTag, setNavigationList, setDetailedPhoto],
+    [
+      selection,
+      photos,
+      saveScrollPosition,
+      setCurrentFolder,
+      setCurrentTag,
+      setNavigationList,
+      setDetailedPhoto,
+    ],
   );
 
   const handleBrowseTag = () => {
@@ -180,14 +167,12 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
                     <span className="text-xs uppercase tracking-wide">Co-tagged</span>
                   </div>
                   <h2 className="truncate text-lg font-semibold text-zinc-100">
-                    #{selection.source}{' '}
-                    <span className="font-normal text-zinc-500">+</span> #{selection.target}
+                    #{selection.source} <span className="font-normal text-zinc-500">+</span> #
+                    {selection.target}
                   </h2>
                 </>
               )}
-              <p className="mt-1 text-sm text-zinc-500">
-                {totalCount.toLocaleString()} items in library
-              </p>
+              <p className="mt-1 text-sm text-zinc-500">{totalCount.toLocaleString()} items in library</p>
             </div>
             <button
               type="button"
@@ -228,9 +213,7 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
 
             {!activeQuery.loading && !activeQuery.error && photos.length === 0 && (
               <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
-                {selection.kind === 'tag'
-                  ? 'No photos found for this tag'
-                  : 'No photos found with both tags'}
+                {selection.kind === 'tag' ? 'No photos found for this tag' : 'No photos found with both tags'}
               </div>
             )}
 
@@ -243,11 +226,7 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
                 >
                   {photos.map((photo) => (
                     <div key={photo.id}>
-                      <PanelThumbnail
-                        photo={photo}
-                        accentHex={accentHex}
-                        onOpen={handleOpenPhoto}
-                      />
+                      <PanelThumbnail photo={photo} accentHex={accentHex} onOpen={handleOpenPhoto} />
                     </div>
                   ))}
                 </Masonry>

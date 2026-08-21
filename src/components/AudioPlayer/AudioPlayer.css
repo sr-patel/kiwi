@@ -67,7 +67,8 @@
 
 /* Progress Bar Animation */
 @keyframes progressPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.8;
   }
   50% {
@@ -77,7 +78,8 @@
 
 /* Visualizer Animation */
 @keyframes visualizerGlow {
-  0%, 100% {
+  0%,
+  100% {
     filter: brightness(1) saturate(1);
   }
   50% {
@@ -87,7 +89,8 @@
 
 /* Button Hover Effects */
 @keyframes buttonGlow {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
   }
   50% {
@@ -176,7 +179,8 @@
 
 /* Pulse Animation for Active States */
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
   }
   50% {
@@ -199,12 +203,7 @@
 }
 
 .shimmer {
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
   background-size: 200px 100%;
   animation: shimmer 2s infinite;
 }
@@ -215,23 +214,23 @@
     margin: 1rem;
     border-radius: 1.5rem;
   }
-  
+
   .controls-container {
     gap: 0.75rem;
   }
-  
+
   .controls-container button {
     padding: 0.75rem;
   }
-  
+
   .controls-container .play-button {
     padding: 1rem;
   }
-  
+
   .track-info h3 {
     font-size: 1.25rem;
   }
-  
+
   .album-art {
     width: 8rem;
     height: 8rem;
@@ -243,28 +242,28 @@
     margin: 0.5rem;
     padding: 1rem;
   }
-  
+
   .controls-container {
     gap: 0.5rem;
   }
-  
+
   .controls-container button {
     padding: 0.5rem;
   }
-  
+
   .controls-container .play-button {
     padding: 0.75rem;
   }
-  
+
   .track-info h3 {
     font-size: 1.125rem;
   }
-  
+
   .album-art {
     width: 6rem;
     height: 6rem;
   }
-  
+
   .playlist-container {
     max-height: 12rem;
   }
@@ -282,7 +281,7 @@
   .volume-slider::-webkit-slider-thumb {
     border: 3px solid #ffffff;
   }
-  
+
   .volume-slider::-moz-range-thumb {
     border: 3px solid #ffffff;
   }
@@ -340,4 +339,4 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-} 
+}

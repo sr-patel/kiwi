@@ -23,10 +23,7 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const filteredTags = useMemo(
-    () => filterTags(allTags, searchTerm, { limit: 100 }),
-    [allTags, searchTerm],
-  );
+  const filteredTags = useMemo(() => filterTags(allTags, searchTerm, { limit: 100 }), [allTags, searchTerm]);
 
   const showResults = isOpen && searchTerm.trim().length > 0;
 
@@ -69,9 +66,7 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
           <Tag className={`h-4 w-4 shrink-0 ${getAccentText(accentColor)}`} />
           <span className="flex-1 truncate font-medium">{currentTag}</span>
           {tagCounts?.[currentTag] != null && (
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {tagCounts[currentTag]}
-            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{tagCounts[currentTag]}</span>
           )}
           <button
             type="button"
@@ -133,9 +128,7 @@ export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect })
           </div>
         </div>
       ) : isOpen ? (
-        <p className="mt-1.5 shrink-0 px-1 text-xs text-gray-500 dark:text-gray-400">
-          Type to find a tag
-        </p>
+        <p className="mt-1.5 shrink-0 px-1 text-xs text-gray-500 dark:text-gray-400">Type to find a tag</p>
       ) : null}
     </div>
   );

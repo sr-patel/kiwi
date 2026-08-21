@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchWithRetry } from '@/utils/fetchWithTimeout';
 import type { ForceGraphData, TagNetworkGraph } from '@/pages/network/types';
+import { kiwiApi } from '@/services/kiwiApi';
+import { queryKeys } from './queryKeys';
 
 /** Default detail level index — overview (50+ items) */
 export const DEFAULT_DETAIL_LEVEL = 0;
@@ -21,7 +22,11 @@ export function maxNodesForDetailLevel(level: number): number {
   return MAX_NODES_BY_DETAIL[index];
 }
 
-async function fetchTagNetwork(minTagCount: number, maxNodes: number): Promise<TagNetworkGraph> {
+async function fetchTagNetwork(
+  minTagCount: number,
+  maxNodes: number,
+  signal?: AbortSignal,
+): Promise<TagNetworkGraph> {
   const params = new URLSearchParams({
     minTagCount: String(minTagCount),
     minWeight: '2',
@@ -30,11 +35,7 @@ async function fetchTagNetwork(minTagCount: number, maxNodes: number): Promise<T
     pmiThreshold: '1.0',
     maxDegree: '6',
   });
-  const res = await fetchWithRetry(`/api/tags/network?${params}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch tag network: ${res.statusText}`);
-  }
-  return res.json();
+  return kiwiApi.tags.network(params, signal);
 }
 
 export function useTagCoOccurrences(detailLevel: number) {
@@ -42,8 +43,8 @@ export function useTagCoOccurrences(detailLevel: number) {
   const maxNodes = maxNodesForDetailLevel(detailLevel);
 
   const query = useQuery({
-    queryKey: ['tagNetwork', minTagCount, maxNodes],
-    queryFn: () => fetchTagNetwork(minTagCount, maxNodes),
+    queryKey: queryKeys.tagNetwork(minTagCount, maxNodes),
+    queryFn: ({ signal }) => fetchTagNetwork(minTagCount, maxNodes, signal),
     staleTime: 120_000,
   });
 

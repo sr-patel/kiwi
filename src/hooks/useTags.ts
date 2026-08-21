@@ -1,18 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchWithRetry } from '@/utils/fetchWithTimeout';
-
-async function fetchTags(): Promise<string[]> {
-  const res = await fetchWithRetry('/api/tags');
-  if (!res.ok) {
-    throw new Error(`Failed to fetch tags: ${res.statusText}`);
-  }
-  return res.json();
-}
+import { queryKeys } from './queryKeys';
+import { kiwiApi } from '@/services/kiwiApi';
 
 export const useTags = () => {
   return useQuery({
-    queryKey: ['tags'],
-    queryFn: fetchTags,
+    queryKey: queryKeys.tags(),
+    queryFn: ({ signal }) => kiwiApi.tags.list(signal),
     staleTime: 30_000,
   });
 };
