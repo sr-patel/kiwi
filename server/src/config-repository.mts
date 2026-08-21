@@ -10,6 +10,7 @@ import {
   type KiwiConfig,
 } from '@kiwi/contracts';
 import { AppError } from './errors.mjs';
+import { logger } from './logger.mjs';
 
 type StoredConfig = KiwiConfig & Record<string, unknown>;
 
@@ -50,6 +51,18 @@ async function writable(directory: string): Promise<boolean> {
   }
 }
 
+function decodeConfig(contents: Buffer): string {
+  if (contents[0] === 0xff && contents[1] === 0xfe) {
+    return contents.subarray(2).toString('utf16le');
+  }
+  if (contents[0] === 0xfe && contents[1] === 0xff) {
+    const bytes = Buffer.from(contents.subarray(2));
+    if (bytes.length % 2 !== 0) throw new SyntaxError('Invalid UTF-16 configuration');
+    return bytes.swap16().toString('utf16le');
+  }
+  return contents.toString('utf8').replace(/^\uFEFF/, '');
+}
+
 export class ConfigRepository {
   private config: StoredConfig | null = null;
   private readPath = defaultConfigPath();
@@ -60,9 +73,12 @@ export class ConfigRepository {
     let raw: unknown = {};
     if (candidate) {
       try {
-        raw = JSON.parse(await readFile(candidate, 'utf8'));
-      } catch {
-        throw new AppError('Configuration file is not valid JSON', 400, 'VALIDATION_ERROR');
+        raw = JSON.parse(decodeConfig(await readFile(candidate)));
+      } catch (error) {
+        // Preserve the pre-1.2 startup behaviour: a damaged configuration must
+        // not prevent the setup API from loading so it can be repaired in-app.
+        logger.warn({ err: error }, 'Configuration file is not valid JSON; using setup defaults');
+        raw = {};
       }
     }
     if (candidate) this.readPath = candidate;

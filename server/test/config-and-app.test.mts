@@ -75,13 +75,28 @@ describe('configuration and setup API', () => {
     await expect(validateLibraryPath(library)).resolves.toEqual({ valid: true });
   });
 
-  it('maps malformed stored config and request inputs to validation errors', async () => {
-    const target = await configFile({ requestPageSize: 1 });
+  it('maps malformed stored values and request inputs to validation errors', async () => {
+    await configFile({ requestPageSize: 1 });
     await expect(new ConfigRepository().load()).rejects.toBeInstanceOf(AppError);
-    await writeFile(target, '{bad json', 'utf8');
-    await expect(new ConfigRepository().load()).rejects.toMatchObject({ status: 400 });
     expect(parseInput(z.coerce.number(), '4')).toBe(4);
     expect(() => parseInput(z.string().min(2), 'x')).toThrow(AppError);
+  });
+
+  it('keeps setup available for malformed JSON and accepts legacy BOM encodings', async () => {
+    const target = await configFile({ libraryPath: '' });
+    await writeFile(target, '{bad json', 'utf8');
+    await expect(new ConfigRepository().load()).resolves.toMatchObject({ libraryPath: '' });
+
+    const utf8Config = `\uFEFF${JSON.stringify({ libraryPath: '', legacyKey: 'utf8-bom' })}`;
+    await writeFile(target, utf8Config, 'utf8');
+    await expect(new ConfigRepository().load()).resolves.toMatchObject({ legacyKey: 'utf8-bom' });
+
+    const utf16Config = Buffer.concat([
+      Buffer.from([0xff, 0xfe]),
+      Buffer.from(JSON.stringify({ libraryPath: '', legacyKey: 'utf16' }), 'utf16le'),
+    ]);
+    await writeFile(target, utf16Config);
+    await expect(new ConfigRepository().load()).resolves.toMatchObject({ legacyKey: 'utf16' });
   });
 
   it('keeps health and setup routes available without a library', async () => {
