@@ -125,6 +125,25 @@ describe('configuration and setup API', () => {
     await context.close();
   });
 
+  it('maps unreadable or missing browse targets to a stable validation error', async () => {
+    const target = await configFile({ libraryPath: '', browseRoots: [] });
+    const root = path.dirname(target);
+    process.env.KIWI_LIBRARY_ROOTS = root;
+    const { app, context } = await createApplication();
+    try {
+      await request(app)
+        .get('/api/config/browse')
+        .query({ path: path.join(root, 'missing.library') })
+        .expect(400)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code: 'VALIDATION_ERROR' });
+          expect(response.body.message).toContain('volume is mounted');
+        });
+    } finally {
+      await context.close();
+    }
+  });
+
   it('switches library contexts atomically and keeps the previous context on validation failure', async () => {
     const target = await configFile({ libraryPath: '', browseRoots: [], legacyKey: 'preserved' });
     const root = path.dirname(target);

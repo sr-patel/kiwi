@@ -53,11 +53,23 @@ export function createConfigRouter(context: LibraryContextManager): Router {
 
     const target = await context.configRepository.resolveBrowsePath(query.path);
     if (!target) throw new AppError('Path is not accessible', 400, 'VALIDATION_ERROR');
-    const targetStats = await stat(target);
+    const targetStats = await stat(target).catch(() => {
+      throw new AppError(
+        'Library path could not be read. Verify that the volume is mounted and accessible to the backend container.',
+        400,
+        'VALIDATION_ERROR',
+      );
+    });
     if (!targetStats.isDirectory()) throw new AppError('Path is not a folder', 400, 'VALIDATION_ERROR');
     const parentCandidate = path.dirname(target);
     const parent = await context.configRepository.resolveBrowsePath(parentCandidate);
-    const directoryEntries = await readdir(target, { withFileTypes: true });
+    const directoryEntries = await readdir(target, { withFileTypes: true }).catch(() => {
+      throw new AppError(
+        'Library folder contents could not be read. Verify the host folder permissions.',
+        400,
+        'VALIDATION_ERROR',
+      );
+    });
     const visible = directoryEntries.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'));
     const entries = await Promise.all(
       visible.map(async (entry) => {

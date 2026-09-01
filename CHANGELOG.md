@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3 — 2026-09-01
+
+- Restored the backend container's original runtime identity so existing TrueNAS and NAS bind mounts
+  remain readable without host ACL changes.
+- Converted inaccessible or missing setup-browser paths into stable validation errors instead of HTTP
+  500 responses.
+
 ## 1.2.2 — 2026-09-01
 
 - Restored the frontend container's port 80 interface for compatibility with existing package managers,
