@@ -8,7 +8,6 @@ import { usePhotosByTags } from '@/hooks/usePhotosByTags';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
 import { generateTagUrl } from '@/utils/tagUrls';
-import { isVideoFile } from '@/utils/fileTypes';
 import type { PhotoMetadata } from '@/types';
 import type { NetworkSelection } from '@/pages/network/types';
 
@@ -32,9 +31,9 @@ function PanelThumbnail({
   const aspectRatio = photo.width && photo.height && photo.height > 0 ? photo.width / photo.height : 1;
 
   useEffect(() => {
-    const url = libraryService.getPhotoFileUrl(photo.id, photo.ext, photo.name);
+    const url = libraryService.getPhotoThumbnailUrl(photo.id, photo.name);
     setSrc(url);
-  }, [photo.id, photo.ext, photo.name]);
+  }, [photo.id, photo.name]);
 
   return (
     <button
@@ -47,11 +46,18 @@ function PanelThumbnail({
       }}
     >
       {src ? (
-        isVideoFile(photo.ext) ? (
-          <video src={src} className="h-full w-full object-cover" muted playsInline preload="metadata" />
-        ) : (
-          <img src={src} alt={photo.name} className="h-full w-full object-cover" loading="lazy" />
-        )
+        <img
+          src={src}
+          alt={photo.name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={(event) => {
+            const fallback = libraryService.getPhotoDisplayUrl(photo.id, photo.ext, photo.name);
+            if (event.currentTarget.src !== new URL(fallback, window.location.href).href) {
+              event.currentTarget.src = fallback;
+            }
+          }}
+        />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-zinc-600">…</div>
       )}
@@ -148,7 +154,8 @@ export function TagPhotoPanel({ selection, tagCount, accentHex, onClose }: TagPh
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 420, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-          className="absolute right-0 top-0 z-20 flex h-full w-[min(420px,40vw)] flex-col border-l border-zinc-800 bg-zinc-950/95 shadow-2xl backdrop-blur-sm"
+          className="absolute right-0 top-0 z-20 flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-950/95 shadow-2xl backdrop-blur-sm sm:w-[min(420px,48vw)]"
+          aria-label="Tag items"
         >
           <div className="flex items-start justify-between gap-3 border-b border-zinc-800 p-4">
             <div className="min-w-0">

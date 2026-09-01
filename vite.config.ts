@@ -32,8 +32,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules/react-force-graph') || id.includes('node_modules/d3-'))
-            return 'network';
           if (id.includes('node_modules/recharts')) return 'charts';
           if (id.includes('node_modules/epubjs')) return 'epub';
           if (id.includes('node_modules/@tanstack') || id.includes('node_modules/zustand')) return 'query';

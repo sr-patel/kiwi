@@ -1,6 +1,6 @@
 {
   "name": "kiwi-photo-library",
-  "version": "1.2.5",
+  "version": "1.3.0",
   "private": true,
   "description": "A scalable browser for Eagle photo libraries",
   "type": "module",
@@ -33,14 +33,13 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
-    "@kiwi/contracts": "1.2.5",
+    "@kiwi/contracts": "1.3.0",
     "@tanstack/react-query": "^5.101.4",
     "epubjs": "^0.3.93",
     "framer-motion": "^13.1.1",
     "lucide-react": "^1.33.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-force-graph-2d": "^1.29.1",
     "react-masonry-css": "^1.0.16",
     "react-router-dom": "^7.18.2",
     "recharts": "^3.10.1",

@@ -1,56 +1,82 @@
 const COMMUNITY_COLORS = [
-  '#a855f7',
-  '#22c55e',
-  '#3b82f6',
-  '#f97316',
-  '#ec4899',
-  '#14b8a6',
-  '#eab308',
-  '#6366f1',
-  '#ef4444',
-  '#06b6d4',
-  '#84cc16',
-  '#f43f5e',
+  '#8b5cf6', '#10b981', '#3b82f6', '#f97316', '#ec4899', '#06b6d4',
+  '#eab308', '#6366f1', '#ef4444', '#14b8a6', '#84cc16', '#f43f5e',
 ];
 
-const networkCache = new Map();
-const CACHE_TTL_MS = 120_000;
+const GRAPH_VERSION = 2;
+const SNAPSHOT_TTL_MS = 10 * 60_000;
+const GRAPH_TTL_MS = 30 * 60_000;
+const MAX_GRAPH_CACHE_ENTRIES = 12;
+const MAX_SNAPSHOT_CACHE_ENTRIES = 4;
+const MAX_CANDIDATE_EDGES = 50_000;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+let cacheGeneration = 0;
+let databaseCaches = new WeakMap();
+
+function compareText(a, b) {
+  return a.localeCompare(b, undefined, { sensitivity: 'base' });
+}
 
 function getCommunityColor(community) {
   return COMMUNITY_COLORS[community % COMMUNITY_COLORS.length];
 }
 
+function getDatabaseCache(db) {
+  let cache = databaseCaches.get(db);
+  if (!cache) {
+    cache = { snapshots: new Map(), graphs: new Map() };
+    databaseCaches.set(db, cache);
+  }
+  return cache;
+}
+
 function pruneMegaTags(tagCounts, totalPhotos, megaTagPct) {
   const pruned = new Set();
   for (const [tag, count] of Object.entries(tagCounts)) {
-    if (totalPhotos > 0 && count / totalPhotos > megaTagPct) {
-      pruned.add(tag);
-    }
+    if (totalPhotos > 0 && count / totalPhotos > megaTagPct) pruned.add(tag);
   }
   return pruned;
 }
 
-function computePMIEdges(rawEdges, tagCounts, totalPhotos, pmiThreshold) {
-  if (totalPhotos <= 0) return [];
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
 
+/** Discount low-support coincidences instead of clustering by raw PMI alone. */
+function scoreEdges(rawEdges, tagCounts, totalPhotos, { pmiThreshold, minScore }) {
+  if (totalPhotos <= 0) return [];
   const edges = [];
-  for (const { source, target, weight } of rawEdges) {
+
+  for (const rawEdge of rawEdges) {
+    const source = String(rawEdge.source);
+    const target = String(rawEdge.target);
+    const weight = Number(rawEdge.weight);
     const countA = tagCounts[source] ?? 0;
     const countB = tagCounts[target] ?? 0;
-    if (countA === 0 || countB === 0) continue;
+    if (!Number.isFinite(weight) || weight <= 0 || countA <= 0 || countB <= 0) continue;
 
     const pa = countA / totalPhotos;
     const pb = countB / totalPhotos;
     const pab = weight / totalPhotos;
-    const joint = pa * pb;
-    if (joint <= 0 || pab <= 0) continue;
+    const pmi = Math.log2(pab / (pa * pb));
+    if (!Number.isFinite(pmi) || pmi < pmiThreshold) continue;
 
-    const pmi = Math.log2(pab / joint);
-    if (pmi >= pmiThreshold) {
-      edges.push({ source, target, weight, pmi });
-    }
+    const information = -Math.log2(pab);
+    const npmi = information > 0 ? clamp(pmi / information, -1, 1) : 1;
+    const cosine = clamp(weight / Math.sqrt(countA * countB), 0, 1);
+    const overlap = clamp(weight / Math.min(countA, countB), 0, 1);
+    const supportReliability = 1 - Math.exp(-weight / 3);
+    const score = supportReliability * (0.5 * Math.max(npmi, 0) + 0.3 * cosine + 0.2 * overlap);
+    if (score >= minScore) edges.push({ source, target, weight, pmi, npmi, overlap, score });
   }
-  return edges;
+
+  return edges.sort((a, b) =>
+    b.score - a.score || b.weight - a.weight || compareText(a.source, b.source) || compareText(a.target, b.target));
+}
+
+function edgeKey(edge) {
+  return edge.source < edge.target ? `${edge.source}\0${edge.target}` : `${edge.target}\0${edge.source}`;
 }
 
 function topKSparsify(edges, maxDegree) {
@@ -64,638 +90,363 @@ function topKSparsify(edges, maxDegree) {
 
   const kept = new Set();
   for (const nodeEdges of byNode.values()) {
-    nodeEdges.sort((a, b) => b.pmi - a.pmi);
-    for (const edge of nodeEdges.slice(0, maxDegree)) {
-      kept.add(`${edge.source}\0${edge.target}`);
-    }
+    nodeEdges.sort((a, b) =>
+      b.score - a.score || b.weight - a.weight || compareText(edgeKey(a), edgeKey(b)));
+    for (const edge of nodeEdges.slice(0, maxDegree)) kept.add(edgeKey(edge));
   }
-
-  return edges.filter((edge) => kept.has(`${edge.source}\0${edge.target}`));
+  return edges.filter((edge) => kept.has(edgeKey(edge)));
 }
 
+function buildAdjacency(nodeIds, edges) {
+  const adjacency = new Map(nodeIds.map((id) => [id, new Map()]));
+  for (const edge of edges) {
+    if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) continue;
+    adjacency.get(edge.source).set(edge.target, edge.score);
+    adjacency.get(edge.target).set(edge.source, edge.score);
+  }
+  return adjacency;
+}
+
+/** Stable traversal and tie-breaking make communities repeatable across restarts. */
 function detectCommunities(nodeIds, edges) {
   if (nodeIds.length === 0) return new Map();
-
-  const adjacency = new Map();
-  for (const id of nodeIds) adjacency.set(id, new Map());
-
-  let totalWeight = 0;
-  for (const edge of edges) {
-    const weight = edge.pmi ?? edge.weight;
-    if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) continue;
-    adjacency.get(edge.source).set(edge.target, weight);
-    adjacency.get(edge.target).set(edge.source, weight);
-    totalWeight += weight;
-  }
-
-  if (totalWeight === 0) {
-    const isolated = new Map();
-    nodeIds.forEach((id, index) => isolated.set(id, index));
-    return isolated;
-  }
-
-  const nodeStrength = new Map();
+  const adjacency = buildAdjacency(nodeIds, edges);
+  const strength = new Map();
+  let totalStrength = 0;
   for (const id of nodeIds) {
-    let sum = 0;
-    for (const w of adjacency.get(id).values()) sum += w;
-    nodeStrength.set(id, sum);
+    const value = [...adjacency.get(id).values()].reduce((sum, weight) => sum + weight, 0);
+    strength.set(id, value);
+    totalStrength += value;
   }
 
-  const community = new Map();
-  nodeIds.forEach((id, index) => community.set(id, index));
+  const orderedNodes = [...nodeIds].sort((a, b) =>
+    (strength.get(b) ?? 0) - (strength.get(a) ?? 0) || compareText(a, b));
+  const community = new Map(nodeIds.map((id, index) => [id, index]));
+  const communityStrength = new Map(nodeIds.map((id, index) => [index, strength.get(id) ?? 0]));
+  const resolution = 1.08;
 
-  const communityStrength = new Map();
-  nodeIds.forEach((id, index) => {
-    communityStrength.set(index, nodeStrength.get(id) ?? 0);
-  });
-
-  const m2 = totalWeight;
-  let improved = true;
-  let passes = 0;
-
-  while (improved && passes < 10) {
-    improved = false;
-    passes += 1;
-
-    const shuffled = [...nodeIds].sort(() => Math.random() - 0.5);
-    for (const node of shuffled) {
-      const currentCommunity = community.get(node);
-      const neighbors = adjacency.get(node);
-      if (!neighbors || neighbors.size === 0) continue;
-
-      const commWeights = new Map();
-      for (const [neighbor, weight] of neighbors) {
-        const comm = community.get(neighbor);
-        commWeights.set(comm, (commWeights.get(comm) ?? 0) + weight);
-      }
-
-      const ki = nodeStrength.get(node) ?? 0;
-      let bestCommunity = currentCommunity;
-      let bestGain = 0;
-
-      for (const [candidate, kiIn] of commWeights) {
-        if (candidate === currentCommunity) continue;
-        const sigmaTot = communityStrength.get(candidate) ?? 0;
-        const gain = kiIn - (sigmaTot * ki) / m2;
-        if (gain > bestGain) {
-          bestGain = gain;
-          bestCommunity = candidate;
+  if (totalStrength > 0) {
+    for (let pass = 0; pass < 16; pass += 1) {
+      let moved = false;
+      for (const node of orderedNodes) {
+        const nodeStrength = strength.get(node) ?? 0;
+        if (nodeStrength === 0) continue;
+        const current = community.get(node);
+        communityStrength.set(current, (communityStrength.get(current) ?? 0) - nodeStrength);
+        const weightsByCommunity = new Map([[current, 0]]);
+        for (const [neighbor, weight] of adjacency.get(node)) {
+          const candidate = community.get(neighbor);
+          weightsByCommunity.set(candidate, (weightsByCommunity.get(candidate) ?? 0) + weight);
         }
-      }
 
-      if (bestCommunity !== currentCommunity && bestGain > 0) {
-        communityStrength.set(
-          currentCommunity,
-          (communityStrength.get(currentCommunity) ?? 0) - ki,
-        );
-        communityStrength.set(
-          bestCommunity,
-          (communityStrength.get(bestCommunity) ?? 0) + ki,
-        );
-        community.set(node, bestCommunity);
-        improved = true;
+        let best = current;
+        let bestGain = -Infinity;
+        for (const candidate of [...weightsByCommunity.keys()].sort((a, b) => a - b)) {
+          const insideWeight = weightsByCommunity.get(candidate) ?? 0;
+          const gain = insideWeight -
+            (resolution * nodeStrength * (communityStrength.get(candidate) ?? 0)) / totalStrength;
+          if (gain > bestGain + 1e-12 || (Math.abs(gain - bestGain) <= 1e-12 && candidate < best)) {
+            best = candidate;
+            bestGain = gain;
+          }
+        }
+        community.set(node, best);
+        communityStrength.set(best, (communityStrength.get(best) ?? 0) + nodeStrength);
+        if (best !== current) moved = true;
       }
+      if (!moved) break;
     }
   }
 
-  const uniqueCommunities = [...new Set(community.values())];
-  const remap = new Map(uniqueCommunities.map((value, index) => [value, index]));
-
-  const result = new Map();
-  for (const [node, comm] of community) {
-    result.set(node, remap.get(comm) ?? 0);
+  const isolated = [];
+  const groups = new Map();
+  for (const id of nodeIds) {
+    const key = community.get(id);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(id);
   }
-  return result;
+  for (const members of groups.values()) {
+    if (members.length >= 3) continue;
+    const neighbourWeights = new Map();
+    for (const member of members) {
+      for (const [neighbor, weight] of adjacency.get(member)) {
+        const candidate = community.get(neighbor);
+        if (candidate !== community.get(member)) {
+          neighbourWeights.set(candidate, (neighbourWeights.get(candidate) ?? 0) + weight);
+        }
+      }
+    }
+    const bestNeighbour = [...neighbourWeights.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+    if (bestNeighbour === undefined) isolated.push(...members);
+    else for (const member of members) community.set(member, bestNeighbour);
+  }
+  if (isolated.length > 0) {
+    const isolatedCommunity = Math.max(-1, ...community.values()) + 1;
+    for (const id of isolated) community.set(id, isolatedCommunity);
+  }
+  return community;
+}
+
+function remapCommunities(community, nodeIds, tagCounts) {
+  const groups = new Map();
+  for (const id of nodeIds) {
+    const key = community.get(id);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(id);
+  }
+  const ordered = [...groups.entries()].sort((a, b) => {
+    const totalA = a[1].reduce((sum, id) => sum + (tagCounts[id] ?? 0), 0);
+    const totalB = b[1].reduce((sum, id) => sum + (tagCounts[id] ?? 0), 0);
+    return totalB - totalA || compareText([...a[1]].sort(compareText)[0], [...b[1]].sort(compareText)[0]);
+  });
+  const remap = new Map(ordered.map(([oldId], index) => [oldId, index]));
+  return new Map(nodeIds.map((id) => [id, remap.get(community.get(id)) ?? 0]));
 }
 
 function splitLinksByCommunity(links, communities) {
-  const intraLinks = [];
-  const interLinks = [];
-
+  const linksInCommunity = [];
+  const linksBetweenCommunities = [];
   for (const link of links) {
-    const sourceCommunity = communities.get(link.source);
-    const targetCommunity = communities.get(link.target);
-    if (sourceCommunity === targetCommunity) {
-      intraLinks.push(link);
+    if (communities.get(link.source) === communities.get(link.target)) linksInCommunity.push(link);
+    else linksBetweenCommunities.push(link);
+  }
+  return { linksInCommunity, linksBetweenCommunities };
+}
+
+function nodeRadius(node) {
+  return 6 + Math.sqrt(Math.max(node.val, 1)) * 2;
+}
+
+function createCircleHull(cx, cy, radius, pointCount = 28) {
+  return Array.from({ length: pointCount }, (_, index) => {
+    const angle = (index / pointCount) * Math.PI * 2;
+    return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+  });
+}
+
+function layoutCommunityMembers(members) {
+  const ordered = [...members].sort((a, b) =>
+    b.strength - a.strength || b.count - a.count || compareText(a.id, b.id));
+  let radius = 72;
+  ordered.forEach((node, index) => {
+    if (index === 0) {
+      node.x = 0;
+      node.y = 0;
     } else {
-      interLinks.push(link);
+      const angle = index * GOLDEN_ANGLE;
+      const distance = 38 + Math.sqrt(index) * 42;
+      node.x = Math.cos(angle) * distance;
+      node.y = Math.sin(angle) * distance;
     }
-  }
-
-  return { intraLinks, interLinks };
-}
-
-function cross(origin, a, b) {
-  return (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
-}
-
-function convexHull(points) {
-  if (points.length <= 2) return points;
-
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const lower = [];
-  for (const point of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
-      lower.pop();
-    }
-    lower.push(point);
-  }
-
-  const upper = [];
-  for (let i = sorted.length - 1; i >= 0; i -= 1) {
-    const point = sorted[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
-      upper.pop();
-    }
-    upper.push(point);
-  }
-
-  lower.pop();
-  upper.pop();
-  return lower.concat(upper);
-}
-
-function expandHull(hull, padding) {
-  if (hull.length === 0) return hull;
-  const cx = hull.reduce((sum, point) => sum + point.x, 0) / hull.length;
-  const cy = hull.reduce((sum, point) => sum + point.y, 0) / hull.length;
-
-  return hull.map((point) => {
-    const dx = point.x - cx;
-    const dy = point.y - cy;
-    const len = Math.hypot(dx, dy) || 1;
-    return {
-      x: point.x + (dx / len) * padding,
-      y: point.y + (dy / len) * padding,
-    };
+    radius = Math.max(radius, Math.hypot(node.x, node.y) + nodeRadius(node) + 46);
   });
+  return radius;
 }
 
-function nodeVisualRadius(node) {
-  const val = node.val ?? 4;
-  return 4 + Math.sqrt(val) * 3.5 + 10;
-}
-
-function measureClusterBounds(members, hullPadding = 55) {
-  if (members.length === 0) return { cx: 0, cy: 0, radius: 50 };
-
-  const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
-  const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
-  let radius = hullPadding;
-
-  for (const node of members) {
-    const dist = Math.hypot(node.x - cx, node.y - cy) + nodeVisualRadius(node);
-    if (dist > radius) radius = dist;
-  }
-
-  return { cx, cy, radius };
-}
-
-function translateCluster(members, dx, dy) {
-  for (const node of members) {
-    node.x += dx;
-    node.y += dy;
-    node.fx = node.x;
-    node.fy = node.y;
-  }
-}
-
-function resolveClusterOverlaps(clusters, minGap = 90, iterations = 120) {
-  const entries = [...clusters.entries()];
-  if (entries.length < 2) return;
-
-  for (let iteration = 0; iteration < iterations; iteration += 1) {
-    let maxOverlap = 0;
-
-    const bounds = entries.map(([communityId, members]) => ({
-      communityId,
-      members,
-      ...measureClusterBounds(members),
-    }));
-
-    for (let i = 0; i < bounds.length; i += 1) {
-      for (let j = i + 1; j < bounds.length; j += 1) {
-        const a = bounds[i];
-        const b = bounds[j];
-        let dx = b.cx - a.cx;
-        let dy = b.cy - a.cy;
-        let dist = Math.hypot(dx, dy) || 0.01;
-        const minDist = a.radius + b.radius + minGap;
-
-        if (dist < minDist) {
-          const overlap = minDist - dist;
-          maxOverlap = Math.max(maxOverlap, overlap);
-          dx /= dist;
-          dy /= dist;
-          const push = (overlap / 2) * 1.15;
-          translateCluster(a.members, -dx * push, -dy * push);
-          translateCluster(b.members, dx * push, dy * push);
+function placeClusters(clusterEntries) {
+  const placed = [];
+  for (let index = 0; index < clusterEntries.length; index += 1) {
+    const entry = clusterEntries[index];
+    let cx = 0;
+    let cy = 0;
+    if (index > 0) {
+      for (let attempt = 1; attempt <= 2_000; attempt += 1) {
+        const angle = attempt * GOLDEN_ANGLE;
+        const distance = 72 * Math.sqrt(attempt) + entry.radius;
+        const candidateX = Math.cos(angle) * distance;
+        const candidateY = Math.sin(angle) * distance;
+        const overlaps = placed.some((item) =>
+          Math.hypot(item.cx - candidateX, item.cy - candidateY) < item.radius + entry.radius + 96);
+        if (!overlaps) {
+          cx = candidateX;
+          cy = candidateY;
+          break;
         }
       }
     }
-
-    if (maxOverlap < 0.5) break;
+    entry.cx = cx;
+    entry.cy = cy;
+    placed.push(entry);
   }
 }
 
-function attachMicroClusters(clusters, interLinks, communities) {
-  for (const [communityId, members] of clusters.entries()) {
-    if (members.length > 3) continue;
-
-    let bestPartner = null;
-    let bestWeight = 0;
-    for (const link of interLinks) {
-      const sourceCommunity = communities.get(link.source);
-      const targetCommunity = communities.get(link.target);
-      if (sourceCommunity === undefined || targetCommunity === undefined) continue;
-      if (sourceCommunity === targetCommunity) continue;
-
-      let partner = null;
-      if (sourceCommunity === communityId) partner = targetCommunity;
-      if (targetCommunity === communityId) partner = sourceCommunity;
-      if (partner == null) continue;
-
-      const weight = link.weight ?? 1;
-      if (weight > bestWeight) {
-        bestWeight = weight;
-        bestPartner = partner;
-      }
-    }
-
-    if (bestPartner == null) continue;
-
-    const partnerMembers = clusters.get(bestPartner);
-    if (!partnerMembers || partnerMembers.length <= 3) continue;
-
-    const partnerBounds = measureClusterBounds(partnerMembers);
-    const microBounds = measureClusterBounds(members);
-    const angle = Math.atan2(microBounds.cy - partnerBounds.cy, microBounds.cx - partnerBounds.cx);
-    const targetDist = partnerBounds.radius + microBounds.radius + 50;
-    const targetCx = partnerBounds.cx + Math.cos(angle) * targetDist;
-    const targetCy = partnerBounds.cy + Math.sin(angle) * targetDist;
-    translateCluster(members, targetCx - microBounds.cx, targetCy - microBounds.cy);
-  }
-}
-
-function buildClusterAffinities(clusterIds, interLinks, communities) {
-  const affinities = new Map();
-  for (const link of interLinks) {
-    const sourceCommunity = communities.get(link.source);
-    const targetCommunity = communities.get(link.target);
-    if (sourceCommunity === undefined || targetCommunity === undefined) continue;
-    if (sourceCommunity === targetCommunity) continue;
-    const key =
-      sourceCommunity < targetCommunity
-        ? `${sourceCommunity}:${targetCommunity}`
-        : `${targetCommunity}:${sourceCommunity}`;
-    affinities.set(key, (affinities.get(key) ?? 0) + (link.pmi ?? 1));
-  }
-  return affinities;
-}
-
-function layoutClusterCenters(clusterIds, affinities, clusterRadii) {
-  const positions = new Map();
-  const count = clusterIds.length;
-  const spreadScale = Math.max(1.8, Math.sqrt(count) * 0.85);
-  const baseRadius = 280 * spreadScale;
-
-  clusterIds.forEach((id, index) => {
-    const angle = (2 * Math.PI * index) / Math.max(count, 1) + (Math.random() - 0.5) * 0.25;
-    const radius = baseRadius * (0.85 + Math.random() * 0.3);
-    positions.set(id, {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius,
-      vx: 0,
-      vy: 0,
-    });
-  });
-
-  const minGap = 120;
-
-  for (let iteration = 0; iteration < 100; iteration += 1) {
-    for (let i = 0; i < count; i += 1) {
-      for (let j = i + 1; j < count; j += 1) {
-        const a = positions.get(clusterIds[i]);
-        const b = positions.get(clusterIds[j]);
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let dist = Math.hypot(dx, dy) || 0.01;
-
-        const radiusA = clusterRadii.get(clusterIds[i]) ?? 80;
-        const radiusB = clusterRadii.get(clusterIds[j]) ?? 80;
-        const minDist = radiusA + radiusB + minGap;
-
-        if (dist < minDist) {
-          const overlap = (minDist - dist) / minDist;
-          const push = overlap * 3.5;
-          dx = (dx / dist) * push;
-          dy = (dy / dist) * push;
-          a.x -= dx;
-          a.y -= dy;
-          b.x += dx;
-          b.y += dy;
-        }
-      }
-    }
-
-    for (const [key, weight] of affinities) {
-      const [sourceCommunity, targetCommunity] = key.split(':').map(Number);
-      const a = positions.get(sourceCommunity);
-      const b = positions.get(targetCommunity);
-      if (!a || !b) continue;
-
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      const dist = Math.hypot(dx, dy) || 0.01;
-
-      const radiusA = clusterRadii.get(sourceCommunity) ?? 80;
-      const radiusB = clusterRadii.get(targetCommunity) ?? 80;
-      const minDist = radiusA + radiusB + minGap;
-      const target = Math.max(minDist + 60, 900 / (1 + weight * 0.06));
-      const force = (dist - target) * 0.006 * Math.min(weight, 12);
-      dx = (dx / dist) * force;
-      dy = (dy / dist) * force;
-      a.x += dx;
-      a.y += dy;
-      b.x -= dx;
-      b.y -= dy;
-    }
-  }
-
-  return positions;
-}
-
-function estimateClusterRadius(memberCount) {
-  if (memberCount <= 3) return 55 + memberCount * 12;
-  return 90 + Math.pow(memberCount, 0.72) * 28;
-}
-
-function layoutCommunityNodes(members, intraLinks, centerX, centerY) {
-  const positions = new Map();
-  const memberIds = new Set(members.map((node) => node.id));
-
-  members.forEach((node, index) => {
-    const angle = (2 * Math.PI * index) / Math.max(members.length, 1);
-    const radius = 36 + Math.sqrt(members.length) * 18;
-    positions.set(node.id, {
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle),
-      vx: 0,
-      vy: 0,
-    });
-  });
-
-  const localEdges = intraLinks.filter(
-    (edge) => memberIds.has(edge.source) && memberIds.has(edge.target),
-  );
-
-  for (let iteration = 0; iteration < 50; iteration += 1) {
-    for (let i = 0; i < members.length; i += 1) {
-      for (let j = i + 1; j < members.length; j += 1) {
-        const a = positions.get(members[i].id);
-        const b = positions.get(members[j].id);
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        const dist = Math.hypot(dx, dy) || 0.01;
-        const repulse = 1800 / (dist * dist);
-        dx = (dx / dist) * repulse;
-        dy = (dy / dist) * repulse;
-        a.vx -= dx;
-        a.vy -= dy;
-        b.vx += dx;
-        b.vy += dy;
-      }
-    }
-
-    for (const edge of localEdges) {
-      const a = positions.get(edge.source);
-      const b = positions.get(edge.target);
-      if (!a || !b) continue;
-
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      const dist = Math.hypot(dx, dy) || 0.01;
-      const target = 36 + (edge.pmi ?? 1) * 4;
-      const force = (dist - target) * 0.04 * Math.max(edge.pmi ?? 1, 0.5);
-      dx = (dx / dist) * force;
-      dy = (dy / dist) * force;
-      a.vx += dx;
-      a.vy += dy;
-      b.vx -= dx;
-      b.vy -= dy;
-    }
-
-    for (const node of members) {
-      const point = positions.get(node.id);
-      point.vx += (centerX - point.x) * 0.015;
-      point.vy += (centerY - point.y) * 0.015;
-      point.x += point.vx * 0.25;
-      point.y += point.vy * 0.25;
-      point.vx *= 0.82;
-      point.vy *= 0.82;
-    }
-  }
-
-  for (const node of members) {
-    const point = positions.get(node.id);
-    node.x = point.x;
-    node.y = point.y;
-    node.fx = point.x;
-    node.fy = point.y;
-  }
-}
-
-function layoutClusteredGraph(nodes, intraLinks, interLinks, communities) {
-  const clusters = new Map();
+function layoutGraph(nodes) {
+  const byCommunity = new Map();
   for (const node of nodes) {
-    if (!clusters.has(node.community)) clusters.set(node.community, []);
-    clusters.get(node.community).push(node);
+    if (!byCommunity.has(node.community)) byCommunity.set(node.community, []);
+    byCommunity.get(node.community).push(node);
   }
+  const entries = [...byCommunity.entries()].map(([id, members]) => {
+    const radius = layoutCommunityMembers(members);
+    const totalItems = members.reduce((sum, node) => sum + node.count, 0);
+    const topTag = [...members].sort((a, b) =>
+      b.count - a.count || b.strength - a.strength || compareText(a.id, b.id))[0];
+    return { id, members, radius, totalItems, topTag, cx: 0, cy: 0 };
+  });
+  entries.sort((a, b) => b.totalItems - a.totalItems || compareText(a.topTag.id, b.topTag.id));
+  placeClusters(entries);
 
-  const clusterIds = [...clusters.keys()];
-  if (clusterIds.length === 0) return [];
-
-  const clusterRadii = new Map(
-    [...clusters.entries()].map(([communityId, members]) => [
-      communityId,
-      estimateClusterRadius(members.length),
-    ]),
-  );
-
-  const affinities = buildClusterAffinities(clusterIds, interLinks, communities);
-  const centers = layoutClusterCenters(clusterIds, affinities, clusterRadii);
-
-  for (const [communityId, members] of clusters.entries()) {
-    const center = centers.get(communityId) ?? { x: 0, y: 0 };
-    layoutCommunityNodes(members, intraLinks, center.x, center.y);
-  }
-
-  resolveClusterOverlaps(clusters, 100, 140);
-  attachMicroClusters(clusters, interLinks, communities);
-  resolveClusterOverlaps(clusters, 80, 80);
-
-  if (clusterIds.length > 10) {
-    const scale = 1.15;
-    for (const node of nodes) {
-      node.x *= scale;
-      node.y *= scale;
-      node.fx *= scale;
-      node.fy *= scale;
+  return entries.map((entry) => {
+    for (const node of entry.members) {
+      node.x += entry.cx;
+      node.y += entry.cy;
+      node.fx = node.x;
+      node.fy = node.y;
     }
-  }
-
-  return [...clusters.entries()].map(([communityId, members]) => {
-    const topTag = members.reduce(
-      (best, node) => (node.count > best.count ? node : best),
-      members[0],
-    );
-    const points = members.map((node) => ({ x: node.x, y: node.y }));
-    const hull = expandHull(convexHull(points), 75);
-    const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
-    const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
-
     return {
-      id: communityId,
-      color: getCommunityColor(communityId),
-      hull,
-      nodeCount: members.length,
-      label: topTag.id,
-      labelCount: topTag.count,
-      cx,
-      cy,
+      id: entry.id,
+      color: getCommunityColor(entry.id),
+      hull: createCircleHull(entry.cx, entry.cy, entry.radius),
+      nodeCount: entry.members.length,
+      label: entry.topTag.id,
+      labelCount: entry.topTag.count,
+      totalItems: entry.totalItems,
+      radius: entry.radius,
+      cx: entry.cx,
+      cy: entry.cy,
     };
   });
 }
 
-async function buildTagNetworkGraph(db, tagCounts, totalPhotos, options = {}) {
-  const {
-    minTagCount = 10,
-    minWeight = 2,
-    maxNodes = 100,
-    megaTagPct = 0.35,
-    pmiThreshold = 1.0,
-    maxDegree = 6,
-  } = options;
-
-  const megaTags = pruneMegaTags(tagCounts, totalPhotos, megaTagPct);
-
-  const qualifyingTags = Object.entries(tagCounts)
-    .filter(([tag, count]) => count > minTagCount && !megaTags.has(tag))
-    .sort((a, b) => b[1] - a[1]);
-
-  const cappedTags = new Set(
-    qualifyingTags.slice(0, maxNodes).map(([tag]) => tag),
-  );
-
-  if (cappedTags.size === 0) {
-    return {
-      nodes: [],
-      links: [],
-      interLinks: [],
-      clusters: [],
-      stats: {
-        tags: 0,
-        links: 0,
-        interLinks: 0,
-        communities: 0,
-        prunedMegaTags: megaTags.size,
-      },
-    };
+async function loadSnapshot(db, minWeight) {
+  const cache = getDatabaseCache(db);
+  const now = Date.now();
+  const existing = cache.snapshots.get(minWeight);
+  if (existing?.data && existing.expiresAt > now) {
+    existing.lastAccess = now;
+    return existing.data;
   }
+  if (existing?.promise) return existing.promise;
 
-  const allEdges = await db.getTagCoOccurrences({ minWeight, minTagCount: 0, limit: 12000 });
-  const filteredRaw = allEdges.filter(
-    (edge) =>
-      cappedTags.has(edge.source) &&
-      cappedTags.has(edge.target) &&
-      !megaTags.has(edge.source) &&
-      !megaTags.has(edge.target),
-  );
-
-  const pmiEdges = computePMIEdges(filteredRaw, tagCounts, totalPhotos, pmiThreshold);
-  const sparseEdges = topKSparsify(pmiEdges, maxDegree);
-
-  const nodeIds = new Set();
-  for (const link of sparseEdges) {
-    nodeIds.add(link.source);
-    nodeIds.add(link.target);
-  }
-
-  const sortedIds = [...nodeIds].sort(
-    (a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0),
-  );
-
-  const communities = detectCommunities(sortedIds, sparseEdges);
-  const { intraLinks, interLinks } = splitLinksByCommunity(sparseEdges, communities);
-
-  const maxCount = Math.max(
-    1,
-    ...sortedIds.map((id) => tagCounts[id] ?? 0),
-  );
-
-  const nodes = sortedIds.map((id) => {
-    const community = communities.get(id) ?? 0;
-    const count = tagCounts[id] ?? 0;
-    return {
-      id,
-      count,
-      community,
-      color: getCommunityColor(community),
-      val: 4 + Math.pow(count / maxCount, 0.6) * 24,
-    };
+  const requestedGeneration = cacheGeneration;
+  const promise = Promise.all([
+    db.getTagCounts(),
+    db.getPhotoCount(),
+    db.getTagCoOccurrences({ minWeight, minTagCount: 0, limit: MAX_CANDIDATE_EDGES }),
+  ]).then(([tagCounts, totalPhotos, rawEdges]) => {
+    const data = { tagCounts, totalPhotos, rawEdges };
+    if (requestedGeneration === cacheGeneration) {
+      cache.snapshots.set(minWeight, {
+        data,
+        expiresAt: Date.now() + SNAPSHOT_TTL_MS,
+        lastAccess: Date.now(),
+      });
+      trimCache(cache.snapshots, MAX_SNAPSHOT_CACHE_ENTRIES);
+    }
+    return data;
   });
+  cache.snapshots.set(minWeight, { promise, expiresAt: now + SNAPSHOT_TTL_MS, lastAccess: now });
+  trimCache(cache.snapshots, MAX_SNAPSHOT_CACHE_ENTRIES);
+  try {
+    return await promise;
+  } catch (error) {
+    cache.snapshots.delete(minWeight);
+    throw error;
+  }
+}
 
-  const clusters = layoutClusteredGraph(nodes, intraLinks, interLinks, communities);
-
+function emptyGraph(prunedMegaTags, buildMs) {
   return {
-    nodes,
-    links: intraLinks,
-    interLinks,
-    clusters,
-    stats: {
-      tags: nodes.length,
-      links: intraLinks.length,
-      interLinks: interLinks.length,
-      communities: clusters.length,
-      prunedMegaTags: megaTags.size,
-    },
+    version: GRAPH_VERSION,
+    generatedAt: new Date().toISOString(),
+    nodes: [], links: [], interLinks: [], clusters: [],
+    stats: { tags: 0, links: 0, interLinks: 0, communities: 0, prunedMegaTags,
+      candidateLinks: 0, buildMs },
   };
 }
 
-async function getTagNetworkGraph(db, options = {}) {
-  const minTagCount = options.minTagCount ?? 10;
-  const minWeight = options.minWeight ?? 2;
-  const maxNodes = options.maxNodes ?? 100;
-  const megaTagPct = options.megaTagPct ?? 0.35;
-  const pmiThreshold = options.pmiThreshold ?? 1.0;
-  const maxDegree = options.maxDegree ?? 6;
+async function buildTagNetworkGraph(snapshot, options = {}) {
+  const startedAt = Date.now();
+  const { minTagCount = 10, maxNodes = 100, megaTagPct = 0.35,
+    pmiThreshold = 0.5, minScore = 0.12, maxDegree = 6 } = options;
+  const { tagCounts, totalPhotos, rawEdges } = snapshot;
+  const megaTags = pruneMegaTags(tagCounts, totalPhotos, megaTagPct);
+  const qualifyingTags = Object.entries(tagCounts)
+    .filter(([tag, count]) => count >= minTagCount && !megaTags.has(tag))
+    .sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))
+    .slice(0, maxNodes);
+  if (qualifyingTags.length === 0) return emptyGraph(megaTags.size, Date.now() - startedAt);
 
-  const cacheKey = `${minTagCount}:${minWeight}:${maxNodes}:${megaTagPct}:${pmiThreshold}:${maxDegree}`;
+  const cappedTags = new Set(qualifyingTags.map(([tag]) => tag));
+  const candidateEdges = rawEdges.filter((edge) => cappedTags.has(edge.source) && cappedTags.has(edge.target));
+  const scoredEdges = scoreEdges(candidateEdges, tagCounts, totalPhotos, { pmiThreshold, minScore });
+  const sparseEdges = topKSparsify(scoredEdges, maxDegree);
+  const nodeIds = qualifyingTags.map(([tag]) => tag);
+  const communities = remapCommunities(detectCommunities(nodeIds, sparseEdges), nodeIds, tagCounts);
+  const adjacency = buildAdjacency(nodeIds, sparseEdges);
+  const maxCount = Math.max(1, ...qualifyingTags.map(([, count]) => count));
 
-  const cached = networkCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    return cached.data;
-  }
-
-  const tagCounts = await db.getTagCounts();
-  const totalPhotos = await db.getPhotoCount();
-  const data = await buildTagNetworkGraph(db, tagCounts, totalPhotos, {
-    minTagCount,
-    minWeight,
-    maxNodes,
-    megaTagPct,
-    pmiThreshold,
-    maxDegree,
+  const nodes = nodeIds.map((id, rank) => {
+    const weights = [...adjacency.get(id).values()];
+    const strength = weights.reduce((sum, value) => sum + value, 0);
+    const community = communities.get(id) ?? 0;
+    return { id, count: tagCounts[id] ?? 0, community, color: getCommunityColor(community),
+      val: 4 + Math.pow((tagCounts[id] ?? 0) / maxCount, 0.55) * 24,
+      degree: weights.length, strength, rank: rank + 1, x: 0, y: 0, fx: 0, fy: 0 };
   });
-  networkCache.set(cacheKey, { at: Date.now(), data });
-  return data;
+  const { linksInCommunity, linksBetweenCommunities } = splitLinksByCommunity(sparseEdges, communities);
+  const clusters = layoutGraph(nodes);
+  return {
+    version: GRAPH_VERSION,
+    generatedAt: new Date().toISOString(),
+    nodes, links: linksInCommunity, interLinks: linksBetweenCommunities, clusters,
+    stats: { tags: nodes.length, links: linksInCommunity.length,
+      interLinks: linksBetweenCommunities.length, communities: clusters.length,
+      prunedMegaTags: megaTags.size, candidateLinks: candidateEdges.length,
+      buildMs: Date.now() - startedAt },
+  };
+}
+
+function graphCacheKey(options) {
+  return [GRAPH_VERSION, options.minTagCount ?? 10, options.minWeight ?? 2,
+    options.maxNodes ?? 100, options.megaTagPct ?? 0.35, options.pmiThreshold ?? 0.5,
+    options.minScore ?? 0.12, options.maxDegree ?? 6].join(':');
+}
+
+function trimCache(cache, maximumEntries) {
+  while (cache.size > maximumEntries) {
+    const oldest = [...cache.entries()].sort((a, b) => a[1].lastAccess - b[1].lastAccess)[0];
+    if (!oldest) break;
+    cache.delete(oldest[0]);
+  }
+}
+
+async function getTagNetworkGraph(db, options = {}) {
+  const cache = getDatabaseCache(db);
+  const key = graphCacheKey(options);
+  const now = Date.now();
+  const existing = cache.graphs.get(key);
+  if (existing?.data && existing.expiresAt > now) {
+    existing.lastAccess = now;
+    return existing.data;
+  }
+  if (existing?.promise) return existing.promise;
+
+  const requestedGeneration = cacheGeneration;
+  const promise = loadSnapshot(db, options.minWeight ?? 2)
+    .then((snapshot) => buildTagNetworkGraph(snapshot, options));
+  cache.graphs.set(key, { promise, expiresAt: now + GRAPH_TTL_MS, lastAccess: now });
+  trimCache(cache.graphs, MAX_GRAPH_CACHE_ENTRIES);
+  try {
+    const data = await promise;
+    if (requestedGeneration === cacheGeneration) {
+      cache.graphs.set(key, { data, expiresAt: Date.now() + GRAPH_TTL_MS, lastAccess: Date.now() });
+      trimCache(cache.graphs, MAX_GRAPH_CACHE_ENTRIES);
+    }
+    return data;
+  } catch (error) {
+    cache.graphs.delete(key);
+    throw error;
+  }
 }
 
 function invalidateTagNetworkCache() {
-  networkCache.clear();
+  cacheGeneration += 1;
+  databaseCaches = new WeakMap();
 }
 
 module.exports = {
   getTagNetworkGraph,
   invalidateTagNetworkCache,
+  __test: { buildTagNetworkGraph, detectCommunities, pruneMegaTags, scoreEdges, topKSparsify },
 };

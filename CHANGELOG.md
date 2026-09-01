@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.0 — 2026-09-01
+
+- Replaced the randomized, quadratic tag-network model with deterministic association scoring,
+  stable community detection, and non-overlapping atlas layout.
+- Blended normalized PMI, cosine similarity, overlap, and repeated support so rare coincidences no
+  longer dominate clusters.
+- Added bounded single-flight caches for source co-occurrences and graph presets, with immediate
+  invalidation when the library watcher changes indexed photos or tags.
+- Replaced the pinned force-graph/D3 renderer with a purpose-built canvas Tag Atlas, cutting the lazy
+  feature payload by roughly half and eliminating idle simulation work.
+- Added tag search, meaningful detail and connection presets, fit/pan/cursor zoom, optional labels and
+  cross-links, responsive selection panels, and keyboard navigation.
+- Expanded the tag-network API additively with association metrics, graph metadata, node ranks,
+  community sizes, and build diagnostics while preserving existing routes and fields.
+- Added deterministic model, cache, viewport-math, browser workflow, and accessibility coverage.
+
 ## 1.2.5 — 2026-09-01
 
 - Made fit-to-screen calculate the exact largest uncropped image size from the live viewport and the

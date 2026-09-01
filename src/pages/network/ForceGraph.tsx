@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ForceGraph2D, { type ForceGraphMethods, type GraphLink, type GraphNode } from 'react-force-graph-2d';
-import type { ForceGraphData, ForceGraphLink, ForceGraphNode, TagCluster } from '@/pages/network/types';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type WheelEvent,
+} from 'react';
+import type { ForceGraphData, TagNetworkLink, TagNetworkNode } from '@/pages/network/types';
 import { linkSelectionKey } from '@/pages/network/types';
-
-interface DisplayLink extends ForceGraphLink {
-  isInter?: boolean;
-}
+import {
+  atlasBounds,
+  atlasNodeRadius,
+  distanceToSegment,
+  fitAtlasTransform,
+  screenToWorld,
+  zoomAtlasAt,
+  type AtlasTransform,
+} from './atlasMath';
 
 interface TagForceGraphProps {
   graphData: ForceGraphData;
@@ -15,76 +28,44 @@ interface TagForceGraphProps {
   onSelectLink: (source: string, target: string) => void;
   onClearSelection: () => void;
   showInterLinks: boolean;
-  zoomLevel: number;
-  onZoomChange: (zoom: number) => void;
+  showLabels: boolean;
+  fitRequest: number;
   accentHex: string;
   isDark: boolean;
 }
 
+interface HoverState {
+  node: TagNetworkNode;
+  x: number;
+  y: number;
+}
+
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  origin: AtlasTransform;
+  moved: boolean;
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const normalized = hex.replace('#', '');
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const value = Number.parseInt(
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((character) => character + character)
+          .join('')
+      : normalized,
+    16,
+  );
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
 }
 
-function resolveLinkEndpointId(endpoint: string | ForceGraphNode | undefined): string | null {
-  if (endpoint == null) return null;
-  if (typeof endpoint === 'object') return endpoint.id ?? null;
-  return String(endpoint);
-}
-
-function drawClusterHulls(
-  ctx: CanvasRenderingContext2D,
-  clusters: TagCluster[],
-  globalScale: number,
-  isDark: boolean,
-) {
-  for (const cluster of clusters) {
-    if (cluster.hull.length < 3) continue;
-
-    ctx.beginPath();
-    ctx.moveTo(cluster.hull[0].x, cluster.hull[0].y);
-    for (let i = 1; i < cluster.hull.length; i += 1) {
-      ctx.lineTo(cluster.hull[i].x, cluster.hull[i].y);
-    }
-    ctx.closePath();
-
-    ctx.fillStyle = hexToRgba(cluster.color, isDark ? 0.14 : 0.2);
-    ctx.fill();
-    ctx.strokeStyle = hexToRgba(cluster.color, isDark ? 0.4 : 0.5);
-    ctx.lineWidth = 1.5 / globalScale;
-    ctx.stroke();
-  }
-}
-
-function drawClusterLabels(
-  ctx: CanvasRenderingContext2D,
-  clusters: TagCluster[],
-  globalScale: number,
-  isDark: boolean,
-) {
-  if (globalScale < 0.4) return;
-
-  const labelCandidates = clusters
-    .filter((cluster) => cluster.nodeCount >= 4 && cluster.label)
-    .sort((a, b) => b.nodeCount - a.nodeCount)
-    .slice(0, 30);
-
-  const fontSize = Math.max(14 / globalScale, 3);
-  ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  for (const cluster of labelCandidates) {
-    const text = `#${cluster.label}`;
-    ctx.strokeStyle = isDark ? 'rgba(9, 9, 11, 0.75)' : 'rgba(255, 255, 255, 0.85)';
-    ctx.lineWidth = 3 / globalScale;
-    ctx.strokeText(text, cluster.cx, cluster.cy);
-    ctx.fillStyle = isDark ? '#f4f4f5' : '#18181b';
-    ctx.fillText(text, cluster.cx, cluster.cy);
-  }
+function isVisible(node: TagNetworkNode, transform: AtlasTransform, width: number, height: number) {
+  const x = node.x * transform.scale + transform.x;
+  const y = node.y * transform.scale + transform.y;
+  return x > -40 && x < width + 40 && y > -40 && y < height + 40;
 }
 
 export function TagForceGraph({
@@ -95,296 +76,410 @@ export function TagForceGraph({
   onSelectLink,
   onClearSelection,
   showInterLinks,
-  zoomLevel,
-  onZoomChange,
+  showLabels,
+  fitRequest,
   accentHex,
   isDark,
 }: TagForceGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
-  const hasFitRef = useRef(false);
-  const skipZoomSyncRef = useRef(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const transformRef = useRef<AtlasTransform>({ x: 0, y: 0, scale: 1 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [hoveredTag, setHoveredTag] = useState<string | null>(null);
+  const [transform, setTransform] = useState<AtlasTransform>(transformRef.current);
+  const [hover, setHover] = useState<HoverState | null>(null);
+  const [keyboardTag, setKeyboardTag] = useState<string | null>(null);
 
-  const nodeById = useMemo(() => {
-    const map = new Map<string, ForceGraphNode>();
-    for (const node of graphData.nodes) {
-      map.set(node.id, node);
-    }
-    return map;
-  }, [graphData.nodes]);
-
-  const selectedLinkKey = selectedLink ? linkSelectionKey(selectedLink.source, selectedLink.target) : null;
-
-  const displayLinks = useMemo<DisplayLink[]>(() => {
-    const intra = graphData.links.map((link) => ({ ...link, isInter: false }));
-    if (!showInterLinks) return intra;
-    const inter = graphData.interLinks.map((link) => ({ ...link, isInter: true }));
-    return [...intra, ...inter];
-  }, [graphData.links, graphData.interLinks, showInterLinks]);
-
-  const displayGraph = useMemo(
-    () => ({
-      nodes: graphData.nodes,
-      links: displayLinks,
-    }),
-    [graphData.nodes, displayLinks],
+  const bounds = useMemo(() => atlasBounds(graphData), [graphData]);
+  const nodeById = useMemo(() => new Map(graphData.nodes.map((node) => [node.id, node])), [graphData.nodes]);
+  const orderedNodes = useMemo(
+    () =>
+      [...graphData.nodes].sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999) || a.id.localeCompare(b.id)),
+    [graphData.nodes],
   );
-
-  const adjacency = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const node of graphData.nodes) {
-      map.set(node.id, new Set());
-    }
-    for (const link of displayLinks) {
-      const source = resolveLinkEndpointId(link.source);
-      const target = resolveLinkEndpointId(link.target);
-      if (source && target) {
-        map.get(source)?.add(target);
-        map.get(target)?.add(source);
-      }
-    }
-    return map;
-  }, [graphData.nodes, displayLinks]);
-
-  const connectedToSelected = useMemo(() => {
+  const displayLinks = useMemo(
+    () => (showInterLinks ? [...graphData.links, ...graphData.interLinks] : graphData.links),
+    [graphData.links, graphData.interLinks, showInterLinks],
+  );
+  const interLinkKeys = useMemo(
+    () => new Set(graphData.interLinks.map((link) => linkSelectionKey(link.source, link.target))),
+    [graphData.interLinks],
+  );
+  const selectedLinkKey = selectedLink ? linkSelectionKey(selectedLink.source, selectedLink.target) : null;
+  const connectedTags = useMemo(() => {
     if (!selectedTag) return new Set<string>();
-    const connected = new Set<string>([selectedTag]);
-    for (const neighbor of adjacency.get(selectedTag) ?? []) {
-      connected.add(neighbor);
+    const connected = new Set([selectedTag]);
+    for (const link of displayLinks) {
+      if (link.source === selectedTag) connected.add(link.target);
+      if (link.target === selectedTag) connected.add(link.source);
     }
     return connected;
-  }, [selectedTag, adjacency]);
+  }, [displayLinks, selectedTag]);
+
+  const updateTransform = useCallback((next: AtlasTransform) => {
+    transformRef.current = next;
+    setTransform(next);
+  }, []);
+
+  const fitGraph = useCallback(() => {
+    updateTransform(fitAtlasTransform(bounds, dimensions.width, dimensions.height, 80));
+  }, [bounds, dimensions.height, dimensions.width, updateTransform]);
 
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
-
     const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
       setDimensions({
-        width: Math.max(width, 320),
-        height: Math.max(height, 400),
+        width: Math.max(320, Math.round(entry.contentRect.width)),
+        height: Math.max(360, Math.round(entry.contentRect.height)),
       });
     });
-
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    hasFitRef.current = false;
-  }, [graphData, showInterLinks]);
+    fitGraph();
+  }, [fitGraph, fitRequest, graphData.nodes.length, graphData.clusters.length]);
 
   useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph || hasFitRef.current) return;
-    graph.zoomToFit(400, 160);
-    skipZoomSyncRef.current = true;
-    graph.zoom(zoomLevel, 0);
-    hasFitRef.current = true;
-  }, [displayGraph, dimensions.width, dimensions.height]);
+    if (!selectedTag) return;
+    const node = nodeById.get(selectedTag);
+    if (!node) return;
+    const current = transformRef.current;
+    const scale = Math.max(current.scale, 0.7);
+    updateTransform({
+      x: dimensions.width / 2 - node.x * scale,
+      y: dimensions.height / 2 - node.y * scale,
+      scale,
+    });
+  }, [selectedTag, nodeById, dimensions.height, dimensions.width, updateTransform]);
 
   useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph || !hasFitRef.current) return;
-    skipZoomSyncRef.current = true;
-    graph.zoom(zoomLevel, 0);
-  }, [zoomLevel]);
-
-  useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph || !selectedTag) return;
-
-    const node = graphData.nodes.find((entry) => entry.id === selectedTag);
-    if (node?.x != null && node?.y != null) {
-      graph.centerAt(node.x, node.y, 500);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelWidth = Math.round(dimensions.width * dpr);
+    const pixelHeight = Math.round(dimensions.height * dpr);
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
     }
-  }, [selectedTag, graphData.nodes]);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-  const getNodeColor = useCallback(
-    (node: ForceGraphNode) => {
-      if (selectedTag === node.id) return accentHex;
-      if (hoveredTag === node.id) return accentHex;
+    const frame = requestAnimationFrame(() => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, dimensions.width, dimensions.height);
 
-      const base = node.color;
-      if (!selectedTag && !selectedLink) return base;
-      if (selectedTag && connectedToSelected.has(node.id)) return base;
-      if (selectedLink && (node.id === selectedLink.source || node.id === selectedLink.target)) {
-        return base;
-      }
-      return hexToRgba(base, 0.12);
-    },
-    [selectedTag, selectedLink, hoveredTag, accentHex, connectedToSelected],
-  );
-
-  const getLinkColor = useCallback(
-    (link: DisplayLink) => {
-      const sourceId = resolveLinkEndpointId(link.source);
-      const targetId = resolveLinkEndpointId(link.target);
-      if (!sourceId || !targetId) {
-        return isDark ? 'rgba(161, 161, 170, 0.22)' : 'rgba(113, 113, 122, 0.3)';
+      const gridSize = 44;
+      ctx.fillStyle = isDark ? 'rgba(113,113,122,.12)' : 'rgba(113,113,122,.1)';
+      for (let x = ((transform.x % gridSize) + gridSize) % gridSize; x < dimensions.width; x += gridSize) {
+        for (let y = ((transform.y % gridSize) + gridSize) % gridSize; y < dimensions.height; y += gridSize) {
+          ctx.fillRect(x, y, 1, 1);
+        }
       }
 
-      if (link.isInter) {
-        const linkKey = linkSelectionKey(sourceId, targetId);
-        if (selectedLinkKey === linkKey) return hexToRgba(accentHex, 0.95);
+      ctx.translate(transform.x, transform.y);
+      ctx.scale(transform.scale, transform.scale);
 
-        const touchesSelection =
-          selectedTag &&
-          (sourceId === selectedTag ||
-            targetId === selectedTag ||
-            connectedToSelected.has(sourceId) ||
-            connectedToSelected.has(targetId));
-
-        if (touchesSelection) return hexToRgba(accentHex, 0.7);
-        return isDark ? 'rgba(161, 161, 170, 0.28)' : 'rgba(113, 113, 122, 0.35)';
-      }
-
-      const sourceNode = nodeById.get(sourceId);
-      const clusterColor = sourceNode?.color ?? '#71717a';
-
-      if (selectedTag) {
-        const touchesSelection =
-          sourceId === selectedTag ||
-          targetId === selectedTag ||
-          (connectedToSelected.has(sourceId) && connectedToSelected.has(targetId));
-
-        if (touchesSelection) return hexToRgba(accentHex, 0.55);
-        return isDark ? 'rgba(39, 39, 42, 0.12)' : 'rgba(228, 228, 231, 0.15)';
-      }
-
-      return hexToRgba(clusterColor, isDark ? 0.45 : 0.55);
-    },
-    [selectedTag, selectedLinkKey, connectedToSelected, accentHex, isDark, nodeById],
-  );
-
-  const drawNode = useCallback(
-    (node: ForceGraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      if (node.x == null || node.y == null) return;
-
-      const radius = 4 + Math.sqrt(Math.max(node.val ?? 1, 1)) * 3.5;
-      const color = getNodeColor(node);
-      const showLabel = node.id === selectedTag || node.id === hoveredTag;
-
-      ctx.save();
-
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, radius + 3 / globalScale, 0, 2 * Math.PI);
-      ctx.fillStyle = color.includes('rgba') ? color : hexToRgba(color, 0.2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
-      ctx.fill();
-
-      if (node.id === selectedTag || hoveredTag === node.id) {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2 / globalScale;
+      for (const cluster of graphData.clusters) {
+        if (cluster.hull.length < 3) continue;
+        ctx.beginPath();
+        ctx.moveTo(cluster.hull[0].x, cluster.hull[0].y);
+        for (const point of cluster.hull.slice(1)) ctx.lineTo(point.x, point.y);
+        ctx.closePath();
+        ctx.fillStyle = hexToRgba(cluster.color, isDark ? 0.1 : 0.08);
+        ctx.strokeStyle = hexToRgba(cluster.color, isDark ? 0.35 : 0.3);
+        ctx.lineWidth = 1.25 / transform.scale;
+        ctx.fill();
         ctx.stroke();
       }
 
-      if (showLabel) {
-        const fontSize = Math.max(11 / globalScale, 2.5);
-        ctx.font = `${node.id === selectedTag ? '600' : '500'} ${fontSize}px system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillStyle = isDark ? '#f4f4f5' : '#18181b';
-        ctx.fillText(`#${node.id}`, node.x, node.y + radius + 3 / globalScale);
+      for (const link of displayLinks) {
+        const source = nodeById.get(link.source);
+        const target = nodeById.get(link.target);
+        if (!source || !target) continue;
+        const isInter = interLinkKeys.has(linkSelectionKey(link.source, link.target));
+        const isSelected = selectedLinkKey === linkSelectionKey(link.source, link.target);
+        const touchesSelected = selectedTag && (link.source === selectedTag || link.target === selectedTag);
+        const dimmed = selectedTag && !touchesSelected;
+        ctx.beginPath();
+        ctx.moveTo(source.x, source.y);
+        ctx.lineTo(target.x, target.y);
+        ctx.strokeStyle =
+          isSelected || touchesSelected
+            ? hexToRgba(accentHex, isSelected ? 0.95 : 0.7)
+            : isInter
+              ? isDark
+                ? 'rgba(161,161,170,.22)'
+                : 'rgba(82,82,91,.2)'
+              : hexToRgba(source.color, dimmed ? 0.08 : 0.38);
+        ctx.lineWidth =
+          (isSelected ? 2.5 : Math.min(0.65 + Math.log2(link.weight + 1) * 0.45, 2.5)) / transform.scale;
+        if (isInter) ctx.setLineDash([5 / transform.scale, 6 / transform.scale]);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
 
-      ctx.restore();
-    },
-    [getNodeColor, selectedTag, hoveredTag, isDark],
-  );
+      for (const node of graphData.nodes) {
+        if (!isVisible(node, transform, dimensions.width, dimensions.height)) continue;
+        const radius = Math.max(atlasNodeRadius(node), 3 / transform.scale);
+        const isActive = node.id === selectedTag || node.id === hover?.node.id || node.id === keyboardTag;
+        const isDimmed =
+          (selectedTag && !connectedTags.has(node.id)) ||
+          (selectedLink && node.id !== selectedLink.source && node.id !== selectedLink.target);
+        const color = isActive ? accentHex : node.color;
 
-  const renderFramePre = useCallback(
-    (ctx: CanvasRenderingContext2D, globalScale: number) => {
-      drawClusterHulls(ctx, graphData.clusters, globalScale, isDark);
-      drawClusterLabels(ctx, graphData.clusters, globalScale, isDark);
-    },
-    [graphData.clusters, isDark],
-  );
-
-  const handleZoom = useCallback(
-    (transform: { k: number }) => {
-      if (skipZoomSyncRef.current) {
-        skipZoomSyncRef.current = false;
-        return;
-      }
-      const clamped = Math.min(4, Math.max(0.3, transform.k));
-      onZoomChange(Math.round(clamped * 10) / 10);
-    },
-    [onZoomChange],
-  );
-
-  const getLinkWidth = useCallback(
-    (link: DisplayLink) => {
-      const coCount = link.weight ?? 1;
-
-      if (link.isInter) {
-        const sourceId = resolveLinkEndpointId(link.source);
-        const targetId = resolveLinkEndpointId(link.target);
-        if (sourceId && targetId && selectedLinkKey === linkSelectionKey(sourceId, targetId)) {
-          return 2.5;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius + (isActive ? 6 : 3) / transform.scale, 0, Math.PI * 2);
+        ctx.fillStyle = hexToRgba(color, isDimmed ? 0.04 : isActive ? 0.3 : 0.16);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = isDimmed ? hexToRgba(node.color, 0.16) : color;
+        ctx.fill();
+        if (isActive) {
+          ctx.strokeStyle = isDark ? '#ffffff' : '#18181b';
+          ctx.lineWidth = 1.5 / transform.scale;
+          ctx.stroke();
         }
-        return Math.min(0.4 + Math.log2(coCount + 1) * 0.65, 3);
+
+        const rank = node.rank ?? 9999;
+        const labelLimit = transform.scale >= 0.85 ? 150 : transform.scale >= 0.4 ? 55 : 20;
+        if (isActive || (showLabels && rank <= labelLimit)) {
+          const fontSize = (isActive ? 12 : 10.5) / transform.scale;
+          ctx.font = `${isActive ? 650 : 500} ${fontSize}px system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.lineWidth = 3 / transform.scale;
+          ctx.strokeStyle = isDark ? 'rgba(9,9,11,.9)' : 'rgba(250,250,250,.92)';
+          ctx.strokeText(`#${node.id}`, node.x, node.y + radius + 5 / transform.scale);
+          ctx.fillStyle = isDimmed ? (isDark ? '#71717a' : '#a1a1aa') : isDark ? '#f4f4f5' : '#18181b';
+          ctx.fillText(`#${node.id}`, node.x, node.y + radius + 5 / transform.scale);
+        }
       }
 
-      return Math.min(0.5 + Math.log2(coCount + 1) * 0.9, 5);
+      if (showLabels) {
+        for (const cluster of graphData.clusters) {
+          const radius =
+            cluster.radius ??
+            Math.max(...cluster.hull.map((point) => Math.hypot(point.x - cluster.cx, point.y - cluster.cy)));
+          const label = `#${cluster.label} · ${cluster.nodeCount} tags`;
+          ctx.font = `650 ${12 / transform.scale}px system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.strokeStyle = isDark ? 'rgba(9,9,11,.9)' : 'rgba(250,250,250,.94)';
+          ctx.lineWidth = 4 / transform.scale;
+          ctx.strokeText(label, cluster.cx, cluster.cy - radius + 22 / transform.scale);
+          ctx.fillStyle = isDark ? '#d4d4d8' : '#3f3f46';
+          ctx.fillText(label, cluster.cx, cluster.cy - radius + 22 / transform.scale);
+        }
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    accentHex,
+    connectedTags,
+    dimensions.height,
+    dimensions.width,
+    displayLinks,
+    graphData,
+    hover?.node.id,
+    interLinkKeys,
+    isDark,
+    keyboardTag,
+    nodeById,
+    selectedLink,
+    selectedLinkKey,
+    selectedTag,
+    showLabels,
+    transform,
+  ]);
+
+  const pointerPosition = (event: PointerEvent<HTMLCanvasElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  const findNode = useCallback(
+    (screenX: number, screenY: number) => {
+      const world = screenToWorld({ x: screenX, y: screenY }, transformRef.current);
+      const hitPadding = 7 / transformRef.current.scale;
+      for (let index = graphData.nodes.length - 1; index >= 0; index -= 1) {
+        const node = graphData.nodes[index];
+        if (Math.hypot(world.x - node.x, world.y - node.y) <= atlasNodeRadius(node) + hitPadding) return node;
+      }
+      return null;
     },
-    [selectedLinkKey],
+    [graphData.nodes],
   );
+
+  const findInterLink = useCallback(
+    (screenX: number, screenY: number): TagNetworkLink | null => {
+      if (!showInterLinks) return null;
+      const world = screenToWorld({ x: screenX, y: screenY }, transformRef.current);
+      const threshold = 7 / transformRef.current.scale;
+      for (const link of graphData.interLinks) {
+        const source = nodeById.get(link.source);
+        const target = nodeById.get(link.target);
+        if (source && target && distanceToSegment(world, source, target) <= threshold) return link;
+      }
+      return null;
+    },
+    [graphData.interLinks, nodeById, showInterLinks],
+  );
+
+  const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0) return;
+    const point = pointerPosition(event);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+      origin: transformRef.current,
+      moved: false,
+    };
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
+    const point = pointerPosition(event);
+    const drag = dragRef.current;
+    if (drag?.pointerId === event.pointerId) {
+      const dx = point.x - drag.startX;
+      const dy = point.y - drag.startY;
+      if (Math.hypot(dx, dy) > 3) drag.moved = true;
+      if (drag.moved) updateTransform({ ...drag.origin, x: drag.origin.x + dx, y: drag.origin.y + dy });
+      return;
+    }
+    const node = findNode(point.x, point.y);
+    setHover((previous) => {
+      if (!node) return null;
+      if (previous?.node.id === node.id) return previous;
+      return { node, x: point.x, y: point.y };
+    });
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLCanvasElement>) => {
+    const point = pointerPosition(event);
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag || drag.moved) return;
+    const node = findNode(point.x, point.y);
+    if (node) {
+      onSelectTag(selectedTag === node.id ? null : node.id);
+      return;
+    }
+    const link = findInterLink(point.x, point.y);
+    if (link) {
+      if (selectedLinkKey === linkSelectionKey(link.source, link.target)) onClearSelection();
+      else onSelectLink(link.source, link.target);
+      return;
+    }
+    onClearSelection();
+  };
+
+  const handleWheel = (event: WheelEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const factor = Math.exp(-event.deltaY * 0.0012);
+    updateTransform(zoomAtlasAt(transformRef.current, point, transformRef.current.scale * factor));
+  };
+
+  const focusKeyboardNode = (direction: number) => {
+    const currentIndex = orderedNodes.findIndex((node) => node.id === keyboardTag);
+    const nextIndex =
+      currentIndex < 0 ? 0 : (currentIndex + direction + orderedNodes.length) % orderedNodes.length;
+    const node = orderedNodes[nextIndex];
+    if (!node) return;
+    setKeyboardTag(node.id);
+    const current = transformRef.current;
+    const scale = Math.max(current.scale, 0.7);
+    updateTransform({
+      x: dimensions.width / 2 - node.x * scale,
+      y: dimensions.height / 2 - node.y * scale,
+      scale,
+    });
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
+    if (event.key === 'Escape') {
+      onClearSelection();
+      setKeyboardTag(null);
+    } else if (event.key === '0') {
+      fitGraph();
+    } else if (event.key === '+' || event.key === '=') {
+      updateTransform(
+        zoomAtlasAt(
+          transformRef.current,
+          { x: dimensions.width / 2, y: dimensions.height / 2 },
+          transformRef.current.scale * 1.25,
+        ),
+      );
+    } else if (event.key === '-') {
+      updateTransform(
+        zoomAtlasAt(
+          transformRef.current,
+          { x: dimensions.width / 2, y: dimensions.height / 2 },
+          transformRef.current.scale / 1.25,
+        ),
+      );
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      focusKeyboardNode(1);
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      focusKeyboardNode(-1);
+    } else if (event.key === 'Enter' && keyboardTag) {
+      onSelectTag(keyboardTag);
+    } else {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
-      <ForceGraph2D
-        ref={graphRef}
+      <canvas
+        ref={canvasRef}
+        className="h-full w-full cursor-grab touch-none outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inset"
+        style={{ ['--tw-ring-color' as string]: accentHex }}
         width={dimensions.width}
         height={dimensions.height}
-        graphData={displayGraph as unknown as { nodes: GraphNode[]; links: GraphLink[] }}
-        backgroundColor={isDark ? '#09090b' : '#fafafa'}
-        nodeRelSize={1}
-        nodeVal="val"
-        cooldownTicks={0}
-        warmupTicks={0}
-        enableNodeDrag={false}
-        d3AlphaMin={1}
-        nodeLabel={(node) => {
-          const entry = node as unknown as ForceGraphNode;
-          return `#${entry.id} — ${entry.count.toLocaleString()} items`;
+        tabIndex={0}
+        role="application"
+        aria-label={`Interactive tag atlas with ${graphData.nodes.length} tags in ${graphData.clusters.length} communities`}
+        aria-describedby="tag-atlas-instructions"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => {
+          dragRef.current = null;
         }}
-        onRenderFramePre={renderFramePre}
-        nodeCanvasObject={(node, ctx, globalScale) =>
-          drawNode(node as unknown as ForceGraphNode, ctx, globalScale)
-        }
-        nodeCanvasObjectMode={() => 'replace'}
-        linkWidth={(link) => getLinkWidth(link as unknown as DisplayLink)}
-        linkColor={(link) => getLinkColor(link as unknown as DisplayLink)}
-        onNodeClick={(node) => {
-          const entry = node as unknown as ForceGraphNode;
-          onSelectTag(selectedTag === entry.id ? null : entry.id);
-        }}
-        onLinkClick={(link) => {
-          const entry = link as unknown as DisplayLink;
-          if (!entry.isInter) return;
-          const sourceId = resolveLinkEndpointId(entry.source);
-          const targetId = resolveLinkEndpointId(entry.target);
-          if (!sourceId || !targetId) return;
-          if (selectedLinkKey === linkSelectionKey(sourceId, targetId)) {
-            onClearSelection();
-          } else {
-            onSelectLink(sourceId, targetId);
-          }
-        }}
-        onNodeHover={(node) => {
-          setHoveredTag(node ? (node as unknown as ForceGraphNode).id : null);
-        }}
-        onBackgroundClick={onClearSelection}
-        onZoom={handleZoom}
+        onPointerLeave={() => setHover(null)}
+        onWheel={handleWheel}
+        onDoubleClick={fitGraph}
+        onKeyDown={handleKeyDown}
       />
+      <p id="tag-atlas-instructions" className="sr-only">
+        Drag to pan and use the mouse wheel to zoom. Arrow keys move between tags, Enter opens a tag, plus and
+        minus zoom, zero fits the atlas, and Escape clears the selection.
+      </p>
+      {hover && (
+        <div
+          className="pointer-events-none absolute z-20 max-w-64 rounded-lg border border-zinc-700 bg-zinc-950/95 px-3 py-2 text-xs text-zinc-200 shadow-xl"
+          style={{ left: Math.min(hover.x + 14, dimensions.width - 210), top: Math.max(8, hover.y - 54) }}
+        >
+          <p className="truncate font-semibold">#{hover.node.id}</p>
+          <p className="mt-0.5 text-zinc-400">
+            {hover.node.count.toLocaleString()} items · {hover.node.degree ?? 0} strong connections
+          </p>
+        </div>
+      )}
+      <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-zinc-800/70 bg-zinc-950/75 px-2 py-1 text-[10px] text-zinc-500 backdrop-blur-sm">
+        {Math.round(transform.scale * 100)}% · drag to pan · scroll to zoom · double-click to fit
+      </div>
     </div>
   );
 }

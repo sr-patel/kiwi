@@ -72,9 +72,11 @@ export const useAppStore = create<AppStore>()(
       transitionEffect: 'slide',
 
       tagNetworkSettings: {
-        detailLevel: 0,
+        detailLevel: 1,
         showInterLinks: false,
         zoomLevel: 1,
+        connectionStrength: 'balanced',
+        showLabels: true,
       },
 
       // Visualizer Settings

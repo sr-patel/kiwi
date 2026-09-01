@@ -175,6 +175,8 @@ export interface AppState {
     detailLevel: number;
     showInterLinks: boolean;
     zoomLevel: number;
+    connectionStrength: 'focused' | 'balanced' | 'broad';
+    showLabels: boolean;
   };
 }
 

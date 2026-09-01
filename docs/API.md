@@ -54,3 +54,17 @@ Media query parameters remain accepted for URL compatibility, but the server res
 - `GET /api/database/status`, `/stats`, `/analyze`
 
 Search photo listings use the common listing envelope. The legacy count and size endpoints remain supported.
+
+### Tag Atlas
+
+`GET /api/tags/network` returns a deterministic, pre-positioned graph. Existing node, link, cluster,
+and stats fields remain available. Additive fields expose normalized association scores, node rank and
+strength, cluster size, graph version, generation time, candidate-link count, and model build time.
+
+The endpoint accepts the existing `minTagCount`, `minWeight`, `maxNodes`, `megaTagPct`, `pmiThreshold`,
+and `maxDegree` parameters. `minScore` (0–1, default `0.12`) controls the blended association threshold.
+The score combines normalized PMI, cosine similarity, overlap, and repeated support so rare coincidences
+do not dominate communities.
+
+Tag counts and co-occurrences are cached separately from rendered graph presets. Concurrent requests share
+one source-data load, derived results use a bounded cache, and library watcher changes invalidate both layers.

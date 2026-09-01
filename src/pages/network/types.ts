@@ -13,22 +13,10 @@ export type TagCoOccurrenceEdge = TagNetworkLink;
 
 export type TagNetworkGraph = SharedTagNetworkGraph;
 
-export interface ForceGraphNode extends TagNetworkNode {
-  degree?: number;
-  isIsolated?: boolean;
-}
-
-export interface ForceGraphLink {
-  source: string | ForceGraphNode;
-  target: string | ForceGraphNode;
-  weight: number;
-  pmi?: number;
-}
-
 export interface ForceGraphData {
-  nodes: ForceGraphNode[];
-  links: ForceGraphLink[];
-  interLinks: ForceGraphLink[];
+  nodes: TagNetworkNode[];
+  links: TagNetworkLink[];
+  interLinks: TagNetworkLink[];
   clusters: TagCluster[];
 }
 

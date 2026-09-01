@@ -15,7 +15,9 @@ interface WatcherManager {
   getWatcherStatus(): WatcherStatus;
   setLastReconcileTime(value: string): void;
 }
-const watcherModule = require('../watcher.cjs') as { createWatcherManager(): WatcherManager };
+const watcherModule = require('../watcher.cjs') as {
+  createWatcherManager(options?: { onLibraryChanged?: () => void }): WatcherManager;
+};
 const sync = require('../librarySync.cjs') as {
   reconcileLibrary(
     database: LegacyDatabase,
@@ -35,7 +37,9 @@ export interface ActiveLibrary {
 
 export class LibraryContextManager {
   private active: ActiveLibrary | null = null;
-  private readonly watcher = watcherModule.createWatcherManager();
+  private readonly watcher = watcherModule.createWatcherManager({
+    onLibraryChanged: () => tagNetwork.invalidateTagNetworkCache(),
+  });
   private generation = 0;
   private syncTask: Promise<void> | null = null;
 

@@ -11,7 +11,7 @@ const {
   photoInfoDirExists,
 } = require('./librarySync.cjs');
 
-function createWatcherManager() {
+function createWatcherManager({ onLibraryChanged = () => {} } = {}) {
 
 const DEBOUNCE_MS = 200;
 const RECONCILE_DEBOUNCE_MS = 1000;
@@ -45,6 +45,14 @@ const status = {
   processedCount: 0,
   lastReconcileTime: null,
 };
+
+function notifyLibraryChanged() {
+  try {
+    onLibraryChanged();
+  } catch (error) {
+    console.warn('⚠️  Watcher cache invalidation failed:', error.message);
+  }
+}
 
 function appendActivity(entry) {
   const record = {
@@ -233,6 +241,9 @@ function scheduleReconcile() {
         status.lastEventTime = new Date().toISOString();
         status.lastError = null;
         logReconcileResult(result);
+        if ((result.upserted ?? 0) > 0 || (result.deleted ?? 0) > 0) {
+          notifyLibraryChanged();
+        }
       } catch (error) {
         status.lastError = error.message;
         appendActivity({ type: 'error', message: `Reconcile failed: ${error.message}` });
@@ -288,12 +299,14 @@ async function processQueue(queueGeneration) {
   pendingPaths.clear();
   pendingDeletes.clear();
   status.pendingCount = 0;
+  let libraryChanged = false;
 
   try {
     for (const photoId of deleteBatch) {
       if (queueGeneration !== generation) break;
       try {
         if (await removePhotoFromDb(photoId)) {
+          libraryChanged = true;
           status.processedCount++;
           status.lastEvent = `delete:${photoId}`;
           status.lastEventTime = new Date().toISOString();
@@ -312,13 +325,14 @@ async function processQueue(queueGeneration) {
         if (action === 'delete') {
           const photoId = extractPhotoIdFromMetadataPath(filePath);
           if (photoId) {
-            await removePhotoFromDb(photoId);
+            libraryChanged = (await removePhotoFromDb(photoId)) || libraryChanged;
           }
         } else {
           const photoId = extractPhotoIdFromMetadataPath(filePath);
           if (photoId) {
             const wasNew = !(await activeDb.getPhotoById(photoId));
             const result = await upsertPhotoFromMetadata(activeDb, photoId, filePath, { mtimeData });
+            libraryChanged = true;
             if (result.deleted) {
               if (result.hadPhoto) {
                 appendActivity({
@@ -355,6 +369,7 @@ async function processQueue(queueGeneration) {
 
     if (queueGeneration === generation && activeDb) {
       await activeDb.updateCacheInfo('last_refresh', new Date().toISOString());
+      if (libraryChanged) notifyLibraryChanged();
     }
   } finally {
     isProcessing = false;

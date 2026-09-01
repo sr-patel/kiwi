@@ -34,8 +34,14 @@ export const queryKeys = {
   folderThumbnail: (folderId: string) => [...queryKeys.all, 'folder-thumbnail', folderId] as const,
   tags: () => [...queryKeys.all, 'tags'] as const,
   tagCounts: () => [...queryKeys.tags(), 'counts'] as const,
-  tagNetwork: (minTagCount?: number, maxNodes?: number) =>
-    [...queryKeys.tags(), 'network', minTagCount ?? null, maxNodes ?? null] as const,
+  tagNetwork: (minTagCount?: number, maxNodes?: number, connectionStrength?: string) =>
+    [
+      ...queryKeys.tags(),
+      'network',
+      minTagCount ?? null,
+      maxNodes ?? null,
+      connectionStrength ?? null,
+    ] as const,
   dashboard: () => [...queryKeys.all, 'dashboard'] as const,
   sync: () => [...queryKeys.all, 'sync'] as const,
 };

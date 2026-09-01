@@ -232,7 +232,8 @@ export const TagNetworkQuerySchema = z.object({
   minWeight: boundedInteger(2, 1, 1_000_000).default(2),
   maxNodes: boundedInteger(100, 2, 800).default(100),
   megaTagPct: boundedNumber(0.35, 0, 1).default(0.35),
-  pmiThreshold: boundedNumber(1, -50, 50).default(1),
+  pmiThreshold: boundedNumber(0.5, -50, 50).default(0.5),
+  minScore: boundedNumber(0.12, 0, 1).default(0.12),
   maxDegree: boundedInteger(6, 1, 50).default(6),
 });
 
@@ -337,12 +338,18 @@ export const TagNetworkNodeSchema = z.object({
   y: z.number(),
   fx: z.number(),
   fy: z.number(),
+  degree: z.number().int().min(0).optional(),
+  strength: z.number().min(0).optional(),
+  rank: z.number().int().min(1).optional(),
 });
 export const TagNetworkLinkSchema = z.object({
   source: z.string(),
   target: z.string(),
   weight: z.number(),
   pmi: z.number().optional(),
+  npmi: z.number().min(-1).max(1).optional(),
+  overlap: z.number().min(0).max(1).optional(),
+  score: z.number().min(0).max(1).optional(),
 });
 export const TagClusterSchema = z.object({
   id: z.number(),
@@ -351,10 +358,14 @@ export const TagClusterSchema = z.object({
   nodeCount: z.number(),
   label: z.string(),
   labelCount: z.number(),
+  totalItems: z.number().min(0).optional(),
+  radius: z.number().min(0).optional(),
   cx: z.number(),
   cy: z.number(),
 });
 export const TagNetworkGraphSchema = z.object({
+  version: z.number().int().min(1).optional(),
+  generatedAt: z.string().optional(),
   nodes: z.array(TagNetworkNodeSchema),
   links: z.array(TagNetworkLinkSchema),
   interLinks: z.array(TagNetworkLinkSchema),
@@ -365,6 +376,8 @@ export const TagNetworkGraphSchema = z.object({
     interLinks: z.number(),
     communities: z.number(),
     prunedMegaTags: z.number(),
+    candidateLinks: z.number().int().min(0).optional(),
+    buildMs: z.number().min(0).optional(),
   }),
 });
 

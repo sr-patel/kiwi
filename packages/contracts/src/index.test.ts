@@ -25,11 +25,14 @@ describe('shared runtime contracts', () => {
       limit: 500,
       offset: 0,
     });
-    expect(TagNetworkQuerySchema.parse({ maxNodes: 5000, megaTagPct: -2, maxDegree: 0 })).toMatchObject({
-      maxNodes: 800,
-      megaTagPct: 0,
-      maxDegree: 1,
-    });
+    expect(
+      TagNetworkQuerySchema.parse({
+        maxNodes: 5000,
+        megaTagPct: -2,
+        minScore: 9,
+        maxDegree: 0,
+      }),
+    ).toMatchObject({ maxNodes: 800, megaTagPct: 0, minScore: 1, maxDegree: 1 });
   });
 
   it('normalizes photos and additive page fields', () => {

@@ -30,6 +30,8 @@ for (let index = 1; index <= 75; index++) {
   const isFitFixture = index === 1;
   const extension = isFitFixture ? 'svg' : 'jpg';
   const original = isFitFixture ? landscapeSvg : onePixelJpeg;
+  const theme = `theme-${((index - 1) % 3) + 1}`;
+  const topic = `topic-${((index - 1) % 6) + 1}`;
   const infoPath = path.join(imagesPath, `${id}.info`);
   await mkdir(infoPath);
   await Promise.all([
@@ -46,7 +48,7 @@ for (let index = 1; index <= 75; index++) {
         width: isFitFixture ? 1600 : 1,
         height: isFitFixture ? 800 : 1,
         folders: ['birds'],
-        tags: ['bird', index % 2 ? 'odd' : 'even'],
+        tags: ['bird', index % 2 ? 'odd' : 'even', theme, topic],
       }),
     ),
   ]);
@@ -63,7 +65,23 @@ await Promise.all([
     }),
   ),
   writeFile(path.join(libraryPath, 'mtime.json'), JSON.stringify(mtime)),
-  writeFile(path.join(libraryPath, 'tags.json'), JSON.stringify(['bird', 'odd', 'even'])),
+  writeFile(
+    path.join(libraryPath, 'tags.json'),
+    JSON.stringify([
+      'bird',
+      'odd',
+      'even',
+      'theme-1',
+      'theme-2',
+      'theme-3',
+      'topic-1',
+      'topic-2',
+      'topic-3',
+      'topic-4',
+      'topic-5',
+      'topic-6',
+    ]),
+  ),
   writeFile(
     path.join(fixtureRoot, 'setup-config.json'),
     JSON.stringify({ libraryPath: '', browseRoots: [fixtureRoot] }),

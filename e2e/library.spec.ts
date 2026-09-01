@@ -60,6 +60,36 @@ test('persists settings across reloads and keeps controls usable on responsive l
   await expect(page.getByRole('textbox', { name: 'Library path' })).toHaveValue(/Acceptance\.library$/);
 });
 
+test('explores the Tag Atlas with search, detail presets, fit, and keyboard navigation', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/network');
+  await expect(page.getByRole('heading', { name: 'Tag Atlas' })).toBeVisible({ timeout: 30_000 });
+  const atlas = page.getByRole('application', { name: /Interactive tag atlas/ });
+  await expect(atlas).toBeVisible();
+
+  await page.getByRole('searchbox', { name: 'Find a tag in the atlas' }).fill('theme-1');
+  await page.getByRole('button', { name: /#theme-1/ }).click();
+  await expect(page.getByRole('heading', { name: '#theme-1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close panel' }).click();
+
+  await page.getByLabel('Detail').selectOption({ label: 'Deep' });
+  await expect(atlas).toHaveAttribute('aria-label', /9 tags/);
+  await page.getByRole('button', { name: 'Fit complete atlas' }).click();
+  await atlas.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Tag items')).toBeVisible();
+
+  if (testInfo.project.name === 'library-chromium') {
+    await page.getByRole('button', { name: 'Close panel' }).click();
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations.filter(({ impact }) => impact === 'serious' || impact === 'critical')).toEqual(
+      [],
+    );
+  }
+});
+
 test('fits the complete image at the largest scale supported by the viewport', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'library-chromium', 'Validate exact sizing once on desktop Chromium.');
   await page.goto('/all');

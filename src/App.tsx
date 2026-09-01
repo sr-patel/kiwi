@@ -285,9 +285,9 @@ function App() {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={() => navigate('/network')}
-                    aria-label="Open tag network"
+                    aria-label="Open Tag Atlas"
                     className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                    title="Tag Network"
+                    title="Tag Atlas"
                   >
                     <Network className="w-5 h-5" />
                   </button>

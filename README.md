@@ -142,6 +142,7 @@ Port 3000 is the only host port. The API listens on port 3001 only inside the Co
 - **Search** across your library
 - **Full-screen** photo view with metadata
 - **Dashboard** with library stats and sync activity
+- **Tag Atlas** with fast, stable relationship communities and searchable navigation
 - **Dark mode** and customizable accent colors
 - Works on desktop and mobile browsers
 
