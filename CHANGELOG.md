@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.4 — 2026-09-01
+
+- Fixed below-fold grid images remaining permanently hidden when native lazy loading was enabled.
+- Added a safe original-image fallback when an Eagle item does not contain a generated thumbnail.
+- Restored fit-to-height, fit-to-width, and fit-to-screen sizing for layered detail-view images.
+
 ## 1.2.3 — 2026-09-01
 
 - Restored the backend container's original runtime identity so existing TrueNAS and NAS bind mounts

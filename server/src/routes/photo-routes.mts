@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { PaginationQuerySchema, SearchQuerySchema } from '@kiwi/contracts';
@@ -46,6 +46,8 @@ const mimeTypes: Record<string, string> = {
   epub: 'application/epub+zip',
   mobi: 'application/x-mobipocket-ebook',
 };
+
+const browserRenderableImageTypes = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif', 'svg']);
 
 function normalizePage(
   page: PhotosPageRecord,
@@ -151,7 +153,27 @@ export function createPhotoRouter(context: LibraryContextManager): Router {
   router.get('/:id/thumbnail', async (request, response) => {
     const current = context.requireCurrent();
     const photo = await resolvePhoto(current.database, request.params.id);
-    sendMedia(response, trustedMediaPath(current.path, photo, 'thumbnail'), 'image/png');
+    const thumbnailPath = trustedMediaPath(current.path, photo, 'thumbnail');
+    try {
+      await access(thumbnailPath);
+      sendMedia(response, thumbnailPath, 'image/png');
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
+    }
+
+    // Some valid Eagle items do not contain a generated thumbnail. Serve the
+    // trusted original for formats browsers can render so grids remain usable.
+    const extension = photo.ext.toLowerCase();
+    if (!browserRenderableImageTypes.has(extension)) {
+      throw new AppError('Thumbnail not found', 404, 'NOT_FOUND');
+    }
+    sendMedia(
+      response,
+      trustedMediaPath(current.path, photo, 'file'),
+      mimeTypes[extension] ?? 'application/octet-stream',
+    );
   });
 
   router.get('/:id/preview', async (request, response) => {

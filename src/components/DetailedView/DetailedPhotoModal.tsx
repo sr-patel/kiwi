@@ -522,24 +522,26 @@ export const DetailedPhotoModal: React.FC = () => {
   const getImageStackWrapperClasses = () => {
     switch (viewMode) {
       case 'vertical':
-        return 'relative inline-block h-full max-h-full';
+        return 'relative h-full flex-none';
       case 'horizontal':
-        return 'relative block w-full max-w-full';
+        return 'relative w-full flex-none';
       default:
         return 'relative block w-full h-full';
     }
   };
 
-  /** Full-res overlay positioned to match the in-flow thumbnail layer */
-  const getImageOverlayClasses = () => {
-    switch (viewMode) {
-      case 'vertical':
-        return 'absolute top-0 left-0 block h-full w-auto max-w-none';
-      case 'horizontal':
-        return 'absolute top-0 left-0 block w-full h-auto max-h-none';
-      default:
-        return 'absolute inset-0 block w-full h-full object-contain';
-    }
+  /** Both image layers fill a wrapper whose aspect ratio supplies the scrollable dimension. */
+  const getImageStackLayerClasses = () => {
+    return 'absolute inset-0 block w-full h-full object-contain';
+  };
+
+  const getImageStackStyle = (): React.CSSProperties => {
+    const aspectRatio =
+      photo?.width > 0 && photo?.height > 0 ? `${photo.width} / ${photo.height}` : undefined;
+    return {
+      ...getImageStyle(),
+      ...(viewMode === 'fit' || !aspectRatio ? {} : { aspectRatio }),
+    };
   };
 
   const getImageStyle = () => {
@@ -1142,7 +1144,7 @@ export const DetailedPhotoModal: React.FC = () => {
             <div
               ref={imageRef}
               className={getImageStackWrapperClasses()}
-              style={getImageStyle()}
+              style={getImageStackStyle()}
               {...(showFull || thumbnailFailed ? imageHandlers : {})}
             >
               {!thumbnailFailed && (
@@ -1150,7 +1152,7 @@ export const DetailedPhotoModal: React.FC = () => {
                   src={thumbnailUrl}
                   alt=""
                   aria-hidden
-                  className={getImageClasses()}
+                  className={getImageStackLayerClasses()}
                   draggable={false}
                   width={photo.width}
                   height={photo.height}
@@ -1163,7 +1165,7 @@ export const DetailedPhotoModal: React.FC = () => {
               <img
                 src={fullUrl}
                 alt={photo.name}
-                className={thumbnailFailed ? getImageClasses() : getImageOverlayClasses()}
+                className={getImageStackLayerClasses()}
                 draggable={false}
                 style={{
                   visibility: showFull || thumbnailFailed ? 'visible' : 'hidden',

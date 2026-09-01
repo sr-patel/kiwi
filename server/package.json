@@ -1,6 +1,6 @@
 {
   "name": "@kiwi/server",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "description": "Backend API and Eagle library indexer for Kiwi",
   "type": "module",
@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage --config vitest.config.mts"
   },
   "dependencies": {
-    "@kiwi/contracts": "1.2.3",
+    "@kiwi/contracts": "1.2.4",
     "better-sqlite3": "^13.0.3",
     "chokidar": "^5.0.0",
     "express": "^5.2.1",

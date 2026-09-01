@@ -150,7 +150,7 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
             muted
             onError={handleVideoError}
             onLoadedData={handleImageLoad}
-            style={{ display: isLoading ? 'none' : 'block' }}
+            style={{ opacity: isLoading ? 0 : 1 }}
           />
         </>
       );
@@ -180,7 +180,7 @@ export const SimplePhotoCard: React.FC<SimplePhotoCardProps> = ({
           fetchPriority={isAboveFold ? 'high' : 'auto'}
           onError={handleImageError}
           onLoad={handleImageLoad}
-          style={{ display: isLoading ? 'none' : 'block' }}
+          style={{ opacity: isLoading ? 0 : 1 }}
         />
       </>
     );
