@@ -59,3 +59,35 @@ test('persists settings across reloads and keeps controls usable on responsive l
   await expect(page.getByRole('heading', { name: 'Library & Sync' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Library path' })).toHaveValue(/Acceptance\.library$/);
 });
+
+test('fits the complete image at the largest scale supported by the viewport', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'library-chromium', 'Validate exact sizing once on desktop Chromium.');
+  await page.goto('/all');
+  await page.getByRole('button', { name: 'Open Bird 001' }).click();
+
+  const viewport = page.getByTestId('detailed-media-viewport');
+  const frame = page.getByTestId('detailed-media-frame');
+  const image = frame.getByRole('img', { name: 'Bird 001' });
+  await expect(image).toBeVisible({ timeout: 30_000 });
+  await page.getByTitle('Zoom in (+)').click();
+  await page.getByTitle('Expand to full height (V)').click();
+  await page.getByTitle('Fit to screen (F)').click();
+  await expect(page.getByText('100%')).toBeVisible();
+
+  await expect
+    .poll(async () => {
+      const viewportBox = await viewport.boundingBox();
+      const frameBox = await frame.boundingBox();
+      if (!viewportBox || !frameBox) return null;
+      return {
+        fillsWidth: Math.abs(frameBox.width - viewportBox.width) < 1,
+        fullyContained:
+          frameBox.x >= viewportBox.x - 0.5 &&
+          frameBox.y >= viewportBox.y - 0.5 &&
+          frameBox.x + frameBox.width <= viewportBox.x + viewportBox.width + 0.5 &&
+          frameBox.y + frameBox.height <= viewportBox.y + viewportBox.height + 0.5,
+        preservesAspectRatio: Math.abs(frameBox.width / frameBox.height - 2) < 0.01,
+      };
+    })
+    .toMatchObject({ fillsWidth: true, fullyContained: true, preservesAspectRatio: true });
+});

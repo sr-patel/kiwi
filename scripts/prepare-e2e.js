@@ -20,25 +20,31 @@ const onePixelPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zr9sAAAAASUVORK5CYII=',
   'base64',
 );
+const landscapeSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800" viewBox="0 0 1600 800"><rect width="1600" height="800" fill="#65a30d"/></svg>',
+);
 const mtime = {};
 for (let index = 1; index <= 75; index++) {
   const id = `bird-${index.toString().padStart(3, '0')}`;
   const name = `Bird ${index.toString().padStart(3, '0')}`;
+  const isFitFixture = index === 1;
+  const extension = isFitFixture ? 'svg' : 'jpg';
+  const original = isFitFixture ? landscapeSvg : onePixelJpeg;
   const infoPath = path.join(imagesPath, `${id}.info`);
   await mkdir(infoPath);
   await Promise.all([
-    writeFile(path.join(infoPath, `${name}.jpg`), onePixelJpeg),
+    writeFile(path.join(infoPath, `${name}.${extension}`), original),
     writeFile(path.join(infoPath, `${name}_thumbnail.png`), onePixelPng),
     writeFile(
       path.join(infoPath, 'metadata.json'),
       JSON.stringify({
         id,
         name,
-        ext: 'jpg',
-        size: onePixelJpeg.length,
+        ext: extension,
+        size: original.length,
         mtime: index,
-        width: 1,
-        height: 1,
+        width: isFitFixture ? 1600 : 1,
+        height: isFitFixture ? 800 : 1,
         folders: ['birds'],
         tags: ['bird', index % 2 ? 'odd' : 'even'],
       }),

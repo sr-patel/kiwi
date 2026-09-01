@@ -25,6 +25,7 @@ export default defineConfig({
         'src/utils/folderUrls.ts',
         'src/utils/fileTypes.ts',
         'src/utils/imageFormats.ts',
+        'src/utils/mediaSizing.ts',
         'src/utils/formatBytes.ts',
         'src/utils/tagUrls.ts',
         'src/services/apiClient.ts',

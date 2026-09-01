@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.5 — 2026-09-01
+
+- Made fit-to-screen calculate the exact largest uncropped image size from the live viewport and the
+  rendered media dimensions.
+- Reset zoom and pan when selecting a fit mode so earlier transforms cannot crop the image.
+- Added unit and browser coverage for landscape, portrait, upscaled, and mode-switching fit behavior.
+
 ## 1.2.4 — 2026-09-01
 
 - Fixed below-fold grid images remaining permanently hidden when native lazy loading was enabled.

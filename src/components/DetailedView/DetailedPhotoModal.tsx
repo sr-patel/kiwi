@@ -30,6 +30,7 @@ import { useMediaPreload } from '@/hooks/useMediaPreload';
 import { getFileTypeInfo, shouldUseFileCard } from '@/utils/fileTypes';
 import { generateTagUrl } from '@/utils/tagUrls';
 import { generateFolderUrl } from '@/utils/folderUrls';
+import { calculateContainedMediaSize, type MediaDimensions } from '@/utils/mediaSizing';
 import { useNavigate } from 'react-router-dom';
 import { kiwiApi } from '@/services/kiwiApi';
 import { useQuery } from '@tanstack/react-query';
@@ -77,6 +78,8 @@ export const DetailedPhotoModal: React.FC = () => {
   const imageRef = React.useRef<HTMLDivElement>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const imageContainerRef = React.useRef<HTMLDivElement>(null);
+  const [mediaViewport, setMediaViewport] = React.useState<MediaDimensions>({ width: 0, height: 0 });
+  const [renderedImageDimensions, setRenderedImageDimensions] = React.useState<MediaDimensions | null>(null);
   const [hasVerticalOverflow, setHasVerticalOverflow] = React.useState<boolean>(false);
   const [hasHorizontalOverflow, setHasHorizontalOverflow] = React.useState<boolean>(false);
   const [horizontalMaxScroll, setHorizontalMaxScroll] = React.useState<number>(0);
@@ -526,7 +529,7 @@ export const DetailedPhotoModal: React.FC = () => {
       case 'horizontal':
         return 'relative w-full flex-none';
       default:
-        return 'relative block w-full h-full';
+        return 'relative block flex-none';
     }
   };
 
@@ -536,11 +539,24 @@ export const DetailedPhotoModal: React.FC = () => {
   };
 
   const getImageStackStyle = (): React.CSSProperties => {
+    const mediaDimensions = renderedImageDimensions ?? {
+      width: photo?.width ?? 0,
+      height: photo?.height ?? 0,
+    };
     const aspectRatio =
-      photo?.width > 0 && photo?.height > 0 ? `${photo.width} / ${photo.height}` : undefined;
+      mediaDimensions.width > 0 && mediaDimensions.height > 0
+        ? `${mediaDimensions.width} / ${mediaDimensions.height}`
+        : undefined;
+    const containedSize = calculateContainedMediaSize(mediaDimensions, mediaViewport);
     return {
       ...getImageStyle(),
-      ...(viewMode === 'fit' || !aspectRatio ? {} : { aspectRatio }),
+      ...(viewMode === 'fit'
+        ? containedSize
+          ? { width: containedSize.width, height: containedSize.height }
+          : { width: '100%', height: '100%' }
+        : aspectRatio
+          ? { aspectRatio }
+          : {}),
     };
   };
 
@@ -923,6 +939,12 @@ export const DetailedPhotoModal: React.FC = () => {
     setPan({ x: 0, y: 0 });
   };
 
+  const selectViewMode = (mode: 'fit' | 'vertical' | 'horizontal') => {
+    setViewMode(mode);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
   // Render different content based on file type
   const renderFileContent = () => {
     if (!photo) return null;
@@ -1117,6 +1139,10 @@ export const DetailedPhotoModal: React.FC = () => {
         const handleFullResLoad = async (e: React.SyntheticEvent<HTMLImageElement>) => {
           const img = e.currentTarget;
           const photoId = photo.id;
+          if (detailedPhotoRef.current !== photoId) return;
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            setRenderedImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+          }
           try {
             await img.decode();
           } catch {
@@ -1143,6 +1169,7 @@ export const DetailedPhotoModal: React.FC = () => {
             )}
             <div
               ref={imageRef}
+              data-testid="detailed-media-frame"
               className={getImageStackWrapperClasses()}
               style={getImageStackStyle()}
               {...(showFull || thumbnailFailed ? imageHandlers : {})}
@@ -1158,6 +1185,15 @@ export const DetailedPhotoModal: React.FC = () => {
                   height={photo.height}
                   decoding="async"
                   loading="eager"
+                  onLoad={(event) => {
+                    const image = event.currentTarget;
+                    if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+                      setRenderedImageDimensions({
+                        width: image.naturalWidth,
+                        height: image.naturalHeight,
+                      });
+                    }
+                  }}
                   onError={() => setThumbnailFailed(true)}
                   {...(!showFull ? imageHandlers : {})}
                 />
@@ -1227,6 +1263,9 @@ export const DetailedPhotoModal: React.FC = () => {
       const container = imageContainerRef.current;
       const cw = container.clientWidth;
       const ch = container.clientHeight;
+      setMediaViewport((current) =>
+        current.width === cw && current.height === ch ? current : { width: cw, height: ch },
+      );
 
       // Determine intrinsic media size
       let mw = 0;
@@ -1269,9 +1308,12 @@ export const DetailedPhotoModal: React.FC = () => {
     };
     measure();
     window.addEventListener('resize', measure);
+    const resizeObserver = new ResizeObserver(measure);
+    if (imageContainerRef.current) resizeObserver.observe(imageContainerRef.current);
     const id = window.setTimeout(measure, 0);
     return () => {
       window.removeEventListener('resize', measure);
+      resizeObserver.disconnect();
       window.clearTimeout(id);
     };
   }, [viewMode, photo, videoRef.current?.videoWidth, videoRef.current?.videoHeight]);
@@ -1281,9 +1323,9 @@ export const DetailedPhotoModal: React.FC = () => {
       if (e.key === 'Escape') closeModal();
       if (e.key === 'ArrowLeft') showPrev();
       if (e.key === 'ArrowRight') showNext();
-      if (e.key === 'v') setViewMode('vertical');
-      if (e.key === 'h') setViewMode('horizontal');
-      if (e.key === 'f') setViewMode('fit');
+      if (e.key === 'v') selectViewMode('vertical');
+      if (e.key === 'h') selectViewMode('horizontal');
+      if (e.key === 'f') selectViewMode('fit');
       if (e.key === 'i' || e.key === 'I') setIsInfoBoxVisible(!isInfoBoxVisible);
       if (e.key === '+' || e.key === '=') handleZoomIn();
       if (e.key === '-') handleZoomOut();
@@ -1303,6 +1345,7 @@ export const DetailedPhotoModal: React.FC = () => {
     setIsFullResReady(false);
     setIsLoadingFullRes(false);
     setThumbnailFailed(false);
+    setRenderedImageDimensions(null);
   }, [photo]);
 
   // Begin full-resolution load when a new image is shown
@@ -1558,7 +1601,7 @@ export const DetailedPhotoModal: React.FC = () => {
             }`}
             onClick={(e) => {
               e.stopPropagation();
-              setViewMode('vertical');
+              selectViewMode('vertical');
             }}
             title="Expand to full height (V)"
           >
@@ -1576,7 +1619,7 @@ export const DetailedPhotoModal: React.FC = () => {
             }`}
             onClick={(e) => {
               e.stopPropagation();
-              setViewMode('horizontal');
+              selectViewMode('horizontal');
             }}
             title="Expand to full width (H)"
           >
@@ -1592,7 +1635,7 @@ export const DetailedPhotoModal: React.FC = () => {
             }`}
             onClick={(e) => {
               e.stopPropagation();
-              setViewMode('fit');
+              selectViewMode('fit');
             }}
             title="Fit to screen (F)"
           >
@@ -1822,6 +1865,7 @@ export const DetailedPhotoModal: React.FC = () => {
       {/* Image container */}
       <div
         ref={imageContainerRef}
+        data-testid="detailed-media-viewport"
         className={`relative z-0 flex overscroll-contain w-full h-full ${
           viewMode === 'horizontal'
             ? `${hasVerticalOverflow ? 'items-start' : 'items-center'} justify-center p-0 ${zoom <= 1 && hasVerticalOverflow ? 'overflow-y-auto' : 'overflow-y-hidden'} overflow-x-hidden`
