@@ -60,7 +60,7 @@ services:
     container_name: kiwi-frontend
     restart: unless-stopped
     ports:
-      - '3000:8080'
+      - '3000:80'
     depends_on:
       backend:
         condition: service_healthy
@@ -73,10 +73,8 @@ services:
       - /var/run:size=1m,uid=101,gid=101,mode=0755
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:80/']
       interval: 30s
       timeout: 5s
       retries: 3

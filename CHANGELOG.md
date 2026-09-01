@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 — 2026-09-01
+
+- Restored the frontend container's port 80 interface for compatibility with existing package managers,
+  ingress controllers, and OpenResty configurations.
+- Kept the user-facing Compose port at 3000 and the backend private on the application network.
+- Retained the 1.2.1 legacy configuration recovery behavior.
+
 ## 1.2.0 — 2026-08-21
 
 Kiwi 1.2 modernizes the application while preserving existing Eagle libraries, configuration, SQLite
