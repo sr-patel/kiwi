@@ -105,7 +105,7 @@ export function SettingsLibraryAdmin() {
 
   const renderStatusIcon = () => {
     if (libraryStatus === 'loading' || libraryStatus === 'saving') {
-      return <Loader className="h-4 w-4 animate-spin text-gray-400" />;
+      return <Loader className="h-4 w-4 animate-spin text-muted-foreground" />;
     }
     if (libraryStatus === 'valid' && libraryPath) {
       return <CheckCircle className="h-4 w-4 text-green-500" />;
@@ -121,7 +121,7 @@ export function SettingsLibraryAdmin() {
       <SettingsCard title="Library path" description="Path to your Eagle .library folder on the server.">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
-            <HardDrive className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <HardDrive className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               aria-label="Library path"
@@ -132,7 +132,7 @@ export function SettingsLibraryAdmin() {
                 setLibraryMessage(null);
               }}
               placeholder="C:\Photos\myLibrary.library"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-10 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              className="w-full rounded-lg border border-border bg-muted/50 py-2.5 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-offset-1 dark:border-border dark:bg-background dark:text-foreground"
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2">{renderStatusIcon()}</div>
           </div>
@@ -164,7 +164,7 @@ export function SettingsLibraryAdmin() {
           </p>
         )}
         {libraryMessage && (
-          <p className="mt-3 flex items-center gap-1.5 text-sm text-gray-600 dark:text-zinc-400">
+          <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
             {libraryStatus === 'valid' ? (
               <CheckCircle className="h-4 w-4 shrink-0 text-green-500" />
             ) : (
@@ -177,24 +177,22 @@ export function SettingsLibraryAdmin() {
 
       {stats && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-zinc-400">
+          <div className="rounded-xl border border-border bg-card p-4 dark:border-border dark:bg-card">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Database className="h-4 w-4" />
               Database size
             </div>
-            <p className="mt-1 text-xl font-bold tabular-nums text-gray-900 dark:text-zinc-100">
-              {formatBytes(stats.dbSize)}
-            </p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-foreground">{formatBytes(stats.dbSize)}</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="text-sm text-gray-500 dark:text-zinc-400">Indexed items</div>
-            <p className="mt-1 text-xl font-bold tabular-nums text-gray-900 dark:text-zinc-100">
+          <div className="rounded-xl border border-border bg-card p-4 dark:border-border dark:bg-card">
+            <div className="text-sm text-muted-foreground">Indexed items</div>
+            <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
               {stats.totalPhotos.toLocaleString()}
             </p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="text-sm text-gray-500 dark:text-zinc-400">Last refresh</div>
-            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-zinc-100">
+          <div className="rounded-xl border border-border bg-card p-4 dark:border-border dark:bg-card">
+            <div className="text-sm text-muted-foreground">Last refresh</div>
+            <p className="mt-1 text-sm font-semibold text-foreground">
               {stats.lastRefresh ? new Date(stats.lastRefresh).toLocaleString() : 'Never'}
             </p>
           </div>

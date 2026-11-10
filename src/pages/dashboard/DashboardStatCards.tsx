@@ -13,11 +13,11 @@ interface StatCardProps {
 
 function StatCard({ icon: Icon, label, value, subtext, accentHex }: StatCardProps) {
   return (
-    <div className="bg-white dark:bg-zinc-900 p-5 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm flex items-start justify-between">
+    <div className="bg-card p-5 rounded-xl border border-border shadow-sm flex items-start justify-between">
       <div>
-        <p className="text-sm font-medium text-gray-500 dark:text-zinc-400 mb-1">{label}</p>
-        <h3 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{value}</h3>
-        {subtext && <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{subtext}</p>}
+        <p className="text-sm font-medium text-muted-foreground mb-1">{label}</p>
+        <h3 className="text-2xl font-bold text-foreground">{value}</h3>
+        {subtext && <p className="text-xs text-muted-foreground mt-1">{subtext}</p>}
       </div>
       <div className="p-3 rounded-lg" style={{ backgroundColor: `${accentHex}20` }}>
         <Icon className="w-5 h-5" style={{ color: accentHex }} />

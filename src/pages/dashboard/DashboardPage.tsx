@@ -27,12 +27,12 @@ export const DashboardPage: React.FC = () => {
 
   if (error || !stats) {
     return (
-      <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-gray-500 dark:text-zinc-400">
+      <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-muted-foreground">
         <Database className="w-12 h-12 mb-4 opacity-50" />
         <p>Failed to load dashboard statistics.</p>
         <button
           onClick={() => refresh()}
-          className="mt-4 px-4 py-2 rounded bg-gray-200 dark:bg-zinc-800 hover:bg-gray-300 dark:hover:bg-zinc-700 transition-colors"
+          className="mt-4 px-4 py-2 rounded bg-muted hover:bg-muted dark:hover:bg-muted transition-colors"
         >
           Retry
         </button>
@@ -44,11 +44,11 @@ export const DashboardPage: React.FC = () => {
     <div className="p-6 max-w-[1800px] mx-auto space-y-6 animate-fade-in pb-20">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-zinc-100 mb-1">Dashboard</h1>
-          <p className="text-gray-500 dark:text-zinc-400">
+          <h1 className="text-3xl font-bold text-foreground mb-1">Dashboard</h1>
+          <p className="text-muted-foreground">
             Library statistics and analytics
             {lastUpdated && (
-              <span className="ml-2 text-xs text-gray-400 dark:text-zinc-500">
+              <span className="ml-2 text-xs text-muted-foreground">
                 · Updated {lastUpdated.toLocaleTimeString()}
               </span>
             )}
@@ -57,7 +57,7 @@ export const DashboardPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <Link
             to="/settings"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-medium text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-muted/60 dark:hover:bg-muted transition-colors"
           >
             <Settings className="w-4 h-4" />
             Settings
@@ -65,7 +65,7 @@ export const DashboardPage: React.FC = () => {
           <button
             onClick={() => refresh()}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-medium text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-muted/60 dark:hover:bg-muted disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
@@ -81,10 +81,7 @@ export const DashboardPage: React.FC = () => {
 
       <Suspense
         fallback={
-          <div
-            className="h-72 animate-pulse rounded-xl bg-gray-100 dark:bg-zinc-900"
-            aria-label="Loading charts"
-          />
+          <div className="h-72 animate-pulse rounded-xl bg-muted dark:bg-card" aria-label="Loading charts" />
         }
       >
         <DashboardCharts stats={stats} theme={theme} accentHex={accentHex} />

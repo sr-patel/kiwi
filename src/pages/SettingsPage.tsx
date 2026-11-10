@@ -59,19 +59,19 @@ export const SettingsPage: React.FC = () => {
   const activeMeta = TABS.find((t) => t.id === activeTab)!;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-zinc-950">
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <div className="mb-8 flex items-center gap-3">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-white hover:text-gray-700 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-white hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Settings</h1>
-            <p className="text-sm text-gray-500 dark:text-zinc-400">Customize Kiwi and manage your library</p>
+            <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+            <p className="text-sm text-muted-foreground">Customize Kiwi and manage your library</p>
           </div>
         </div>
 
@@ -87,8 +87,8 @@ export const SettingsPage: React.FC = () => {
                   onClick={() => setActiveTab(id)}
                   className={`flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-white text-gray-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-100'
-                      : 'text-gray-600 hover:bg-white/60 dark:text-zinc-400 dark:hover:bg-zinc-900/60'
+                      ? 'bg-card text-foreground shadow-sm dark:bg-card dark:text-foreground'
+                      : 'text-muted-foreground hover:bg-white/60 dark:text-muted-foreground dark:hover:bg-muted/60'
                   }`}
                 >
                   <Icon className="h-4 w-4 shrink-0" style={isActive ? { color: accentHex } : undefined} />
@@ -101,8 +101,8 @@ export const SettingsPage: React.FC = () => {
           {/* Content */}
           <div className="min-w-0 flex-1">
             <div className="mb-5">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">{activeMeta.label}</h2>
-              <p className="text-sm text-gray-500 dark:text-zinc-400">{activeMeta.description}</p>
+              <h2 className="text-lg font-semibold text-foreground">{activeMeta.label}</h2>
+              <p className="text-sm text-muted-foreground">{activeMeta.description}</p>
             </div>
 
             {activeTab === 'general' && (
@@ -130,9 +130,9 @@ export const SettingsPage: React.FC = () => {
                       step={10}
                       value={requestPageSize}
                       onChange={(e) => setRequestPageSize(parseInt(e.target.value || '50', 10))}
-                      className="w-28 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                      className="w-28 rounded-lg border border-border bg-muted/50 px-3 py-2 text-foreground dark:border-border dark:bg-background dark:text-foreground"
                     />
-                    <span className="text-sm text-gray-500 dark:text-zinc-400">items (10–500)</span>
+                    <span className="text-sm text-muted-foreground">items (10–500)</span>
                   </div>
                 </SettingsCard>
 
@@ -164,7 +164,7 @@ export const SettingsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={toggleTheme}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted dark:border-border dark:bg-background dark:text-foreground dark:hover:bg-muted"
                   >
                     {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                     Switch to {theme === 'dark' ? 'light' : 'dark'} mode
@@ -240,8 +240,8 @@ export const SettingsPage: React.FC = () => {
                     accentHex={accentHex}
                   />
 
-                  <div className="mt-4 border-t border-gray-100 pt-4 dark:border-zinc-800">
-                    <div className="mb-3 font-medium text-gray-900 dark:text-zinc-100">Image transition</div>
+                  <div className="mt-4 border-t border-border/60 pt-4 dark:border-border">
+                    <div className="mb-3 font-medium text-foreground">Image transition</div>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {(['none', 'slide', 'fade', 'zoom'] as const).map((effect) => (
                         <button
@@ -251,7 +251,7 @@ export const SettingsPage: React.FC = () => {
                           className={`rounded-lg px-3 py-2 text-sm font-medium capitalize transition-colors ${
                             transitionEffect === effect
                               ? 'text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                              : 'bg-muted text-foreground hover:bg-muted dark:bg-muted dark:text-foreground dark:hover:bg-muted'
                           }`}
                           style={transitionEffect === effect ? { backgroundColor: accentHex } : undefined}
                         >

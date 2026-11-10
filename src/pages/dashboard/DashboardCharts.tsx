@@ -66,12 +66,10 @@ function ChartCard({
   const isFlex = variant === 'flex';
 
   return (
-    <div
-      className={`bg-white dark:bg-zinc-900 p-5 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm flex flex-col ${className}`}
-    >
+    <div className={`bg-card p-5 rounded-xl border border-border shadow-sm flex flex-col ${className}`}>
       <div className="mb-3 shrink-0">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-zinc-100">{title}</h3>
-        {subtitle && <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">{subtitle}</p>}
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
       </div>
       {isFlex ? (
         <div className="min-h-0 flex-1">{children}</div>
@@ -86,7 +84,7 @@ function ChartCard({
 
 function EmptyChart({ message = 'No data yet' }: { message?: string }) {
   return (
-    <div className="flex items-center justify-center h-full min-h-[200px] text-sm text-gray-400 dark:text-zinc-500">
+    <div className="flex items-center justify-center h-full min-h-[200px] text-sm text-muted-foreground">
       {message}
     </div>
   );

@@ -40,7 +40,7 @@ function getTypeBadgeStyle(type: string) {
     case 'folder_detected':
       return 'bg-blue-500/15 text-blue-700 dark:text-blue-400';
     default:
-      return 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400';
+      return 'bg-muted text-muted-foreground';
   }
 }
 
@@ -55,7 +55,7 @@ function getRowAccent(type: string) {
     case 'folder_detected':
       return 'border-l-blue-500';
     default:
-      return 'border-l-zinc-400 dark:border-l-zinc-600';
+      return 'border-l-border dark:border-l-border';
   }
 }
 
@@ -82,28 +82,28 @@ export function WatcherActivityPanel({
 
   return (
     <div
-      className={`bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-sm flex flex-col self-start w-full ${className}`}
+      className={`bg-card rounded-xl border border-border shadow-sm flex flex-col self-start w-full ${className}`}
     >
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 dark:border-zinc-800 shrink-0">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-zinc-100">File Watcher</h3>
-          <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">Live sync activity</p>
+          <h3 className="text-base font-semibold text-foreground">File Watcher</h3>
+          <p className="text-xs text-muted-foreground truncate">Live sync activity</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex items-center gap-1.5 text-xs">
             <span
               className={`inline-block w-2 h-2 rounded-full ${
-                syncStatus?.running ? 'bg-green-500 animate-pulse' : 'bg-zinc-400'
+                syncStatus?.running ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground/40'
               }`}
             />
-            <span className="text-gray-600 dark:text-zinc-300 font-medium">
+            <span className="text-muted-foreground dark:text-foreground font-medium">
               {syncStatus?.running ? 'Active' : 'Stopped'}
             </span>
           </div>
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground"
             aria-expanded={expanded}
             aria-label={expanded ? 'Collapse activity log' : 'Expand activity log'}
           >
@@ -113,25 +113,23 @@ export function WatcherActivityPanel({
       </div>
 
       {syncStatus && (
-        <div className="flex border-b border-gray-200 dark:border-zinc-800 shrink-0 divide-x divide-gray-200 dark:divide-zinc-800">
+        <div className="flex border-b border-border shrink-0 divide-x divide-border">
           <div className="flex-1 px-4 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500">Processed</p>
-            <p className="text-base font-semibold text-gray-900 dark:text-zinc-100 tabular-nums leading-tight">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Processed</p>
+            <p className="text-base font-semibold text-foreground tabular-nums leading-tight">
               {syncStatus.processedCount.toLocaleString()}
             </p>
           </div>
           <div className="flex-1 px-4 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500">Pending</p>
-            <p className="text-base font-semibold text-gray-900 dark:text-zinc-100 tabular-nums leading-tight">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pending</p>
+            <p className="text-base font-semibold text-foreground tabular-nums leading-tight">
               {syncStatus.pendingCount.toLocaleString()}
             </p>
           </div>
           {syncStatus.lastEventTime && (
             <div className="flex-1 px-4 py-2 min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500">
-                Last event
-              </p>
-              <p className="text-xs font-medium text-gray-700 dark:text-zinc-300 tabular-nums truncate leading-tight mt-0.5">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Last event</p>
+              <p className="text-xs font-medium text-foreground tabular-nums truncate leading-tight mt-0.5">
                 {formatActivityTime(syncStatus.lastEventTime)}
               </p>
             </div>
@@ -141,19 +139,17 @@ export function WatcherActivityPanel({
 
       {syncStatus?.lastEvent && (
         <div className="px-4 py-2 shrink-0">
-          <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-500 mb-0.5">
-            Latest
-          </p>
-          <p className="text-xs text-gray-600 dark:text-zinc-400 truncate" title={syncStatus.lastEvent}>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Latest</p>
+          <p className="text-xs text-muted-foreground truncate" title={syncStatus.lastEvent}>
             {syncStatus.lastEvent}
           </p>
         </div>
       )}
 
       {expanded && (
-        <div className="border-t border-gray-200 dark:border-zinc-800 max-h-[50vh] overflow-y-auto">
+        <div className="border-t border-border max-h-[50vh] overflow-y-auto">
           {entries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[160px] text-gray-400 dark:text-zinc-500 px-4 py-6">
+            <div className="flex flex-col items-center justify-center min-h-[160px] text-muted-foreground px-4 py-6">
               <p className="text-sm">No watcher activity yet.</p>
               <p className="text-xs mt-1 text-center">Import or edit files in Eagle to see events here.</p>
             </div>
@@ -167,20 +163,17 @@ export function WatcherActivityPanel({
                 return (
                   <li
                     key={entry.id}
-                    className={`group flex items-center gap-2 px-3 py-1.5 border-b border-gray-100 dark:border-zinc-800/80 border-l-2 ${getRowAccent(entry.type)} hover:bg-gray-50 dark:hover:bg-zinc-800/40`}
+                    className={`group flex items-center gap-2 px-3 py-1.5 border-b border-border/60 dark:border-border/80 border-l-2 ${getRowAccent(entry.type)} hover:bg-muted/60 dark:hover:bg-muted/40`}
                   >
                     <span
                       className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${getTypeBadgeStyle(entry.type)}`}
                     >
                       {label}
                     </span>
-                    <span
-                      className="flex-1 min-w-0 text-xs text-gray-700 dark:text-zinc-300 truncate"
-                      title={displayText}
-                    >
+                    <span className="flex-1 min-w-0 text-xs text-foreground truncate" title={displayText}>
                       {displayText}
                     </span>
-                    <time className="shrink-0 text-[10px] text-gray-400 dark:text-zinc-500 tabular-nums">
+                    <time className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                       {formatActivityTime(entry.timestamp)}
                     </time>
                   </li>

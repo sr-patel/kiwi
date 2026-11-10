@@ -47,7 +47,7 @@ export function ChartTooltip({
         color: theme === 'dark' ? '#f4f4f5' : '#18181b',
       }}
     >
-      {displayLabel && <p className="font-medium mb-1.5 text-gray-900 dark:text-zinc-100">{displayLabel}</p>}
+      {displayLabel && <p className="font-medium mb-1.5 text-foreground">{displayLabel}</p>}
       <ul className="space-y-1">
         {payload.map((entry, i) => {
           const raw = Array.isArray(entry.value) ? (entry.value[0] ?? 0) : (entry.value ?? 0);
@@ -66,7 +66,7 @@ export function ChartTooltip({
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: entry.color || payloadFill }}
               />
-              <span className="text-gray-500 dark:text-zinc-400">
+              <span className="text-muted-foreground">
                 {entry.name === undefined ? 'Value' : String(entry.name)}
               </span>
               <span className="ml-auto font-medium tabular-nums">{formatted}</span>

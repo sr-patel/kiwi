@@ -36,7 +36,7 @@ export function TagCloud({ accentHex, theme, maxTags = 80 }: TagCloudProps) {
 
   if (isLoading) {
     return (
-      <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-gray-400 dark:text-zinc-500">
+      <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
         Loading tags…
       </div>
     );
@@ -44,7 +44,7 @@ export function TagCloud({ accentHex, theme, maxTags = 80 }: TagCloudProps) {
 
   if (tags.length === 0) {
     return (
-      <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-gray-400 dark:text-zinc-500">
+      <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
         No tags yet
       </div>
     );
