@@ -62,7 +62,6 @@ export const useAppStore = create<AppStore>()(
 
       // UI Preferences
       useFolderThumbnails: false,
-      enableColorIntegration: true,
       enablePodcastMode: false,
       defaultLandingPage: 'dashboard',
       requestPageSize: 50,
@@ -98,7 +97,6 @@ export const useAppStore = create<AppStore>()(
       setIsMobile: (isMobile: boolean) => set({ isMobile }),
       setAccentColor: (color: AppState['accentColor']) => set({ accentColor: color }),
       setUseFolderThumbnails: (value: boolean) => set({ useFolderThumbnails: value }),
-      setEnableColorIntegration: (value: boolean) => set({ enableColorIntegration: value }),
       setEnablePodcastMode: (value: boolean) => set({ enablePodcastMode: value }),
       setDefaultLandingPage: (page: 'dashboard' | 'all') => set({ defaultLandingPage: page }),
       setAutoplayGifsInGrid: (value: boolean) => set({ autoplayGifsInGrid: value }),
@@ -361,7 +359,6 @@ export const useAppStore = create<AppStore>()(
         podcastMode: state.podcastMode,
         visualizerSettings: state.visualizerSettings, // Persist visualizer settings
         useFolderThumbnails: state.useFolderThumbnails,
-        enableColorIntegration: state.enableColorIntegration,
         enablePodcastMode: state.enablePodcastMode,
         defaultLandingPage: state.defaultLandingPage,
         requestPageSize: state.requestPageSize,

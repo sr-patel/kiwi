@@ -2,19 +2,315 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
-  --color-primary-50: #f0f9ff;
-  --color-primary-100: #e0f2fe;
-  --color-primary-200: #bae6fd;
-  --color-primary-300: #7dd3fc;
-  --color-primary-400: #38bdf8;
-  --color-primary-500: #0ea5e9;
-  --color-primary-600: #0284c7;
-  --color-primary-700: #0369a1;
-  --color-primary-800: #075985;
-  --color-primary-900: #0c4a6e;
-  --animate-fade-in: fade-in 0.5s ease-in-out;
-  --animate-slide-up: slide-up 0.3s ease-out;
+/* ==========================================================================
+   Design tokens
+   --------------------------------------------------------------------------
+   Two layers:
+
+   1. Raw values on :root / .dark / [data-accent]. These are the only places
+      real colours appear.
+   2. `@theme inline` maps them to Tailwind utilities (bg-card, text-muted,
+      border-border, ring-ring, bg-primary, ...). `inline` keeps the var
+      reference in the generated utility, so switching theme or accent
+      repaints instantly without re-rendering components or rebuilding classes.
+
+   Accent values are split per theme: light mode uses a deep tone with white
+   ink (AA on every accent), dark mode uses a pastel with dark ink. This is why
+   the old class-map approach could not express contrast correctly.
+   ========================================================================== */
+
+:root {
+  /* surfaces — light */
+  --background: oklch(0.986 0.002 300);
+  --foreground: oklch(0.235 0.012 300);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.235 0.012 300);
+  --muted: oklch(0.962 0.003 300);
+  --muted-foreground: oklch(0.525 0.014 300);
+  --border: oklch(0.912 0.005 300);
+  --input: oklch(0.925 0.005 300);
+  --overlay: oklch(0.16 0.01 300 / 0.42);
+
+  /* geometry */
+  --radius: 0.75rem;
+
+  /* motion */
+  --ease-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* accent — overridden by [data-accent] */
+  --accent-display: #8e466d;
+  --primary-deep: #8e466d;
+  --primary: var(--primary-deep);
+  --primary-foreground: #ffffff;
+  --primary-soft: color-mix(in oklab, var(--primary) 12%, transparent);
+  --primary-ring: color-mix(in oklab, var(--primary) 45%, transparent);
+  --ring: var(--primary);
+}
+
+.dark {
+  --background: oklch(0.165 0.008 300);
+  --foreground: oklch(0.962 0.004 300);
+  --card: oklch(0.208 0.009 300);
+  --card-foreground: oklch(0.962 0.004 300);
+  --muted: oklch(0.262 0.01 300);
+  --muted-foreground: oklch(0.7 0.014 300);
+  --border: oklch(0.298 0.011 300);
+  --input: oklch(0.31 0.011 300);
+  --overlay: oklch(0.08 0.008 300 / 0.68);
+
+  /* Pastel accent with dark ink reads far better on a dark surface, and keeps
+     `text-primary` above 4.5:1 against the dark background. */
+  --primary: color-mix(in oklab, var(--accent-display) 42%, white);
+  --primary-foreground: oklch(0.2 0.012 300);
+  --primary-soft: color-mix(in oklab, var(--primary) 18%, transparent);
+  --primary-ring: color-mix(in oklab, var(--primary) 55%, transparent);
+}
+
+/* --- accent palette ------------------------------------------------------ */
+/* Each accent only declares its own hues; --primary is derived by :root (light)
+   or .dark (pastel), so the two never fight over the same custom property. */
+[data-accent='kiwi'] {
+  --accent-display: #8e466d;
+  --primary-deep: #8e466d;
+}
+[data-accent='orange'] {
+  --accent-display: #f97316;
+  --primary-deep: #c2410c;
+}
+[data-accent='blue'] {
+  --accent-display: #3b82f6;
+  --primary-deep: #1d4ed8;
+}
+[data-accent='green'] {
+  --accent-display: #22c55e;
+  --primary-deep: #15803d;
+}
+[data-accent='purple'] {
+  --accent-display: #a855f7;
+  --primary-deep: #7e22ce;
+}
+[data-accent='red'] {
+  --accent-display: #ef4444;
+  --primary-deep: #b91c1c;
+}
+[data-accent='pink'] {
+  --accent-display: #ec4899;
+  --primary-deep: #be185d;
+}
+[data-accent='teal'] {
+  --accent-display: #14b8a6;
+  --primary-deep: #0f766e;
+}
+[data-accent='indigo'] {
+  --accent-display: #6366f1;
+  --primary-deep: #4338ca;
+}
+[data-accent='cyan'] {
+  --accent-display: #06b6d4;
+  --primary-deep: #0e7490;
+}
+[data-accent='lime'] {
+  --accent-display: #84cc16;
+  --primary-deep: #4d7c0f;
+}
+[data-accent='amber'] {
+  --accent-display: #f59e0b;
+  --primary-deep: #b45309;
+}
+
+/* --- map tokens to utilities --------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent-display: var(--accent-display);
+
+  --radius-sm: calc(var(--radius) - 0.25rem);
+  --radius-md: calc(var(--radius) - 0.125rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.25rem);
+  --radius-2xl: calc(var(--radius) + 0.5rem);
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --shadow-elevated: 0 1px 2px oklch(0.16 0.01 300 / 0.06), 0 12px 28px -14px oklch(0.16 0.01 300 / 0.28);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+    font-variation-settings: 'opsz' 32;
+  }
+
+  /* Tabular figures keep counts and sizes from jittering during paging. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Only paint transitions on the shell; a universal rule forced style
+     recalculation across every card on each store write. */
+  body,
+  .theme-transition {
+    transition:
+      background-color 0.25s var(--ease-out-soft),
+      color 0.25s var(--ease-out-soft);
+  }
+
+  ::selection {
+    background-color: var(--primary-soft);
+    color: var(--foreground);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--muted-foreground) 32%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+  }
+}
+
+/* ==========================================================================
+   Components
+   ========================================================================== */
+
+@layer components {
+  /* Glassy chrome used by the header, floating toolbars and viewer controls. */
+  .surface-glass {
+    background-color: color-mix(in oklab, var(--card) 72%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    box-shadow:
+      0 1px 2px oklch(0.16 0.01 300 / 0.04),
+      0 8px 24px -12px oklch(0.16 0.01 300 / 0.18);
+  }
+
+  .surface-card {
+    background-color: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* Shimmer used by skeleton placeholders. */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--muted);
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--card) 55%, transparent),
+      transparent
+    );
+    animation: shimmer 1.6s var(--ease-smooth) infinite;
+  }
+
+  /* Progress/volume inputs used by the audio and video players. */
+  .range-input {
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .range-input::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--foreground) 14%, transparent);
+  }
+  .range-input::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -4px;
+    border-radius: 9999px;
+    background: var(--primary);
+    border: 2px solid var(--card);
+    box-shadow: 0 1px 4px oklch(0.16 0.01 300 / 0.3);
+    transition: transform 0.15s var(--ease-out-soft);
+  }
+  .range-input:hover::-webkit-slider-thumb {
+    transform: scale(1.12);
+  }
+  .range-input::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--foreground) 14%, transparent);
+  }
+  .range-input::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    background: var(--primary);
+    border: 2px solid var(--card);
+  }
+
+  /* Image reveal: fades and settles once the bitmap is decoded. */
+  .media-reveal {
+    opacity: 0;
+    transform: scale(1.015);
+    filter: blur(8px);
+    transition:
+      opacity 0.5s var(--ease-out-soft),
+      transform 0.5s var(--ease-out-soft),
+      filter 0.5s var(--ease-out-soft);
+  }
+  .media-reveal[data-loaded='true'] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes fade-in {
@@ -28,14 +324,62 @@
 
 @keyframes slide-up {
   from {
-    transform: translateY(10px);
     opacity: 0;
+    transform: translateY(8px);
   }
   to {
-    transform: translateY(0);
     opacity: 1;
+    transform: none;
   }
 }
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.35s var(--ease-out-soft) both;
+  }
+  .animate-slide-up {
+    animation: slide-up 0.4s var(--ease-out-soft) both;
+  }
+
+  /* Touch helpers (note: touch-manipulation itself is a Tailwind built-in). */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right);
+  }
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .momentum-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+  .no-pull-refresh {
+    overscroll-behavior-y: contain;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -46,169 +390,28 @@
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-@layer base {
-  html {
-    font-family: system-ui, sans-serif;
+  .media-reveal {
+    opacity: 1;
+    transform: none;
+    filter: none;
   }
-
-  body {
-    @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+  .shimmer::after {
+    display: none;
   }
 }
 
-@layer components {
-  .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
-  }
-
-  /* Custom slider styles for video volume control */
-  .slider::-webkit-slider-thumb {
-    appearance: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #ffffff;
-    cursor: pointer;
-    border: 2px solid rgba(0, 0, 0, 0.2);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  }
-
-  .slider::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #ffffff;
-    cursor: pointer;
-    border: 2px solid rgba(0, 0, 0, 0.2);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  }
-
-  .slider::-webkit-slider-track {
-    height: 4px;
-    border-radius: 2px;
-  }
-
-  .slider::-moz-range-track {
-    height: 4px;
-    border-radius: 2px;
-    background: transparent;
-  }
-
-  .btn-primary {
-    @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
-  }
-
-  .btn-secondary {
-    @apply bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600;
-  }
-
-  .card {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700;
-  }
-
-  .input {
-    @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+@media (prefers-contrast: more) {
+  :root,
+  .dark {
+    --border: color-mix(in oklab, var(--foreground) 35%, transparent);
   }
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-500;
-}
-
-/* Mobile optimizations */
-@layer utilities {
-  /* Prevent text selection on touch devices for UI elements */
-  .touch-manipulation {
-    touch-action: manipulation;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -khtml-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-  }
-
-  /* Safe area padding for devices with notches */
-  .safe-area-top {
-    padding-top: env(safe-area-inset-top);
-  }
-
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .safe-area-left {
-    padding-left: env(safe-area-inset-left);
-  }
-
-  .safe-area-right {
-    padding-right: env(safe-area-inset-right);
-  }
-
-  /* Touch-friendly minimum sizes */
-  .touch-target {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  /* Smooth scrolling momentum on iOS */
-  .momentum-scroll {
-    -webkit-overflow-scrolling: touch;
-    overflow-scrolling: touch;
-  }
-
-  /* Prevent zoom on input focus (iOS) */
-  .no-zoom {
-    font-size: 16px;
-  }
-
-  /* Disable pull-to-refresh */
-  .no-pull-refresh {
-    overscroll-behavior-y: contain;
-  }
-}
-
-/* PWA specific styles */
 @media (display-mode: standalone) {
   body {
     padding-top: env(safe-area-inset-top);
   }
-
-  /* Hide elements that don't make sense in standalone mode */
   .hide-in-pwa {
     display: none !important;
   }
-}
-
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-  .card {
-    @apply border-2;
-  }
-}
-
-/* Hide scrollbar utility */
-.scrollbar-hide {
-  -ms-overflow-style: none; /* Internet Explorer 10+ */
-  scrollbar-width: none; /* Firefox */
-}
-
-.scrollbar-hide::-webkit-scrollbar {
-  display: none; /* Safari and Chrome */
 }

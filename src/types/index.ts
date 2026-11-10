@@ -149,7 +149,6 @@ export interface AppState {
 
   // UI Preferences
   useFolderThumbnails?: boolean;
-  enableColorIntegration?: boolean;
   enablePodcastMode?: boolean;
   defaultLandingPage?: 'dashboard' | 'all';
   requestPageSize: number;
@@ -223,7 +222,6 @@ export interface AppActions {
 
   // UI Preferences Actions
   setUseFolderThumbnails: (value: boolean) => void;
-  setEnableColorIntegration: (value: boolean) => void;
   setEnablePodcastMode: (value: boolean) => void;
   setDefaultLandingPage: (page: 'dashboard' | 'all') => void;
   setAutoplayGifsInGrid: (value: boolean) => void;

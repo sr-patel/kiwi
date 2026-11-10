@@ -4,9 +4,12 @@ import { Sidebar } from '@/components/Layout/Sidebar';
 import { PhotoGrid } from '@/components/PhotoGrid/PhotoGrid';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
-import { Moon, Sun, Settings as SettingsIcon, Network } from 'lucide-react';
+import { Menu, Moon, Sun, Settings as SettingsIcon, Network } from 'lucide-react';
+import { MotionConfig } from 'framer-motion';
+import { Logo } from '@/components/ui/Logo';
+import { IconButton } from '@/components/ui/IconButton';
 import { getAccentHex } from '@/utils/accentColors';
-import { DetailedPhotoModal } from '@/components/DetailedView/DetailedPhotoModal';
+
 import { AudioPlayer } from '@/components/AudioPlayer/AudioPlayer';
 import { Breadcrumbs } from '@/components/Breadcrumbs/Breadcrumbs';
 import { parseFolderPathFromUrl } from '@/utils/folderUrls';
@@ -25,6 +28,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { queryKeys } from '@/hooks/queryKeys';
 import './App.css';
 
+// The viewer carries framer-motion and the zoom/pan/epub machinery, so it is
+// loaded on first open instead of being part of the initial bundle.
+const DetailedPhotoModal = lazy(() =>
+  import('@/components/DetailedView/DetailedPhotoModal').then((module) => ({
+    default: module.DetailedPhotoModal,
+  })),
+);
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const TagNetworkPage = lazy(() => import('@/pages/TagNetworkPage'));
@@ -137,6 +147,8 @@ function App() {
     playNextAudio,
     playPreviousAudio,
     isMiniPlayer,
+    accentColor,
+    detailedPhotoId,
     folderTree,
     audioIsOpen,
     audioCurrentAudio,
@@ -160,6 +172,8 @@ function App() {
       playNextAudio: state.playNextAudio,
       playPreviousAudio: state.playPreviousAudio,
       isMiniPlayer: state.isMiniPlayer,
+      accentColor: state.accentColor,
+      detailedPhotoId: state.detailedPhoto,
       folderTree: state.folderTree,
       audioIsOpen: state.audioPlayer.isOpen,
       audioCurrentAudio: state.audioPlayer.currentAudio,
@@ -178,6 +192,15 @@ function App() {
   });
   const needsSetup = configQuery.data ? !configQuery.data._configured : null;
   const serverUnreachable = configQuery.isError;
+
+  // Tokens live on <html>, so the whole document (including portalled UI and
+  // scrollbars) repaints when the theme or accent changes — no wrapper classes.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('dark', theme === 'dark');
+    root.dataset.accent = accentColor;
+    root.style.colorScheme = theme;
+  }, [theme, accentColor]);
 
   const librarySyncEnabled = needsSetup === false && !!currentLibraryPath && !serverUnreachable;
   useLibrarySyncRefresh(librarySyncEnabled);
@@ -274,139 +297,145 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <AudioProvider>
-        <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
-          <SplashScreen visible={showSplash} onClose={() => setShowSplash(false)} />
-          <div className="bg-gray-50 dark:bg-black min-h-screen">
-            {/* Header */}
-            <header className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
-              <div
-                className={`flex items-center justify-between px-4 transition-all duration-300 ease-in-out ${
-                  isMiniPlayer ? 'h-24' : 'py-4'
-                }`}
-              >
-                <div className="flex items-center gap-4 flex-shrink-0">
-                  <button
-                    onClick={() => setSidebarOpen(!sidebarOpen)}
-                    aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 6h16M4 12h16M4 18h16"
+      <MotionConfig reducedMotion="user">
+        <AudioProvider>
+          <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
+            <SplashScreen visible={showSplash} onClose={() => setShowSplash(false)} />
+            <div className="min-h-screen bg-background">
+              {/* Header */}
+              <header className="sticky top-0 z-30 border-b border-border/70 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+                <div
+                  className={`flex items-center justify-between gap-3 px-3 transition-[height] duration-300 ease-out-soft sm:px-4 ${
+                    isMiniPlayer ? 'h-24' : 'h-16'
+                  }`}
+                >
+                  <div className="flex shrink-0 items-center gap-2">
+                    <IconButton
+                      label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+                      onClick={() => setSidebarOpen(!sidebarOpen)}
+                    >
+                      <Menu className="size-5" />
+                    </IconButton>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/all')}
+                      className="flex items-center gap-2.5 rounded-lg pr-1.5 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      aria-label="Go to library"
+                    >
+                      <Logo size={30} />
+                      <span className="text-[17px] font-semibold tracking-[-0.01em] text-foreground">
+                        Kiwi
+                      </span>
+                    </button>
+                  </div>
+                  {isMiniPlayer && (
+                    <div className="flex-1 flex justify-center items-center min-w-0 mx-4 max-w-6xl">
+                      <MiniAudioPlayer className="w-full max-w-6xl min-w-[200px]" />
+                    </div>
+                  )}
+                  <div className="flex shrink-0 items-center gap-1">
+                    <IconButton
+                      label="Open Tag Atlas"
+                      active={location.pathname === '/network'}
+                      onClick={() => navigate('/network')}
+                    >
+                      <Network className="size-5" />
+                    </IconButton>
+                    <IconButton
+                      label="Open settings"
+                      active={location.pathname === '/settings'}
+                      onClick={() => navigate('/settings')}
+                    >
+                      <SettingsIcon className="size-5" />
+                    </IconButton>
+                    <IconButton
+                      label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+                      onClick={toggleTheme}
+                    >
+                      {theme === 'dark' ? <Sun className="size-5" /> : <Moon className="size-5" />}
+                    </IconButton>
+                  </div>
+                </div>
+              </header>
+
+              {/* Breadcrumbs */}
+              {location.pathname !== '/network' && (
+                <div
+                  className="transition-all duration-300 ease-in-out"
+                  style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
+                >
+                  <Breadcrumbs />
+                </div>
+              )}
+
+              {/* Main Content */}
+              <div className="flex">
+                <Sidebar />
+                <main
+                  className="flex-1 transition-all duration-300 ease-in-out"
+                  style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
+                >
+                  <Suspense fallback={<RouteLoading />}>
+                    <Routes>
+                      <Route path="/" element={<HomeRedirect />} />
+                      <Route
+                        path="/dashboard"
+                        element={
+                          <RouteWrapper>
+                            <DashboardPage />
+                          </RouteWrapper>
+                        }
                       />
-                    </svg>
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <img src="/kiwi.png" alt="Kiwi" className="w-8 h-8" />
-                    <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Kiwi</h1>
-                  </div>
-                </div>
-                {isMiniPlayer && (
-                  <div className="flex-1 flex justify-center items-center min-w-0 mx-4 max-w-6xl">
-                    <MiniAudioPlayer className="w-full max-w-6xl min-w-[200px]" />
-                  </div>
-                )}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => navigate('/network')}
-                    aria-label="Open Tag Atlas"
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                    title="Tag Atlas"
-                  >
-                    <Network className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => navigate('/settings')}
-                    aria-label="Open settings"
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                  >
-                    <SettingsIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={toggleTheme}
-                    aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                  >
-                    {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                  </button>
-                </div>
+                      <Route path="/all" element={<AllFilesRoute isMobile={isMobile} />} />
+                      <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
+                      <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
+                      <Route
+                        path="/network"
+                        element={
+                          <RouteWrapper>
+                            <TagNetworkPage />
+                          </RouteWrapper>
+                        }
+                      />
+                      <Route
+                        path="/settings"
+                        element={
+                          <RouteWrapper>
+                            <SettingsPage />
+                          </RouteWrapper>
+                        }
+                      />
+                      <Route path="*" element={<HomeRedirect />} />
+                    </Routes>
+                  </Suspense>
+                </main>
               </div>
-            </header>
 
-            {/* Breadcrumbs */}
-            {location.pathname !== '/network' && (
-              <div
-                className="transition-all duration-300 ease-in-out"
-                style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
-              >
-                <Breadcrumbs />
-              </div>
-            )}
+              {/* Mobile overlay */}
+              {sidebarOpen && isMobile && (
+                <div
+                  className="fixed inset-0 z-40 bg-overlay backdrop-blur-sm"
+                  onClick={() => setSidebarOpen(false)}
+                />
+              )}
 
-            {/* Main Content */}
-            <div className="flex">
-              <Sidebar />
-              <main
-                className="flex-1 transition-all duration-300 ease-in-out"
-                style={{ marginLeft: sidebarOpen && !isMobile ? `${sidebarWidth}px` : '0px' }}
-              >
-                <Suspense fallback={<RouteLoading />}>
-                  <Routes>
-                    <Route path="/" element={<HomeRedirect />} />
-                    <Route
-                      path="/dashboard"
-                      element={
-                        <RouteWrapper>
-                          <DashboardPage />
-                        </RouteWrapper>
-                      }
-                    />
-                    <Route path="/all" element={<AllFilesRoute isMobile={isMobile} />} />
-                    <Route path="/folder/*" element={<FolderRoute isMobile={isMobile} />} />
-                    <Route path="/tag/:tagPath" element={<TagRoute isMobile={isMobile} />} />
-                    <Route
-                      path="/network"
-                      element={
-                        <RouteWrapper>
-                          <TagNetworkPage />
-                        </RouteWrapper>
-                      }
-                    />
-                    <Route
-                      path="/settings"
-                      element={
-                        <RouteWrapper>
-                          <SettingsPage />
-                        </RouteWrapper>
-                      }
-                    />
-                    <Route path="*" element={<HomeRedirect />} />
-                  </Routes>
+              {detailedPhotoId && (
+                <Suspense fallback={null}>
+                  <DetailedPhotoModal />
                 </Suspense>
-              </main>
+              )}
+              <AudioPlayer
+                isOpen={audioIsOpen}
+                onClose={closeAudioPlayer}
+                currentAudio={audioCurrentAudio}
+                playlist={audioPlaylist}
+                onNext={playNextAudio}
+                onPrevious={playPreviousAudio}
+              />
             </div>
-
-            {/* Mobile overlay */}
-            {sidebarOpen && isMobile && (
-              <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setSidebarOpen(false)} />
-            )}
-
-            <DetailedPhotoModal />
-            <AudioPlayer
-              isOpen={audioIsOpen}
-              onClose={closeAudioPlayer}
-              currentAudio={audioCurrentAudio}
-              playlist={audioPlaylist}
-              onNext={playNextAudio}
-              onPrevious={playPreviousAudio}
-            />
           </div>
-        </div>
-      </AudioProvider>
+        </AudioProvider>
+      </MotionConfig>
     </ErrorBoundary>
   );
 }

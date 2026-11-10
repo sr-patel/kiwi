@@ -22,12 +22,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
 }) => {
   const { data: allTags = [], isLoading } = useTags();
   const { data: tagCounts } = useTagCounts();
-  const { accentColor, enableColorIntegration } = useAppStore(
-    useShallow((state) => ({
-      accentColor: state.accentColor,
-      enableColorIntegration: state.enableColorIntegration,
-    })),
-  );
+  const accentColor = useAppStore((state) => state.accentColor);
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,12 +71,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
           {selectedTags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap"
-              style={
-                enableColorIntegration
-                  ? { backgroundColor: `${getAccentHex(accentColor)}20`, color: getAccentHex(accentColor) }
-                  : undefined
-              }
+              className="bg-primary-soft text-primary inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs whitespace-nowrap"
             >
               {tag}
               <button

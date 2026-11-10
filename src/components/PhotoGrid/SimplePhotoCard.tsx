@@ -133,16 +133,16 @@ const SimplePhotoCardImpl: React.FC<SimplePhotoCardProps> = ({
       }
       return (
         <>
-          {isLoading && <div className="absolute inset-0 animate-pulse bg-gray-200 dark:bg-gray-700" />}
+          {isLoading && <div className="shimmer absolute inset-0" />}
           <video
             src={shouldLoadVideo ? fileUrl : undefined}
-            className="h-full w-full object-cover"
+            className="media-reveal h-full w-full object-cover"
+            data-loaded={!isLoading}
             preload="metadata"
             muted
             playsInline
             onError={handleVideoError}
             onLoadedData={handleImageLoad}
-            style={{ opacity: isLoading ? 0 : 1 }}
           />
         </>
       );
@@ -154,13 +154,14 @@ const SimplePhotoCardImpl: React.FC<SimplePhotoCardProps> = ({
 
     return (
       <>
-        {isLoading && <div className="absolute inset-0 animate-pulse bg-gray-200 dark:bg-gray-700" />}
+        {isLoading && <div className="shimmer absolute inset-0" />}
         <img
           src={effectiveSrc}
           srcSet={imageError ? undefined : thumbnailSrcSet}
           sizes={imageError ? undefined : thumbnailSizes}
           alt={photo.name}
-          className="h-full w-full object-cover"
+          className="media-reveal h-full w-full object-cover"
+          data-loaded={!isLoading}
           width={photo.width || undefined}
           height={photo.height || undefined}
           decoding="async"
@@ -168,7 +169,6 @@ const SimplePhotoCardImpl: React.FC<SimplePhotoCardProps> = ({
           fetchPriority={isAboveFold ? 'high' : 'auto'}
           onError={handleImageError}
           onLoad={handleImageLoad}
-          style={{ opacity: isLoading ? 0 : 1 }}
         />
       </>
     );

@@ -22,18 +22,26 @@ const photo = {
 } satisfies PhotoMetadata;
 
 describe('SimplePhotoCard', () => {
-  it('keeps lazy images in layout and falls back to the original media', () => {
+  it('keeps lazy images in layout and fades them in once decoded', () => {
     render(<SimplePhotoCard photo={photo} size="medium" onOpen={vi.fn()} isAboveFold={false} />);
 
     const image = screen.getByRole('img', { name: photo.name });
     expect(image).toHaveAttribute('loading', 'lazy');
-    expect(image).not.toHaveStyle({ display: 'none' });
-    expect(image).toHaveStyle({ opacity: '0' });
+    // The reveal is driven by CSS (`.media-reveal` + `data-loaded`) rather than
+    // an inline opacity, so the transition is composited and cannot be missed.
+    expect(image).toHaveClass('media-reveal');
+    expect(image).toHaveAttribute('data-loaded', 'false');
 
+    fireEvent.load(image);
+    expect(image).toHaveAttribute('data-loaded', 'true');
+  });
+
+  it('falls back to the original media when the thumbnail fails', () => {
+    render(<SimplePhotoCard photo={photo} size="medium" onOpen={vi.fn()} />);
+
+    const image = screen.getByRole('img', { name: photo.name });
     fireEvent.error(image);
     expect(image).toHaveAttribute('src', expect.stringContaining(`/api/photos/${photo.id}/file`));
-    fireEvent.load(image);
-    expect(image).toHaveStyle({ opacity: '1' });
   });
 
   it('opens through a single activation path for pointer and keyboard', () => {

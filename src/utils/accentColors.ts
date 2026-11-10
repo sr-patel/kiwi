@@ -1,132 +1,28 @@
-import { useAppStore } from '@/store';
+/**
+ * Accent colour helpers.
+ *
+ * These used to return hard-coded Tailwind class maps (`bg-orange-500`,
+ * `dark:bg-orange-400`, …) selected in JavaScript. Two problems with that:
+ *
+ *  - Tailwind cannot see class names built at runtime, so any dynamically
+ *    composed variant silently produced dead CSS.
+ *  - Light/dark contrast had to be hand-written per hue, which is why some
+ *    accents ended up with white text on a yellow fill.
+ *
+ * Now the helpers return *semantic token* utilities (`bg-primary`,
+ * `text-primary`, …). The actual hue lives in CSS (`--primary`), set per theme
+ * and per accent from `data-accent` on <html>. Switching accent repaints
+ * without re-rendering, and contrast is correct in both themes.
+ *
+ * Note: token utilities always reflect the *active* accent. To render a
+ * specific accent that is not the active one (e.g. the Settings swatches), use
+ * `getAccentHex()` for an inline colour instead.
+ */
 
 export type AccentVariant = 'bg' | 'text' | 'border' | 'ring' | 'hover' | 'selected';
 
-const FALLBACK_ACCENT = 'kiwi';
-
-/**
- * Note on colour integration
- * --------------------------
- * These helpers are called many times per rendered element, and up to 60x per
- * second from the audio visualizer. They used to call
- * `localStorage.getItem()` and `JSON.parse()` of the whole persisted blob on
- * every invocation, and rebuilt a ~72-entry class map each time. That made
- * accent lookups the most expensive thing in the render path.
- *
- * Now the maps are module constants and the toggle is read from the store with
- * `getState()`, which is a plain property read.
- */
-const isColorIntegrationEnabled = (): boolean => useAppStore.getState().enableColorIntegration !== false;
-
-const NEUTRAL: Record<AccentVariant, string> = {
-  bg: '',
-  text: 'text-gray-700 dark:text-gray-200',
-  border: 'border-gray-200 dark:border-gray-700',
-  ring: '',
-  hover: 'hover:bg-gray-100 dark:hover:bg-gray-900',
-  selected: 'bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-gray-100',
-};
-
-const COLOR_MAP: Record<string, Record<AccentVariant, string>> = {
-  kiwi: {
-    bg: 'bg-[#8E466D] dark:bg-[#A55A7F]',
-    text: 'text-[#8E466D] dark:text-[#A55A7F]',
-    border: 'border-[#8E466D]/20 dark:border-[#A55A7F]/30',
-    ring: 'ring-[#8E466D] dark:ring-[#A55A7F]',
-    hover: 'hover:bg-[#8E466D]/10 dark:hover:bg-[#A55A7F]/20',
-    selected: 'bg-[#8E466D]/20 text-[#8E466D] dark:bg-[#A55A7F]/30 dark:text-[#A55A7F]',
-  },
-  orange: {
-    bg: 'bg-orange-500 dark:bg-orange-400',
-    text: 'text-orange-600 dark:text-orange-400',
-    border: 'border-orange-200 dark:border-orange-700',
-    ring: 'ring-orange-500 dark:ring-orange-400',
-    hover: 'hover:bg-orange-50 dark:hover:bg-orange-900/20',
-    selected: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  },
-  blue: {
-    bg: 'bg-blue-500 dark:bg-blue-400',
-    text: 'text-blue-600 dark:text-blue-400',
-    border: 'border-blue-200 dark:border-blue-700',
-    ring: 'ring-blue-500 dark:ring-blue-400',
-    hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/20',
-    selected: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  },
-  green: {
-    bg: 'bg-green-500 dark:bg-green-400',
-    text: 'text-green-600 dark:text-green-400',
-    border: 'border-green-200 dark:border-green-700',
-    ring: 'ring-green-500 dark:ring-green-400',
-    hover: 'hover:bg-green-50 dark:hover:bg-green-900/20',
-    selected: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  },
-  purple: {
-    bg: 'bg-purple-500 dark:bg-purple-400',
-    text: 'text-purple-600 dark:text-purple-400',
-    border: 'border-purple-200 dark:border-purple-700',
-    ring: 'ring-purple-500 dark:ring-purple-400',
-    hover: 'hover:bg-purple-50 dark:hover:bg-purple-900/20',
-    selected: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-  },
-  red: {
-    bg: 'bg-red-500 dark:bg-red-400',
-    text: 'text-red-600 dark:text-red-400',
-    border: 'border-red-200 dark:border-red-700',
-    ring: 'ring-red-500 dark:ring-red-400',
-    hover: 'hover:bg-red-50 dark:hover:bg-red-900/20',
-    selected: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  },
-  pink: {
-    bg: 'bg-pink-500 dark:bg-pink-400',
-    text: 'text-pink-600 dark:text-pink-400',
-    border: 'border-pink-200 dark:border-pink-700',
-    ring: 'ring-pink-500 dark:ring-pink-400',
-    hover: 'hover:bg-pink-50 dark:hover:bg-pink-900/20',
-    selected: 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
-  },
-  teal: {
-    bg: 'bg-teal-500 dark:bg-teal-400',
-    text: 'text-teal-600 dark:text-teal-400',
-    border: 'border-teal-200 dark:border-teal-700',
-    ring: 'ring-teal-500 dark:ring-teal-400',
-    hover: 'hover:bg-teal-50 dark:hover:bg-teal-900/20',
-    selected: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
-  },
-  indigo: {
-    bg: 'bg-indigo-500 dark:bg-indigo-400',
-    text: 'text-indigo-600 dark:text-indigo-400',
-    border: 'border-indigo-200 dark:border-indigo-700',
-    ring: 'ring-indigo-500 dark:ring-indigo-400',
-    hover: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20',
-    selected: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
-  },
-  cyan: {
-    bg: 'bg-cyan-500 dark:bg-cyan-400',
-    text: 'text-cyan-600 dark:text-cyan-400',
-    border: 'border-cyan-200 dark:border-cyan-700',
-    ring: 'ring-cyan-500 dark:ring-cyan-400',
-    hover: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/20',
-    selected: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
-  },
-  lime: {
-    bg: 'bg-lime-500 dark:bg-lime-400',
-    text: 'text-lime-600 dark:text-lime-400',
-    border: 'border-lime-200 dark:border-lime-700',
-    ring: 'ring-lime-500 dark:ring-lime-400',
-    hover: 'hover:bg-lime-50 dark:hover:bg-lime-900/20',
-    selected: 'bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-300',
-  },
-  amber: {
-    bg: 'bg-amber-500 dark:bg-amber-400',
-    text: 'text-amber-600 dark:text-amber-400',
-    border: 'border-amber-200 dark:border-amber-700',
-    ring: 'ring-amber-500 dark:ring-amber-400',
-    hover: 'hover:bg-amber-50 dark:hover:bg-amber-900/20',
-    selected: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-  },
-};
-
-const HEX_MAP: Record<string, string> = {
+/** Vivid hue per accent, for inline styles, charts and canvas drawing. */
+const DISPLAY_HEX: Record<string, string> = {
   kiwi: '#8E466D',
   orange: '#f97316',
   blue: '#3b82f6',
@@ -141,12 +37,21 @@ const HEX_MAP: Record<string, string> = {
   amber: '#f59e0b',
 };
 
-const NEUTRAL_HEX = '#6b7280'; // gray-500
-
-export const getAccentClasses = (accentColor: string, variant: AccentVariant = 'bg'): string => {
-  if (!isColorIntegrationEnabled()) return NEUTRAL[variant];
-  return COLOR_MAP[accentColor]?.[variant] ?? COLOR_MAP[FALLBACK_ACCENT][variant];
+const VARIANT_CLASSES: Record<AccentVariant, string> = {
+  bg: 'bg-primary',
+  text: 'text-primary',
+  border: 'border-primary/30',
+  ring: 'ring-primary',
+  hover: 'hover:bg-primary/10',
+  selected: 'bg-primary-soft text-primary',
 };
+
+/**
+ * Kept for call-site compatibility: the first argument is accepted but the
+ * result is always the active accent's token utility.
+ */
+export const getAccentClasses = (_accentColor: string, variant: AccentVariant = 'bg'): string =>
+  VARIANT_CLASSES[variant];
 
 export const getAccentColor = (accentColor: string) => getAccentClasses(accentColor, 'bg');
 
@@ -160,8 +65,8 @@ export const getAccentHover = (accentColor: string) => getAccentClasses(accentCo
 
 export const getAccentSelected = (accentColor: string) => getAccentClasses(accentColor, 'selected');
 
-/** Get hex color for inline styles */
-export const getAccentHex = (accentColor: string): string => {
-  if (!isColorIntegrationEnabled()) return NEUTRAL_HEX;
-  return HEX_MAP[accentColor] ?? HEX_MAP[FALLBACK_ACCENT];
-};
+/** Vivid hex for a specific accent, regardless of which accent is active. */
+export const getAccentHex = (accentColor: string): string => DISPLAY_HEX[accentColor] ?? DISPLAY_HEX.kiwi;
+
+/** Solid-fill pair for a specific accent, e.g. `<span className={...}>`. */
+export const getAccentSolid = (): string => 'bg-primary text-primary-foreground';

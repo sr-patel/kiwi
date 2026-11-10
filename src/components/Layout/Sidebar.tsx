@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store';
 import { FolderTree } from '@/components/FolderTree/FolderTree';
-import { getAccentColor } from '@/utils/accentColors';
+import { X } from 'lucide-react';
+import { Logo } from '@/components/ui/Logo';
+import { IconButton } from '@/components/ui/IconButton';
 
 const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 600;
@@ -96,29 +98,22 @@ export const Sidebar = () => {
 
   return (
     <div
-      className="fixed inset-y-0 left-0 z-50 flex h-full flex-col bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800"
+      className="fixed inset-y-0 left-0 z-50 flex h-full flex-col border-r border-border bg-card shadow-[1px_0_0_0_color-mix(in_oklab,var(--border)_60%,transparent)]"
       style={{ width: `${sidebarWidth}px` }}
     >
       {/* Header */}
       <div
-        className={`flex items-center justify-between border-b border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out px-4 ${
-          isMiniPlayer ? 'h-24' : 'py-4'
+        className={`flex items-center justify-between border-b border-border/70 px-3 transition-[height] duration-300 ease-out-soft ${
+          isMiniPlayer ? 'h-24' : 'h-16'
         }`}
       >
-        <div className="flex items-center gap-2">
-          <img src="/kiwi.png" alt="Kiwi" className="w-8 h-8" />
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Kiwi</h2>
+        <div className="flex items-center gap-2.5">
+          <Logo size={26} />
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">Library</h2>
         </div>
-        <button
-          type="button"
-          aria-label="Close navigation"
-          onClick={() => setSidebarOpen(false)}
-          className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <IconButton label="Close navigation" size="sm" onClick={() => setSidebarOpen(false)}>
+          <X className="size-4" />
+        </IconButton>
       </div>
 
       {/* Folder Tree */}
@@ -132,13 +127,13 @@ export const Sidebar = () => {
             onTagSelect={handleTagSelect}
           />
         ) : (
-          <div className="flex items-center justify-center h-32 text-gray-500 dark:text-gray-400 px-4">
-            <div className="text-center space-y-2">
-              <div
-                className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)} mx-auto`}
-              />
+          <div className="flex h-32 items-center justify-center px-4 text-muted-foreground">
+            <div className="space-y-2 text-center">
+              <div className="mx-auto size-6 animate-spin rounded-full border-2 border-border border-t-primary" />
               <p className="text-sm">Loading your library…</p>
-              <p className="text-xs text-gray-400">Large libraries can take a moment on first open</p>
+              <p className="text-xs text-muted-foreground/70">
+                Large libraries can take a moment on first open
+              </p>
             </div>
           </div>
         )}
@@ -155,7 +150,7 @@ export const Sidebar = () => {
           aria-valuemin={MIN_SIDEBAR_WIDTH}
           aria-valuemax={MAX_SIDEBAR_WIDTH}
           tabIndex={0}
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize transition-colors ${getAccentColor(accentColor)} opacity-0 hover:opacity-100 focus-visible:opacity-100 active:opacity-100`}
+          className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-primary opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 active:opacity-100"
           onMouseDown={handleMouseDown}
           onKeyDown={(event) => {
             if (event.key === 'ArrowLeft') {

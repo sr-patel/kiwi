@@ -35,7 +35,6 @@ describe('application preference and UI store', () => {
     state.setIsMobile(true);
     state.setAccentColor('blue');
     state.setUseFolderThumbnails(true);
-    state.setEnableColorIntegration(false);
     state.setEnablePodcastMode(true);
     state.setDefaultLandingPage('all');
     state.setAutoplayGifsInGrid(true);

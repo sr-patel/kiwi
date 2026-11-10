@@ -109,7 +109,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
     openAudioPlayer,
     podcastMode,
     togglePodcastMode,
-    enableColorIntegration,
     enablePodcastMode,
     searchQuery,
   } = useAppStore(
@@ -133,7 +132,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
       openAudioPlayer: state.openAudioPlayer,
       podcastMode: state.podcastMode,
       togglePodcastMode: state.togglePodcastMode,
-      enableColorIntegration: state.enableColorIntegration,
       enablePodcastMode: state.enablePodcastMode,
       searchQuery: state.searchQuery,
     })),
@@ -694,19 +692,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
     }
   };
 
-  // Helper functions for conditional accent colors
-  const getConditionalAccentBorder = (accentColor: string) => {
-    return enableColorIntegration ? getAccentBorder(accentColor) : 'border-gray-300 dark:border-gray-700';
-  };
-
-  const getConditionalAccentText = (accentColor: string) => {
-    return enableColorIntegration ? getAccentText(accentColor) : 'text-gray-700 dark:text-gray-300';
-  };
-
-  const getConditionalAccentHover = (accentColor: string) => {
-    return enableColorIntegration ? getAccentHover(accentColor) : 'hover:bg-gray-50 dark:hover:bg-gray-800';
-  };
-
   const handleSortChange = (field: 'name' | 'date_created' | 'date_updated' | 'size' | 'type' | 'random') => {
     setSortOptions({ ...sortOptions, field });
     setSortDropdownOpen(false);
@@ -861,9 +846,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
           {/* Right side: View controls - only show when there are files */}
           {filteredPhotos.length > 0 && (
             <div className="flex items-center gap-3 flex-shrink-0">
-              <div
-                className={`flex border ${getConditionalAccentBorder(accentColor)} rounded-lg overflow-hidden`}
-              >
+              <div className={`flex border ${getAccentBorder(accentColor)} rounded-lg overflow-hidden`}>
                 <button
                   type="button"
                   aria-label="Grid view"
@@ -886,11 +869,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
 
               {/* Thumbnail size slider */}
               <div className="flex items-center gap-2">
-                <span className={`text-sm ${getConditionalAccentText(accentColor)} hidden sm:inline`}>
-                  Size:
-                </span>
+                <span className={`text-sm ${getAccentText(accentColor)} hidden sm:inline`}>Size:</span>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs ${getConditionalAccentText(accentColor)}`}>S</span>
+                  <span className={`text-xs ${getAccentText(accentColor)}`}>S</span>
                   <input
                     type="range"
                     aria-label="Thumbnail size"
@@ -911,25 +892,18 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
                     }}
                     className={`w-20 sm:w-16 accent-${accentColor}-500 touch-manipulation`}
                   />
-                  <span className={`text-xs ${getConditionalAccentText(accentColor)}`}>L</span>
+                  <span className={`text-xs ${getAccentText(accentColor)}`}>L</span>
                 </div>
-                <span className={`text-xs font-medium ${getConditionalAccentText(accentColor)} min-w-[20px]`}>
-                  {currentView.thumbnailSize === 'small'
-                    ? 'S'
-                    : currentView.thumbnailSize === 'medium'
-                      ? 'M'
-                      : 'L'}
-                </span>
               </div>
 
               {/* Podcast Mode Toggle - only show when there are audio files and podcast mode is enabled in settings */}
               {hasAudioFiles && enablePodcastMode && (
                 <button
                   onClick={togglePodcastMode}
-                  className={`flex items-center gap-2 px-3 py-2 border ${getConditionalAccentBorder(accentColor)} rounded-lg transition-colors touch-manipulation ${
+                  className={`flex items-center gap-2 px-3 py-2 border ${getAccentBorder(accentColor)} rounded-lg transition-colors touch-manipulation ${
                     podcastMode.enabled
                       ? `${getAccentColor(accentColor)} text-white`
-                      : `bg-white dark:bg-gray-900 ${getConditionalAccentText(accentColor)} ${getConditionalAccentHover(accentColor)}`
+                      : `bg-white dark:bg-gray-900 ${getAccentText(accentColor)} ${getAccentHover(accentColor)}`
                   }`}
                   title={
                     podcastMode.enabled
@@ -947,9 +921,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
       </div>
 
       {/* Results info */}
-      <div
-        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm ${getConditionalAccentText(accentColor)}`}
-      >
+      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <div>
           {filteredPhotos.length > 0 ? (
             <>
@@ -978,7 +950,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
         </div>
         {filteredPhotos.length > 0 && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <div className="text-sm text-gray-500 dark:text-gray-400">
+            <div className="text-sm text-muted-foreground">
               Total size: {libraryService.formatFileSize(totalSize)}
             </div>
             <div className="relative flex items-center gap-2">

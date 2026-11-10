@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAppStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { libraryService } from '@/services/libraryService';
@@ -126,6 +127,10 @@ export const DetailedPhotoModal: React.FC = () => {
   const [swipeOffset, setSwipeOffset] = React.useState<number>(0);
   const [isSwipeTransitioning, setIsSwipeTransitioning] = React.useState<boolean>(false);
   const minSwipeDistance = 80; // Minimum swipe distance in pixels
+
+  // Direction of the last navigation: +1 = forward (new image enters from the
+  // right), -1 = backward (enters from the left).
+  const [direction, setDirection] = React.useState<1 | -1>(1);
 
   // Preload cache for next/previous images
   const preloadCacheRef = React.useRef<Set<string>>(new Set());
@@ -375,12 +380,13 @@ export const DetailedPhotoModal: React.FC = () => {
     }, 250); // Match CSS transition duration
   };
 
-  const navigateToPhoto = (photoId: string | null, direction: 'next' | 'prev') => {
+  const navigateToPhoto = (photoId: string | null, move: 'next' | 'prev') => {
     if (!photoId) {
       setDetailedPhoto(null);
       return;
     }
-    performTransition(direction, () => setDetailedPhoto(photoId));
+    setDirection(move === 'next' ? 1 : -1);
+    setDetailedPhoto(photoId);
   };
 
   const showPrev = () => {
@@ -689,6 +695,40 @@ export const DetailedPhotoModal: React.FC = () => {
       transform: `translateX(${swipeOffset < 0 ? swipeOffset + window.innerWidth : window.innerWidth}px)`,
     };
   };
+
+  /**
+   * Traversal animation. The outgoing image leaves to the left while the
+   * incoming one arrives from the right (mirrored when going back), so the
+   * direction of travel is always readable.
+   */
+  const MEDIA_VARIANTS = {
+    slide: {
+      enter: (d: number) => ({ x: d > 0 ? '26%' : '-26%', opacity: 0.35, scale: 0.985 }),
+      center: { x: 0, opacity: 1, scale: 1 },
+      exit: (d: number) => ({ x: d > 0 ? '-26%' : '26%', opacity: 0.2, scale: 0.985 }),
+    },
+    fade: {
+      enter: { opacity: 0 },
+      center: { opacity: 1 },
+      exit: { opacity: 0 },
+    },
+    zoom: {
+      enter: { opacity: 0, scale: 0.94 },
+      center: { opacity: 1, scale: 1 },
+      exit: { opacity: 0, scale: 1.03 },
+    },
+    none: {
+      enter: {},
+      center: {},
+      exit: {},
+    },
+  } as const;
+
+  const mediaVariants = MEDIA_VARIANTS[transitionEffect] ?? MEDIA_VARIANTS.slide;
+  const mediaTransition =
+    transitionEffect === 'slide'
+      ? { type: 'spring' as const, stiffness: 340, damping: 34, mass: 0.9 }
+      : { duration: 0.26, ease: [0.22, 1, 0.36, 1] as const };
 
   // Apply video settings when state changes
   useEffect(() => {
@@ -1540,7 +1580,7 @@ export const DetailedPhotoModal: React.FC = () => {
       aria-modal="true"
       aria-label={`Details for ${photo.name}`}
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overscroll-contain"
+      className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-overlay backdrop-blur-md"
       onClick={handleModalClick}
       onMouseMove={handleRootMouseMove}
       onTouchStart={onTouchStart}
@@ -1977,7 +2017,25 @@ export const DetailedPhotoModal: React.FC = () => {
         )}
 
         {/* Current image */}
-        {renderFileContent()}
+        {viewMode === 'fit' ? (
+          <AnimatePresence initial={false} custom={direction} mode="popLayout">
+            <motion.div
+              key={photo.id}
+              custom={direction}
+              variants={mediaVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={mediaTransition}
+              className="absolute inset-0 flex items-center justify-center"
+              style={{ willChange: 'transform, opacity' }}
+            >
+              {renderFileContent()}
+            </motion.div>
+          </AnimatePresence>
+        ) : (
+          renderFileContent()
+        )}
       </div>
 
       {photo && (

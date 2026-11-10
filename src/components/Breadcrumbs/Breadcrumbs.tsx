@@ -8,15 +8,7 @@ import { getTagBreadcrumb } from '@/utils/tagUrls';
 import { getAccentText, getAccentHex } from '@/utils/accentColors';
 
 export const Breadcrumbs: React.FC = () => {
-  const {
-    currentFolder,
-    currentTag,
-    folderTree,
-    setCurrentFolder,
-    setCurrentTag,
-    accentColor,
-    enableColorIntegration,
-  } = useAppStore(
+  const { currentFolder, currentTag, folderTree, setCurrentFolder, setCurrentTag, accentColor } = useAppStore(
     useShallow((state) => ({
       currentFolder: state.currentFolder,
       currentTag: state.currentTag,
@@ -24,7 +16,6 @@ export const Breadcrumbs: React.FC = () => {
       setCurrentFolder: state.setCurrentFolder,
       setCurrentTag: state.setCurrentTag,
       accentColor: state.accentColor,
-      enableColorIntegration: state.enableColorIntegration,
     })),
   );
   const navigate = useNavigate();
@@ -35,7 +26,7 @@ export const Breadcrumbs: React.FC = () => {
     return (
       <div
         className="flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-4 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400"
-        style={enableColorIntegration ? { borderBottomColor: `${getAccentHex(accentColor)}40` } : undefined}
+        style={{ borderBottomColor: `color-mix(in oklab, ${getAccentHex(accentColor)} 28%, transparent)` }}
       >
         <button
           onClick={() => {
@@ -49,10 +40,7 @@ export const Breadcrumbs: React.FC = () => {
           <span>Home</span>
         </button>
 
-        <ChevronRight
-          className="w-4 h-4"
-          style={{ color: enableColorIntegration ? `${getAccentHex(accentColor)}80` : undefined }}
-        />
+        <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
         <button
           onClick={() => navigate(tagBreadcrumb.url)}
           className={`font-medium text-gray-900 dark:text-gray-100 ${getAccentText(accentColor)}`}
@@ -83,7 +71,7 @@ export const Breadcrumbs: React.FC = () => {
   return (
     <div
       className="flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-4 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400"
-      style={enableColorIntegration ? { borderBottomColor: `${getAccentHex(accentColor)}40` } : undefined}
+      style={{ borderBottomColor: `color-mix(in oklab, ${getAccentHex(accentColor)} 28%, transparent)` }}
     >
       <button
         onClick={() => {
@@ -99,10 +87,7 @@ export const Breadcrumbs: React.FC = () => {
 
       {breadcrumbs.map((breadcrumb, index) => (
         <React.Fragment key={breadcrumb.id}>
-          <ChevronRight
-            className="w-4 h-4"
-            style={{ color: enableColorIntegration ? `${getAccentHex(accentColor)}80` : undefined }}
-          />
+          <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
           <button
             onClick={() => navigate(breadcrumb.url)}
             className={`hover:text-gray-900 dark:hover:text-gray-100 transition-colors ${

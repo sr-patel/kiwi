@@ -1,38 +1,54 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAccentColor, getAccentHex, getAccentText } from './accentColors';
-import { useAppStore } from '@/store';
+import { describe, expect, it } from 'vitest';
+import {
+  getAccentBorder,
+  getAccentClasses,
+  getAccentColor,
+  getAccentHex,
+  getAccentHover,
+  getAccentRing,
+  getAccentSelected,
+  getAccentSolid,
+  getAccentText,
+} from './accentColors';
 
 describe('accentColors', () => {
-  beforeEach(() => {
-    useAppStore.setState({ accentColor: 'kiwi', enableColorIntegration: true });
-    localStorage.clear();
+  it('maps every variant to a semantic token utility', () => {
+    // Accent hues now live in CSS (`--primary`, set per theme and per
+    // data-accent), so the helpers must only ever emit token classes.
+    expect(getAccentColor('orange')).toBe('bg-primary');
+    expect(getAccentText('orange')).toBe('text-primary');
+    expect(getAccentBorder('orange')).toBe('border-primary/30');
+    expect(getAccentRing('orange')).toBe('ring-primary');
+    expect(getAccentHover('orange')).toBe('hover:bg-primary/10');
+    expect(getAccentSelected('orange')).toBe('bg-primary-soft text-primary');
+    expect(getAccentSolid()).toBe('bg-primary text-primary-foreground');
   });
 
-  it('maps an accent to its utility classes', () => {
-    expect(getAccentColor('orange')).toContain('bg-orange-500');
-    expect(getAccentText('orange')).toContain('text-orange-600');
+  it('defaults to the background variant', () => {
+    expect(getAccentClasses('kiwi')).toBe('bg-primary');
+    expect(getAccentClasses('kiwi', 'text')).toBe('text-primary');
+  });
+
+  it('never leaks a hard-coded palette class', () => {
+    // Regression guard: the old implementation returned things like
+    // `bg-orange-500 dark:bg-orange-400`, which Tailwind cannot generate when
+    // the class is chosen at runtime.
+    for (const variant of ['bg', 'text', 'border', 'ring', 'hover', 'selected'] as const) {
+      const className = getAccentClasses('amber', variant);
+      expect(className).not.toMatch(
+        /\b(bg|text|border|ring)-(red|orange|amber|yellow|green|blue|purple|pink|teal|cyan|lime|indigo|gray|zinc|slate)-\d{2,3}\b/,
+      );
+    }
+  });
+
+  it('resolves the vivid display hex for a specific accent', () => {
+    // Used for inline styles, charts and canvas, where a token cannot apply.
+    expect(getAccentHex('kiwi')).toBe('#8E466D');
+    expect(getAccentHex('blue')).toBe('#3b82f6');
+    expect(getAccentHex('amber')).toBe('#f59e0b');
   });
 
   it('falls back to the default accent for unknown names', () => {
-    expect(getAccentColor('chartreuse')).toBe(getAccentColor('kiwi'));
     expect(getAccentHex('chartreuse')).toBe(getAccentHex('kiwi'));
-  });
-
-  it('returns neutral values when colour integration is disabled', () => {
-    useAppStore.setState({ enableColorIntegration: false });
-    expect(getAccentText('orange')).toContain('text-gray-700');
-    expect(getAccentHex('orange')).toBe('#6b7280');
-  });
-
-  it('never reads persisted storage during a lookup', () => {
-    // Regression guard: lookups used to JSON.parse the whole persisted store on
-    // every call, and these run dozens of times per rendered element and up to
-    // 60 times a second from the audio visualizer.
-    const getItem = vi.spyOn(Storage.prototype, 'getItem');
-    getAccentHex('blue');
-    getAccentColor('blue');
-    getAccentText('blue');
-    expect(getItem).not.toHaveBeenCalled();
-    getItem.mockRestore();
   });
 });

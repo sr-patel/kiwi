@@ -99,11 +99,12 @@ const FileCardImpl: React.FC<FileCardProps> = ({
     link.remove();
   }, [file, fileTypeInfo.canPreview, isAudio, openAudioPlayer, saveScrollPosition, setDetailedPhoto]);
 
-  const cardClasses = `relative group cursor-pointer overflow-hidden rounded-lg transition-shadow duration-200
-      bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900
-      border border-gray-200 dark:border-gray-700 w-full hover:shadow-md
+  const cardClasses = `group relative w-full cursor-pointer overflow-hidden rounded-lg border border-border bg-card text-card-foreground
+      outline-none transition-[box-shadow,transform] duration-300 ease-out-soft
+      hover:-translate-y-0.5 hover:shadow-elevated
+      focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
       ${isMobile ? 'h-48' : sizeClasses[size]}
-      ${isActive ? `${getAccentRing(accentColor)} ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900` : ''}`;
+      ${isActive ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`;
 
   const ActionIcon = action.Icon;
 
@@ -148,13 +149,13 @@ const FileCardImpl: React.FC<FileCardProps> = ({
           </div>
         )}
 
-        <div className={`${iconClasses[size]} mb-2 opacity-80`}>{fileTypeInfo.icon}</div>
+        <div className={`${iconClasses[size]} mb-2 opacity-90`}>{fileTypeInfo.icon}</div>
 
-        <h3 className="mb-1 line-clamp-3 px-1 text-center text-sm font-medium text-gray-800 dark:text-gray-200">
+        <h3 className="mb-1 line-clamp-3 px-1 text-center text-sm font-medium text-foreground">
           {file.name}
         </h3>
 
-        <p className="mb-2 text-xs text-gray-600 dark:text-gray-400">{fileTypeInfo.displayName}</p>
+        <p className="mb-2 text-xs text-muted-foreground">{fileTypeInfo.displayName}</p>
 
         <span
           className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-white ${getAccentColor(accentColor)}`}

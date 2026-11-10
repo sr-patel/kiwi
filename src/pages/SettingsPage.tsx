@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Eye, Moon, Palette, Settings2, Sun, Zap } from 'lucide-react';
+import { ArrowLeft, Check, Eye, Moon, Palette, Settings2, Sun, Zap } from 'lucide-react';
 import { useAppStore } from '@/store';
-import { getAccentColor, getAccentHex, getAccentRing } from '@/utils/accentColors';
+import { getAccentHex } from '@/utils/accentColors';
 import { SettingsCard, SettingsSlider, SettingsToggle } from '@/pages/settings/SettingsCard';
 import { SettingsLibraryAdmin } from '@/pages/settings/SettingsLibraryAdmin';
 
@@ -41,8 +41,6 @@ export const SettingsPage: React.FC = () => {
     setAccentColor,
     useFolderThumbnails,
     setUseFolderThumbnails,
-    enableColorIntegration,
-    setEnableColorIntegration,
     enablePodcastMode,
     setEnablePodcastMode,
     requestPageSize,
@@ -177,7 +175,7 @@ export const SettingsPage: React.FC = () => {
                   title="Accent color"
                   description="Used for highlights, buttons, and chart accents"
                 >
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                  <div className="flex flex-wrap gap-4">
                     {ACCENT_OPTIONS.map(({ name, value }) => {
                       const isSelected = accentColor === value;
                       return (
@@ -185,26 +183,34 @@ export const SettingsPage: React.FC = () => {
                           key={value}
                           type="button"
                           onClick={() => setAccentColor(value)}
-                          className={`flex h-10 items-center justify-center rounded-lg text-xs font-medium text-white ${getAccentColor(value)} ${
-                            isSelected ? `ring-2 ring-offset-2 ${getAccentRing(value)}` : ''
-                          }`}
+                          aria-pressed={isSelected}
                           title={name}
+                          className="group flex w-14 flex-col items-center gap-1.5 rounded-lg py-1 focus-visible:outline-none"
                         >
-                          {name}
+                          <span
+                            className="grid size-9 place-items-center rounded-full transition-transform duration-200 ease-out-soft group-hover:scale-110 group-focus-visible:scale-110"
+                            style={{
+                              backgroundColor: getAccentHex(value),
+                              boxShadow: isSelected
+                                ? `0 0 0 2px var(--background), 0 0 0 4px ${getAccentHex(value)}`
+                                : undefined,
+                            }}
+                          >
+                            {isSelected && (
+                              <Check className="size-4 text-white drop-shadow-sm" strokeWidth={3} />
+                            )}
+                          </span>
+                          <span
+                            className={`text-[11px] font-medium ${
+                              isSelected ? 'text-foreground' : 'text-muted-foreground'
+                            }`}
+                          >
+                            {name}
+                          </span>
                         </button>
                       );
                     })}
                   </div>
-                </SettingsCard>
-
-                <SettingsCard title="Color integration">
-                  <SettingsToggle
-                    label="Enhanced color integration"
-                    description="Apply accent colors throughout the interface"
-                    checked={!!enableColorIntegration}
-                    onChange={setEnableColorIntegration}
-                    accentHex={accentHex}
-                  />
                 </SettingsCard>
               </div>
             )}
