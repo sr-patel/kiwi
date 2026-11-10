@@ -1,8 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store';
-import { getFolderBreadcrumbs } from '@/utils/folderUrls';
+import { findFolderById, getFolderBreadcrumbs } from '@/utils/folderUrls';
 import { getTagBreadcrumb } from '@/utils/tagUrls';
 import { getAccentText, getAccentHex } from '@/utils/accentColors';
 
@@ -15,7 +16,17 @@ export const Breadcrumbs: React.FC = () => {
     setCurrentTag,
     accentColor,
     enableColorIntegration,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      currentFolder: state.currentFolder,
+      currentTag: state.currentTag,
+      folderTree: state.folderTree,
+      setCurrentFolder: state.setCurrentFolder,
+      setCurrentTag: state.setCurrentTag,
+      accentColor: state.accentColor,
+      enableColorIntegration: state.enableColorIntegration,
+    })),
+  );
   const navigate = useNavigate();
 
   // Handle tag breadcrumbs
@@ -23,8 +34,8 @@ export const Breadcrumbs: React.FC = () => {
     const tagBreadcrumb = getTagBreadcrumb(currentTag);
     return (
       <div
-        className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 px-4 py-4 bg-white dark:bg-gray-950 border-b"
-        style={{ borderBottomColor: enableColorIntegration ? `${getAccentHex(accentColor)}40` : undefined }}
+        className="flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-4 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400"
+        style={enableColorIntegration ? { borderBottomColor: `${getAccentHex(accentColor)}40` } : undefined}
       >
         <button
           onClick={() => {
@@ -32,7 +43,7 @@ export const Breadcrumbs: React.FC = () => {
             setCurrentTag(null);
             navigate('/');
           }}
-          className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors font-medium"
+          className="flex items-center gap-1 font-medium transition-colors hover:text-gray-900 dark:hover:text-gray-100"
         >
           <Home className="w-4 h-4" />
           <span>Home</span>
@@ -57,19 +68,8 @@ export const Breadcrumbs: React.FC = () => {
     return null;
   }
 
-  // Find the current folder
-  const findFolder = (folders: any[], folderId: string): any => {
-    for (const folder of folders) {
-      if (folder.id === folderId) {
-        return folder;
-      }
-      const found = findFolder(folder.children, folderId);
-      if (found) return found;
-    }
-    return null;
-  };
-
-  const currentFolderNode = findFolder(folderTree, currentFolder);
+  // Find the current folder (O(1) via the cached tree index)
+  const currentFolderNode = findFolderById(folderTree, currentFolder);
   if (!currentFolderNode) {
     return null;
   }
@@ -82,8 +82,8 @@ export const Breadcrumbs: React.FC = () => {
 
   return (
     <div
-      className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 px-4 py-4 bg-white dark:bg-gray-950 border-b"
-      style={{ borderBottomColor: enableColorIntegration ? `${getAccentHex(accentColor)}40` : undefined }}
+      className="flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-4 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400"
+      style={enableColorIntegration ? { borderBottomColor: `${getAccentHex(accentColor)}40` } : undefined}
     >
       <button
         onClick={() => {
@@ -91,7 +91,7 @@ export const Breadcrumbs: React.FC = () => {
           setCurrentTag(null);
           navigate('/');
         }}
-        className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors font-medium"
+        className="flex items-center gap-1 font-medium transition-colors hover:text-gray-900 dark:hover:text-gray-100"
       >
         <Home className="w-4 h-4" />
         <span>Home</span>

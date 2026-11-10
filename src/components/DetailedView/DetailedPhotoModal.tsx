@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { libraryService } from '@/services/libraryService';
 import {
   X,
@@ -49,7 +50,6 @@ export const DetailedPhotoModal: React.FC = () => {
     currentFolder,
     currentTag,
     sortOptions,
-    restoreScrollPosition,
     folderTree,
     setCurrentFolder,
     setCurrentTag,
@@ -59,8 +59,26 @@ export const DetailedPhotoModal: React.FC = () => {
     navigationList,
     infoBoxSize,
     transitionEffect = 'slide',
-  } = useAppStore();
-  const { accentColor } = useAppStore();
+    accentColor,
+  } = useAppStore(
+    useShallow((state) => ({
+      detailedPhoto: state.detailedPhoto,
+      setDetailedPhoto: state.setDetailedPhoto,
+      currentFolder: state.currentFolder,
+      currentTag: state.currentTag,
+      sortOptions: state.sortOptions,
+      folderTree: state.folderTree,
+      setCurrentFolder: state.setCurrentFolder,
+      setCurrentTag: state.setCurrentTag,
+      saveScrollPosition: state.saveScrollPosition,
+      filters: state.filters,
+      searchQuery: state.searchQuery,
+      navigationList: state.navigationList,
+      infoBoxSize: state.infoBoxSize,
+      transitionEffect: state.transitionEffect,
+      accentColor: state.accentColor,
+    })),
+  );
   const [photo, setPhoto] = React.useState<any>(null);
   const [currentIndex, setCurrentIndex] = React.useState<number>(-1);
   const [viewMode, setViewMode] = React.useState<'fit' | 'vertical' | 'horizontal'>('fit');
@@ -1318,22 +1336,28 @@ export const DetailedPhotoModal: React.FC = () => {
     };
   }, [viewMode, photo, videoRef.current?.videoWidth, videoRef.current?.videoHeight]);
 
+  // Register the shortcut listener once and dispatch through a ref. Without a
+  // dependency array this effect tore down and re-added the window listener on
+  // every render, which during video playback meant several times a second.
+  const keyHandlerRef = React.useRef<(event: KeyboardEvent) => void>(() => undefined);
+  keyHandlerRef.current = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') closeModal();
+    if (event.key === 'ArrowLeft') showPrev();
+    if (event.key === 'ArrowRight') showNext();
+    if (event.key === 'v') selectViewMode('vertical');
+    if (event.key === 'h') selectViewMode('horizontal');
+    if (event.key === 'f') selectViewMode('fit');
+    if (event.key === 'i' || event.key === 'I') setIsInfoBoxVisible(!isInfoBoxVisible);
+    if (event.key === '+' || event.key === '=') handleZoomIn();
+    if (event.key === '-') handleZoomOut();
+    if (event.key === '0') handleResetZoom();
+  };
+
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal();
-      if (e.key === 'ArrowLeft') showPrev();
-      if (e.key === 'ArrowRight') showNext();
-      if (e.key === 'v') selectViewMode('vertical');
-      if (e.key === 'h') selectViewMode('horizontal');
-      if (e.key === 'f') selectViewMode('fit');
-      if (e.key === 'i' || e.key === 'I') setIsInfoBoxVisible(!isInfoBoxVisible);
-      if (e.key === '+' || e.key === '=') handleZoomIn();
-      if (e.key === '-') handleZoomOut();
-      if (e.key === '0') handleResetZoom();
-    };
+    const onKeyDown = (event: KeyboardEvent) => keyHandlerRef.current(event);
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  });
+  }, []);
 
   // Reset zoom when photo changes
   useEffect(() => {
@@ -1914,8 +1938,8 @@ export const DetailedPhotoModal: React.FC = () => {
           e.stopPropagation();
         }}
       >
-        {/* Previous image preview - always rendered for preloading, positioned based on swipe */}
-        {currentIndex > 0 && photos[currentIndex - 1] && (
+        {/* Previous image preview - only while a swipe is in progress */}
+        {swipeOffset !== 0 && currentIndex > 0 && photos[currentIndex - 1] && (
           <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
             style={getPrevPreviewStyle()}
@@ -1933,8 +1957,8 @@ export const DetailedPhotoModal: React.FC = () => {
           </div>
         )}
 
-        {/* Next image preview - always rendered for preloading, positioned based on swipe */}
-        {currentIndex < photos.length - 1 && photos[currentIndex + 1] && (
+        {/* Next image preview - only while a swipe is in progress */}
+        {swipeOffset !== 0 && currentIndex < photos.length - 1 && photos[currentIndex + 1] && (
           <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
             style={getNextPreviewStyle()}
@@ -1970,7 +1994,8 @@ export const DetailedPhotoModal: React.FC = () => {
             setDetailedPhoto(null);
             setCurrentTag(tag);
             setCurrentFolder(null);
-            window.location.href = generateTagUrl(tag);
+            // Client-side navigation; this used to reload the whole app.
+            navigate(generateTagUrl(tag));
           }}
         />
       )}

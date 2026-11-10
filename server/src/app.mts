@@ -57,7 +57,24 @@ export async function createApplication(): Promise<KiwiApplication> {
   );
   app.use(helmet({ contentSecurityPolicy: false }));
   if (process.env.NODE_ENV !== 'production') app.use(developmentCors());
-  app.use(rateLimit({ windowMs: 60_000, limit: 2_000, standardHeaders: 'draft-8', legacyHeaders: false }));
+
+  // Media bytes are exempt from the JSON rate limit: a single grid view issues
+  // hundreds of thumbnail requests, which previously exhausted the shared
+  // budget and made images appear broken.
+  const jsonRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 2_000,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  });
+  const mediaRoutePattern = /^\/api\/photos\/[^/]+\/(?:thumbnail|file|preview)$/;
+  app.use((request, response, next) => {
+    if (mediaRoutePattern.test(request.path)) {
+      next();
+      return;
+    }
+    jsonRateLimit(request, response, next);
+  });
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 

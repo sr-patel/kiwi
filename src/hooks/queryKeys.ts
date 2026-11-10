@@ -32,6 +32,7 @@ export const queryKeys = {
     ] as const,
   folderCounts: (recursive = false) => [...queryKeys.all, 'folder-counts', recursive] as const,
   folderThumbnail: (folderId: string) => [...queryKeys.all, 'folder-thumbnail', folderId] as const,
+  folderThumbnails: (idsKey: string) => [...queryKeys.all, 'folder-thumbnails', idsKey] as const,
   tags: () => [...queryKeys.all, 'tags'] as const,
   tagCounts: () => [...queryKeys.tags(), 'counts'] as const,
   tagNetwork: (minTagCount?: number, maxNodes?: number, connectionStrength?: string) =>

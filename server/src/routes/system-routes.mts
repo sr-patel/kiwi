@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { z } from 'zod';
 import type { LibraryContextManager } from '../library-context.mjs';
+import { readLibraryFolders } from '../library-metadata.mjs';
 import { parseInput } from '../validation.mjs';
 
 function flattenFolderNames(folders: unknown[], map: Record<string, string> = {}): Record<string, string> {
@@ -25,10 +24,7 @@ async function databaseStats(context: LibraryContextManager): Promise<Record<str
   ]);
   let folderNames: Record<string, string> = {};
   try {
-    const metadata = JSON.parse(await readFile(path.join(current.path, 'metadata.json'), 'utf8')) as {
-      folders?: unknown[];
-    };
-    folderNames = flattenFolderNames(metadata.folders ?? []);
+    folderNames = flattenFolderNames(await readLibraryFolders(current.path));
   } catch {
     // Dashboard remains available when optional folder metadata is malformed.
   }

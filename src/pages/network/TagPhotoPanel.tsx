@@ -31,7 +31,7 @@ function PanelThumbnail({
   const aspectRatio = photo.width && photo.height && photo.height > 0 ? photo.width / photo.height : 1;
 
   useEffect(() => {
-    const url = libraryService.getPhotoThumbnailUrl(photo.id, photo.name);
+    const url = libraryService.getPhotoThumbnailUrl(photo.id, photo.name, 400);
     setSrc(url);
   }, [photo.id, photo.name]);
 
@@ -48,6 +48,8 @@ function PanelThumbnail({
       {src ? (
         <img
           src={src}
+          srcSet={libraryService.getPhotoThumbnailSrcSet(photo.id, photo.name, [300, 600])}
+          sizes="(max-width: 600px) 45vw, 22vw"
           alt={photo.name}
           className="h-full w-full object-cover"
           loading="lazy"

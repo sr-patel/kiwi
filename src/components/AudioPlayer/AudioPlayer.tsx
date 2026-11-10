@@ -24,8 +24,15 @@ import {
   getAccentSelected,
   getAccentHex,
 } from '@/utils/accentColors';
+import { useShallow } from 'zustand/react/shallow';
 import './AudioPlayer.css';
 import { useAudio } from './AudioProvider';
+
+/** Two-digit hex alpha suffix for a 0..1 opacity value. */
+const alphaSuffix = (opacity: number): string =>
+  Math.round(Math.max(0, Math.min(1, opacity)) * 255)
+    .toString(16)
+    .padStart(2, '0');
 
 interface AudioPlayerProps {
   isOpen: boolean;
@@ -46,20 +53,29 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 }) => {
   const {
     accentColor,
-    podcastMode,
-    saveAudioTime,
-    getAudioTime,
     setMiniPlayer,
     isMiniPlayer,
     visualizerSettings,
     setVisualizerSettings,
-  } = useAppStore();
+    isShuffled,
+    isLooped,
+    setAudioPlayerState,
+  } = useAppStore(
+    useShallow((state) => ({
+      accentColor: state.accentColor,
+      setMiniPlayer: state.setMiniPlayer,
+      isMiniPlayer: state.isMiniPlayer,
+      visualizerSettings: state.visualizerSettings,
+      setVisualizerSettings: state.setVisualizerSettings,
+      isShuffled: state.audioPlayer.isShuffled,
+      isLooped: state.audioPlayer.isLooped,
+      setAudioPlayerState: state.setAudioPlayerState,
+    })),
+  );
 
-  const audioRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const smoothedDataRef = useRef<number[]>([]);
-  const SMOOTHING = 0.7; // 0.0 = no smoothing, 1.0 = very slow
 
   const {
     isPlaying,
@@ -74,58 +90,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     isMuted,
     getFrequencyData,
   } = useAudio();
-  const [isShuffled, setIsShuffled] = useState(false);
-  const [isLooped, setIsLooped] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // The provider owns the media element; a track reports no duration until it loads.
+  const isLoading = Boolean(currentAudio) && duration === 0;
+
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [showVisSettings, setShowVisSettings] = useState(false);
-
-  // Setup audio element
-  const setupAudio = useCallback(() => {
-    if (!currentAudio) return;
-
-    // Create a new audio element to avoid connection issues
-    const newAudio = new Audio();
-
-    const audioUrl = libraryService.getPhotoFileUrl(currentAudio.id, currentAudio.ext, currentAudio.name);
-
-    newAudio.src = audioUrl;
-    newAudio.volume = volume;
-    newAudio.muted = isMuted;
-
-    // Check if podcast mode is enabled and restore saved time
-    if (podcastMode.enabled) {
-      const savedTime = getAudioTime(currentAudio.id);
-      if (savedTime > 0) {
-        seek(savedTime);
-        // Set the audio element time after it loads
-        newAudio.addEventListener(
-          'loadedmetadata',
-          () => {
-            if (savedTime < newAudio.duration) {
-              newAudio.currentTime = savedTime;
-            }
-          },
-          { once: true },
-        );
-      } else {
-        seek(0);
-      }
-    } else {
-      seek(0);
-    }
-
-    // Add a timeout to handle cases where metadata never loads
-    const metadataTimeout = setTimeout(() => {
-      setIsLoading(false);
-    }, 10000); // 10 second timeout
-
-    // Store timeout reference for cleanup
-    newAudio.dataset.metadataTimeout = metadataTimeout.toString();
-  }, [currentAudio, volume, isMuted, getAudioTime, seek]);
 
   // Draw visualizer with improved design
   const drawVisualizer = useCallback(() => {
@@ -154,34 +125,22 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       const barWidth = canvas.width / barCount;
       let x = 0;
       const accent = getAccentHex(accentColor);
+      // One gradient and one shadow state per frame. This used to create a
+      // gradient and set `shadowBlur` per bar, wrapped in save/restore, up to
+      // 96 times per frame at 60fps.
+      const barGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      barGradient.addColorStop(0, accent + alphaSuffix(visualizerSettings.visOpacity));
+      barGradient.addColorStop(0.7, accent + alphaSuffix(visualizerSettings.visOpacity * 0.53));
+      barGradient.addColorStop(1, accent + '00');
+      ctx.save();
+      ctx.fillStyle = barGradient;
+      if (visualizerSettings.visGlow > 0) {
+        ctx.shadowColor = accent + alphaSuffix(visualizerSettings.visOpacity * 0.53);
+        ctx.shadowBlur = visualizerSettings.visGlow;
+      }
       for (let i = 0; i < barCount; i++) {
         const value = smoothedData[i] || 0;
         const height = (value / 255) * canvas.height * 0.8;
-        // Gradient: accent at top, transparent at bottom
-        const gradient = ctx.createLinearGradient(0, canvas.height - height, 0, canvas.height);
-        gradient.addColorStop(
-          0,
-          accent +
-            Math.floor(visualizerSettings.visOpacity * 255)
-              .toString(16)
-              .padStart(2, '0'),
-        );
-        gradient.addColorStop(
-          0.7,
-          accent +
-            Math.floor(visualizerSettings.visOpacity * 0.53 * 255)
-              .toString(16)
-              .padStart(2, '0'),
-        );
-        gradient.addColorStop(1, accent + '00');
-        ctx.save();
-        ctx.shadowColor =
-          accent +
-          Math.floor(visualizerSettings.visOpacity * 0.53 * 255)
-            .toString(16)
-            .padStart(2, '0');
-        ctx.shadowBlur = visualizerSettings.visGlow;
-        ctx.fillStyle = gradient;
         // Rounded corners
         const barX = x + barWidth * 0.1;
         const barW = barWidth * 0.8;
@@ -201,9 +160,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         ctx.quadraticCurveTo(barX, canvas.height - height, barX + radius, canvas.height - height);
         ctx.closePath();
         ctx.fill();
-        ctx.restore();
         x += barWidth;
       }
+      ctx.restore();
     } else if (visualizerSettings.visType === 'Waveform') {
       // Draw a smooth waveform line
       const barCount = visualizerSettings.visBarCount;
@@ -239,26 +198,18 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       const barWidth = canvas.width / barCount;
       let x = 0;
       const accent = getAccentHex(accentColor);
+      const barGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      barGradient.addColorStop(0, accent + alphaSuffix(visualizerSettings.visOpacity));
+      barGradient.addColorStop(1, accent + '00');
+      ctx.save();
+      ctx.fillStyle = barGradient;
+      if (visualizerSettings.visGlow > 0) {
+        ctx.shadowColor = accent + alphaSuffix(visualizerSettings.visOpacity * 0.53);
+        ctx.shadowBlur = visualizerSettings.visGlow;
+      }
       for (let i = 0; i < barCount; i++) {
         const value = smoothedData[i] || 0;
         const height = (value / 255) * canvas.height * 0.4;
-        const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(
-          0,
-          accent +
-            Math.floor(visualizerSettings.visOpacity * 255)
-              .toString(16)
-              .padStart(2, '0'),
-        );
-        gradient.addColorStop(1, accent + '00');
-        ctx.save();
-        ctx.shadowColor =
-          accent +
-          Math.floor(visualizerSettings.visOpacity * 0.53 * 255)
-            .toString(16)
-            .padStart(2, '0');
-        ctx.shadowBlur = visualizerSettings.visGlow;
-        ctx.fillStyle = gradient;
         const barX = x + barWidth * 0.1;
         const barW = barWidth * 0.8;
         const radius = barW * visualizerSettings.visBarRound;
@@ -289,117 +240,45 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         ctx.quadraticCurveTo(barX, canvas.height - height, barX + radius, canvas.height - height);
         ctx.closePath();
         ctx.fill();
-        ctx.restore();
         x += barWidth;
       }
+      ctx.restore();
     }
 
     animationRef.current = requestAnimationFrame(drawVisualizer);
   }, [accentColor, visualizerSettings, smoothedDataRef]);
 
-  // Audio event listeners
+  // Playback is owned by `AudioProvider`, which renders and controls the single
+  // <audio> element. This component used to register a second set of listeners
+  // on an `audioRef` that was never attached to any element, and also created a
+  // detached `new Audio()` per track that was never played and never released.
+
+  // Start/stop the visualizer with the player and tab visibility. The loop
+  // used to keep redrawing a full-screen canvas while the tab was hidden.
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const handleLoadedMetadata = () => {
-      // Clear any existing timeout
-      if (audio.dataset.metadataTimeout) {
-        clearTimeout(parseInt(audio.dataset.metadataTimeout));
-        delete audio.dataset.metadataTimeout;
-      }
-
-      setIsLoading(false);
-    };
-
-    const handleTimeUpdate = () => {
-      const currentTime = audio.currentTime;
-      seek(currentTime);
-
-      // Save time for podcast mode if enabled
-      if (podcastMode.enabled && currentAudio) {
-        saveAudioTime(currentAudio.id, currentTime);
-      }
-    };
-
-    const handleEnded = () => {
-      if (isLooped) {
-        audio.currentTime = 0;
-        play();
-      } else if (onNext) {
-        onNext();
-      }
-    };
-
-    const handleError = (e: Event) => {
-      // Clear any existing timeout
-      if (audio.dataset.metadataTimeout) {
-        clearTimeout(parseInt(audio.dataset.metadataTimeout));
-        delete audio.dataset.metadataTimeout;
-      }
-
-      setError('Failed to load audio file');
-      setIsLoading(false);
-    };
-
-    const handleCanPlay = () => {
-      // If we haven't loaded metadata yet but can play, try to get duration
-      if (audio.duration && audio.duration !== Infinity) {
-        setIsLoading(false);
-      }
-    };
-
-    const handleLoadedData = () => {
-      // If we still haven't loaded metadata, try to get duration
-      if (audio.duration && audio.duration !== Infinity) {
-        setIsLoading(false);
-      }
-    };
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('loadeddata', handleLoadedData);
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('error', handleError);
-      audio.removeEventListener('canplay', handleCanPlay);
-      audio.removeEventListener('loadeddata', handleLoadedData);
-
-      // Clear any existing timeout
-      if (audio.dataset.metadataTimeout) {
-        clearTimeout(parseInt(audio.dataset.metadataTimeout));
-        delete audio.dataset.metadataTimeout;
-      }
-    };
-  }, [isLooped, onNext, play]);
-
-  // Initialize when audio changes
-  useEffect(() => {
-    if (currentAudio) {
-      setupAudio();
-    }
-  }, [currentAudio?.id]); // Only depend on the audio ID, not the entire object
-
-  // Start visualizer when audio player is open
-  useEffect(() => {
-    if (isOpen && canvasRef.current) {
-      drawVisualizer();
-    } else if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
-
-    return () => {
-      if (animationRef.current) {
+    const stop = () => {
+      if (animationRef.current !== null) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
       }
+    };
+
+    const start = () => {
+      if (animationRef.current === null && canvasRef.current) drawVisualizer();
+    };
+
+    if (isOpen && !document.hidden) start();
+    else stop();
+
+    const onVisibilityChange = () => {
+      if (document.hidden) stop();
+      else if (isOpen) start();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      stop();
     };
   }, [isOpen, drawVisualizer]);
 
@@ -408,15 +287,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  // Get file size
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
   // For seek bar, implement onClick handler:
@@ -446,7 +316,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         />
 
         {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-gray-900/60 via-transparent to-gray-900/20 pointer-events-none z-15" />
+        <div className="absolute inset-0 bg-gradient-to-t from-gray-900/60 via-transparent to-gray-900/20 pointer-events-none z-[15]" />
 
         {/* Header */}
         <div className="relative z-20 flex items-center justify-between p-12 border-b border-gray-700/50">
@@ -551,21 +421,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 />
                 <span className="text-lg">Loading audio...</span>
               </div>
-            ) : error ? (
-              <div className="text-red-400 bg-red-500/10 p-6 rounded-xl">
-                <p className="font-medium text-lg">Error</p>
-                <p className="text-sm">{error}</p>
-                <button
-                  onClick={() => {
-                    setError(null);
-                    setIsLoading(true);
-                    setupAudio();
-                  }}
-                  className="mt-3 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-sm transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
             ) : (
               <div className="space-y-6">
                 {/* Album art placeholder */}
@@ -591,7 +446,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                       <Music className="w-5 h-5" />
                       {currentAudio?.ext?.toUpperCase() || 'AUDIO'}
                     </span>
-                    {currentAudio?.size && <span>{formatFileSize(currentAudio.size)}</span>}
+                    {currentAudio?.size && <span>{libraryService.formatFileSize(currentAudio.size)}</span>}
                   </div>
                   {duration === 0 && !isLoading && (
                     <p className="text-sm text-yellow-400 mt-3">
@@ -652,7 +507,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             <div className="flex items-center justify-center gap-8">
               <button
                 onClick={() => {
-                  setIsShuffled(!isShuffled);
+                  setAudioPlayerState({ isShuffled: !isShuffled });
                 }}
                 className={`p-4 rounded-xl transition-all duration-200 ${
                   isShuffled
@@ -709,7 +564,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
               <button
                 onClick={() => {
-                  setIsLooped(!isLooped);
+                  setAudioPlayerState({ isLooped: !isLooped });
                 }}
                 className={`p-4 rounded-xl transition-all duration-200 ${
                   isLooped ? 'text-white' : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700 hover:text-white'
@@ -771,8 +626,17 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     borderColor: currentAudio?.id === track.id ? `${getAccentHex(accentColor)}30` : undefined,
                   }}
                   onClick={() => {
-                    // Handle track selection
+                    setAudioPlayerState({ currentAudio: track, currentIndex: index });
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setAudioPlayerState({ currentAudio: track, currentIndex: index });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Play ${track.name}`}
                 >
                   <div className="w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
                     <span className="text-sm text-white font-medium">{index + 1}</span>

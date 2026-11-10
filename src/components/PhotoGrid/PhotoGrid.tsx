@@ -14,23 +14,41 @@ import {
   getAccentHover,
 } from '@/utils/accentColors';
 import { useInfinitePhotos, useRecursiveFolderCounts } from '@/hooks/useInfinitePhotos';
+import { useFolderThumbnails } from '@/hooks/useFolderThumbnails';
 import { usePhotosByTag } from '@/hooks/usePhotosByTag';
 import { useSearchPhotos } from '@/hooks/useSearchPhotos';
 // Removed all-photos hooks from PhotoGrid; we use pagination here
 import { SearchBar } from '@/components/SearchBar/SearchBar';
 import { FolderCard } from './FolderCard';
 import { shouldUseFileCard } from '@/utils/fileTypes';
-import { generateFolderUrl } from '@/utils/folderUrls';
+import { findFolderById, generateFolderUrl, getFolderIndex } from '@/utils/folderUrls';
 // Removed virtual scrolling
 import Masonry from 'react-masonry-css';
+import { useShallow } from 'zustand/react/shallow';
 
 interface PhotoGridProps {
   isMobile?: boolean;
 }
 
 // Virtual scrolling configuration
-const ITEMS_PER_PAGE = 50; // Number of items to load per page
-const BUFFER_SIZE = 100; // Number of items to keep in memory buffer
+/** Extensions handled by the audio player rather than the detail viewer. */
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'flac', 'aac', 'ogg', 'opus', 'm4a', 'wma']);
+const ABOVE_FOLD_COUNT = 8;
+/** Placeholder tiles shown while the first page loads; reserves layout height. */
+const SKELETON_TILE_COUNT = 12;
+
+/**
+ * Columns the masonry layout will use, mirroring `getMasonryBreakpoints`.
+ * Arrow-key navigation needs this to move a whole visual row at a time.
+ */
+const columnCountFor = (width: number, size: 'small' | 'medium' | 'large'): number => {
+  if (width <= 400) return size === 'large' ? 1 : 2;
+  if (width <= 600) return size === 'small' ? 3 : 2;
+  if (width <= 900) return size === 'small' ? 4 : size === 'medium' ? 3 : 2;
+  if (width <= 1200) return size === 'small' ? 6 : size === 'medium' ? 4 : 3;
+  if (width <= 1600) return size === 'small' ? 7 : size === 'medium' ? 5 : 3;
+  return size === 'small' ? 8 : size === 'medium' ? 6 : 4;
+};
 const SCROLL_THRESHOLD = 200; // Pixels from bottom to trigger load more
 const SCROLL_LOAD_AHEAD = 1000; // Reduced from 5000px to 1000px for less aggressive loading
 
@@ -69,6 +87,8 @@ const getMasonryBreakpoints = (thumbnailSize: 'small' | 'medium' | 'large') => {
 
 export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
   const navigate = useNavigate();
+  // `useShallow` keeps this component out of unrelated store updates (scroll
+  // positions, the audio clock, selection) without listing 25 separate hooks.
   const {
     currentView,
     setCurrentView,
@@ -77,32 +97,54 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
     sortOptions,
     setSortOptions,
     isLoading,
-    setIsLoading,
     currentFolder,
     currentTag,
     folderTree,
     accentColor,
-    useFolderThumbnails,
+    useFolderThumbnails: folderThumbnailsEnabled,
     setCurrentFolder,
     setDetailedPhoto,
     detailedPhoto,
     saveScrollPosition,
-    restoreScrollPosition,
-    clearScrollPosition,
     openAudioPlayer,
     podcastMode,
     togglePodcastMode,
     enableColorIntegration,
     enablePodcastMode,
-  } = useAppStore();
-  const { requestPageSize } = useAppStore();
-
-  const { searchQuery, setSearchQuery } = useAppStore();
+    searchQuery,
+  } = useAppStore(
+    useShallow((state) => ({
+      currentView: state.currentView,
+      setCurrentView: state.setCurrentView,
+      filters: state.filters,
+      setFilters: state.setFilters,
+      sortOptions: state.sortOptions,
+      setSortOptions: state.setSortOptions,
+      isLoading: state.isLoading,
+      currentFolder: state.currentFolder,
+      currentTag: state.currentTag,
+      folderTree: state.folderTree,
+      accentColor: state.accentColor,
+      useFolderThumbnails: state.useFolderThumbnails,
+      setCurrentFolder: state.setCurrentFolder,
+      setDetailedPhoto: state.setDetailedPhoto,
+      detailedPhoto: state.detailedPhoto,
+      saveScrollPosition: state.saveScrollPosition,
+      openAudioPlayer: state.openAudioPlayer,
+      podcastMode: state.podcastMode,
+      togglePodcastMode: state.togglePodcastMode,
+      enableColorIntegration: state.enableColorIntegration,
+      enablePodcastMode: state.enablePodcastMode,
+      searchQuery: state.searchQuery,
+    })),
+  );
   const [columnWidth, setColumnWidth] = useState('320px');
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  // Roving tabindex: the grid is a single tab stop and arrow keys move within it.
+  const [focusedIndex, setFocusedIndex] = useState(0);
 
   // Signal App that photo loading is about to begin so it can hide splash
   useEffect(() => {
@@ -258,32 +300,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
       ? totalLoaded < totalAvailable && totalAvailable > 0
       : hasNextPage;
 
-  // Auto-fill viewport for tag/search view: if content doesn't exceed viewport and more pages exist, fetch more
-  useEffect(() => {
-    if (detailedPhoto) return;
-    if (!currentTag && !searchQuery.trim()) return;
-    if (!effectiveHasNextPage || isFetchingNextPage) return;
-    const docHeight = document.documentElement.scrollHeight;
-    const needsMore = docHeight <= window.innerHeight + 100; // Reduced from 200 to 100
-    if (needsMore) {
-      if (currentTag) {
-        tagPhotosQuery.fetchNextPage();
-      } else if (searchQuery.trim().length > 0) {
-        searchPhotosQuery.fetchNextPage();
-      }
-    }
-  }, [
-    currentTag,
-    searchQuery,
-    detailedPhoto,
-    effectiveHasNextPage,
-    isFetchingNextPage,
-    tagPhotosQuery,
-    searchPhotosQuery,
-    totalLoaded,
-  ]);
-
-  // Less aggressively fill viewport for tag/search view - with delay and reduced frequency
+  // Single viewport-filler for tag/search views. There used to be a second,
+  // near-identical effect here that also called fetchNextPage, so both could
+  // fire and duplicate page requests.
   useEffect(() => {
     if (detailedPhoto) return;
     if (!currentTag && !searchQuery.trim()) return;
@@ -510,13 +529,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
 
     // Only trigger swipe if it's clearly horizontal and meets minimum distance
     if (isHorizontalSwipe && Math.abs(distanceX) > minSwipeDistance && Math.abs(distanceY) < 100) {
-      if (distanceX > 0) {
-        // Swiped left - go to next folder (if available)
-        navigateToNextFolder();
-      } else {
-        // Swiped right - go to previous folder (if available)
-        navigateToPreviousFolder();
-      }
+      // Swiped left advances, swiped right goes back.
+      goToSiblingFolder(distanceX > 0 ? 1 : -1);
     }
 
     // Reset touch state
@@ -524,86 +538,27 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
     setTouchEnd(null);
   };
 
-  const navigateToNextFolder = () => {
-    if (!folderTree || !currentFolder) return;
-
-    // Find current folder and get next sibling
-    const findFolderAndSiblings = (
-      folders: FolderNode[],
-      targetId: string,
-    ): { folder: FolderNode | null; siblings: FolderNode[] } => {
-      for (const folder of folders) {
-        if (folder.id === targetId) {
-          return { folder, siblings: folders };
-        }
-        const result = findFolderAndSiblings(folder.children, targetId);
-        if (result.folder) return result;
-      }
-      return { folder: null, siblings: [] };
-    };
-
-    const { folder, siblings } = findFolderAndSiblings(folderTree, currentFolder);
-    if (folder && siblings.length > 1) {
-      const currentIndex = siblings.findIndex((f) => f.id === currentFolder);
-      const nextIndex = (currentIndex + 1) % siblings.length;
-      const nextFolder = siblings[nextIndex];
-      if (folderTree) {
-        const nextFolderUrl = generateFolderUrl(nextFolder, folderTree);
-        navigate(nextFolderUrl);
-      }
-      setCurrentFolder(nextFolder.id);
-    }
-  };
-
-  const navigateToPreviousFolder = () => {
-    if (!folderTree || !currentFolder) return;
-
-    // Find current folder and get previous sibling
-    const findFolderAndSiblings = (
-      folders: FolderNode[],
-      targetId: string,
-    ): { folder: FolderNode | null; siblings: FolderNode[] } => {
-      for (const folder of folders) {
-        if (folder.id === targetId) {
-          return { folder, siblings: folders };
-        }
-        const result = findFolderAndSiblings(folder.children, targetId);
-        if (result.folder) return result;
-      }
-      return { folder: null, siblings: [] };
-    };
-
-    const { folder, siblings } = findFolderAndSiblings(folderTree, currentFolder);
-    if (folder && siblings.length > 1) {
-      const currentIndex = siblings.findIndex((f) => f.id === currentFolder);
-      const prevIndex = currentIndex === 0 ? siblings.length - 1 : currentIndex - 1;
-      const prevFolder = siblings[prevIndex];
-      if (folderTree) {
-        const prevFolderUrl = generateFolderUrl(prevFolder, folderTree);
-        navigate(prevFolderUrl);
-      }
-      setCurrentFolder(prevFolder.id);
-    }
-  };
-
-  // Helper function to find subfolders of current folder
-  const getSubfolders = (): FolderNode[] => {
-    if (!folderTree || !currentFolder) return [];
-
-    const findFolder = (folders: FolderNode[], folderId: string): FolderNode | null => {
-      for (const folder of folders) {
-        if (folder.id === folderId) {
-          return folder;
-        }
-        const found = findFolder(folder.children, folderId);
-        if (found) return found;
-      }
-      return null;
-    };
-
-    const currentFolderNode = findFolder(folderTree, currentFolder);
-    return currentFolderNode ? currentFolderNode.children : [];
-  };
+  /**
+   * Horizontal swipe moves to the next/previous sibling folder.
+   * This used to be two near-identical functions, each of which recursed the
+   * whole tree on every call.
+   */
+  const goToSiblingFolder = useCallback(
+    (direction: 1 | -1) => {
+      if (!folderTree || !currentFolder) return;
+      const index = getFolderIndex(folderTree);
+      const parentId = index.parentById.get(currentFolder) ?? null;
+      const siblings = parentId ? (index.byId.get(parentId)?.children ?? []) : folderTree;
+      if (siblings.length < 2) return;
+      const currentIndex = siblings.findIndex((folder) => folder.id === currentFolder);
+      if (currentIndex === -1) return;
+      const target = siblings[(currentIndex + direction + siblings.length) % siblings.length];
+      const url = generateFolderUrl(target, folderTree);
+      if (url) navigate(url);
+      setCurrentFolder(target.id);
+    },
+    [currentFolder, folderTree, navigate, setCurrentFolder],
+  );
 
   // Helper function to count all files in a folder including nested subfolders
   const getTotalPhotoCount = (folder: FolderNode): number => {
@@ -611,9 +566,18 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
     return recursiveFolderCounts[folder.id] || 0;
   };
 
-  const subfolders = getSubfolders().sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
-  );
+  const subfolders = useMemo(() => {
+    if (!folderTree || !currentFolder) return [];
+    const node = findFolderById(folderTree, currentFolder);
+    if (!node) return [];
+    return [...node.children].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+    );
+  }, [folderTree, currentFolder]);
+
+  // One batched request for every subfolder thumbnail instead of one per card.
+  const subfolderIds = useMemo(() => subfolders.map((folder) => folder.id), [subfolders]);
+  const { thumbnails: folderThumbnails } = useFolderThumbnails(subfolderIds, !!folderThumbnailsEnabled);
 
   // Update column width based on thumbnail size
   useEffect(() => {
@@ -668,58 +632,43 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
       filtered = filtered.filter((photo) => filters.fileTypes.includes(photo.ext.toLowerCase()));
     }
 
-    // Ensure unique photos by ID to prevent duplicate key warnings
-    const uniquePhotos = filtered.filter(
-      (photo, index, self) => index === self.findIndex((p) => p.id === photo.id),
-    );
-
-    // Debug: Log if duplicates were found (disabled for performance)
-    // if (uniquePhotos.length !== filtered.length) {
-    //   console.warn(`Found ${filtered.length - uniquePhotos.length} duplicate photos, removed them`);
-    // }
-
+    // Deduplicate by id in one pass; the old findIndex-per-item scan was O(n^2).
+    const seenIds = new Set<string>();
+    const uniquePhotos: PhotoMetadata[] = [];
+    for (const photo of filtered) {
+      if (seenIds.has(photo.id)) continue;
+      seenIds.add(photo.id);
+      uniquePhotos.push(photo);
+    }
     return uniquePhotos;
   }, [photos, searchQuery, filters, currentTag]);
 
-  const handlePhotoDoubleClick = (photo: PhotoMetadata) => {
-    // Check if it's an audio file
-    const audioExtensions = ['mp3', 'wav', 'flac', 'aac', 'ogg', 'opus', 'm4a', 'wma'];
-    if (audioExtensions.includes(photo.ext.toLowerCase())) {
-      // Open audio player for audio files
-      openAudioPlayer(photo, photos); // Pass current photos as playlist
-    } else {
-      // Save current scroll position before opening detailed view
-      saveScrollPosition(window.scrollY);
-      // Prevent any pagination caused by this click/scroll
-      suppressPaginationRef.current = true;
-      // Capture exact on-screen order (filteredPhotos) for navigation
-      if (useAppStore.getState().setNavigationList) {
-        const navList = filteredPhotos.map((p) => p.id);
-        useAppStore.getState().setNavigationList(navList);
+  // Latest-value refs keep `handlePhotoOpen` referentially stable, so memoised
+  // cards do not re-render every time the page data changes.
+  const photosRef = useRef<PhotoMetadata[]>(photos);
+  photosRef.current = photos;
+  const filteredPhotosRef = useRef<PhotoMetadata[]>(filteredPhotos);
+  filteredPhotosRef.current = filteredPhotos;
+
+  const handlePhotoOpen = useCallback(
+    (photo: PhotoMetadata) => {
+      if (AUDIO_EXTENSIONS.has(photo.ext?.toLowerCase() ?? '')) {
+        openAudioPlayer(photo, photosRef.current);
+        return;
       }
-      // Set active photo (detailed view) so the grid highlights it
+      // Save scroll position and capture the exact on-screen order for navigation
+      saveScrollPosition(window.scrollY);
+      suppressPaginationRef.current = true;
+      useAppStore.getState().setNavigationList(filteredPhotosRef.current.map((p) => p.id));
       setDetailedPhoto(photo.id);
-    }
-  };
+    },
+    [openAudioPlayer, saveScrollPosition, setDetailedPhoto],
+  );
 
   const handleSubfolderClick = (folderId: string) => {
     if (folderTree) {
-      const findFolder = (folders: FolderNode[], targetId: string): FolderNode | null => {
-        for (const folder of folders) {
-          if (folder.id === targetId) {
-            return folder;
-          }
-          const found = findFolder(folder.children, targetId);
-          if (found) return found;
-        }
-        return null;
-      };
-
-      const folder = findFolder(folderTree, folderId);
-      if (folder) {
-        const folderUrl = generateFolderUrl(folder, folderTree);
-        navigate(folderUrl);
-      }
+      const folder = findFolderById(folderTree, folderId);
+      if (folder) navigate(generateFolderUrl(folder, folderTree));
     }
     setCurrentFolder(folderId);
   };
@@ -793,50 +742,86 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
   // Helper function to render the appropriate card component
   const renderCard = useCallback(
     (photo: PhotoMetadata, index: number) => {
-      const cardRef = undefined;
-
-      // Determine if this is above the fold (first row for eager loading)
-      const isAboveFold = index < 8; // First 8 items are likely above fold
-
       const commonProps = {
         size: currentView.thumbnailSize,
-        onDoubleClick: handlePhotoDoubleClick,
-        isMobile: isMobile,
-        isAboveFold: isAboveFold,
-        index: index,
+        onOpen: handlePhotoOpen,
+        isMobile,
+        isAboveFold: index < ABOVE_FOLD_COUNT,
+        index,
+        tabIndex: index === focusedIndex ? 0 : -1,
       };
 
-      // Use a stable key so items don't remount on pagination/reorder
-      const uniqueKey = photo.id;
-
-      if (shouldUseFileCard(photo.ext)) {
-        return (
-          <div key={uniqueKey} ref={cardRef}>
-            <FileCard file={photo} {...commonProps} />
-          </div>
-        );
-      } else {
-        // Use SimplePhotoCard for now (revert to working solution)
-        return (
-          <div key={uniqueKey} ref={cardRef}>
-            <SimplePhotoCard photo={photo} {...commonProps} />
-          </div>
-        );
-      }
+      // Stable key so items don't remount on pagination/reorder.
+      return shouldUseFileCard(photo.ext) ? (
+        <FileCard key={photo.id} file={photo} {...commonProps} />
+      ) : (
+        <SimplePhotoCard key={photo.id} photo={photo} {...commonProps} />
+      );
     },
-    [currentView.thumbnailSize, handlePhotoDoubleClick, isMobile, filteredPhotos.length],
+    [currentView.thumbnailSize, handlePhotoOpen, isMobile, focusedIndex],
   );
 
-  // Virtual scrolling removed
+  /**
+   * Arrow-key navigation across the grid.
+   * Without a roving tabindex every card was its own tab stop, so a folder of
+   * 500 photos meant 500 presses of Tab to reach the toolbar.
+   */
+  const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const rawIndex = (event.target as HTMLElement | null)?.dataset?.gridIndex;
+    if (rawIndex === undefined) return;
+    const current = Number.parseInt(rawIndex, 10);
+    if (!Number.isFinite(current)) return;
 
-  // Debug: Check for audio files
-  const audioFiles = filteredPhotos.filter((photo) => {
-    const ext = photo.ext?.toLowerCase();
-    return ext && ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'wma', 'opus'].includes(ext);
-  });
+    const columns = isMobile ? 2 : columnCountFor(window.innerWidth, currentView.thumbnailSize);
 
-  // console.log('PhotoGrid: Audio files found:', audioFiles.length, 'Total files:', filteredPhotos.length);
-  // console.log('PhotoGrid: Using fast search:', searchQuery.trim().length > 0, 'Search query:', searchQuery);
+    let next: number;
+    switch (event.key) {
+      case 'ArrowRight':
+        next = current + 1;
+        break;
+      case 'ArrowLeft':
+        next = current - 1;
+        break;
+      case 'ArrowDown':
+        next = current + columns;
+        break;
+      case 'ArrowUp':
+        next = current - columns;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = filteredPhotos.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    const bounded = Math.max(0, Math.min(filteredPhotos.length - 1, next));
+    event.preventDefault();
+    if (bounded === current) return;
+
+    setFocusedIndex(bounded);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-grid-index="${bounded}"]`)?.focus();
+    });
+  };
+
+  // Keep the roving index valid when the visible set changes.
+  useEffect(() => {
+    setFocusedIndex((current) => (current >= filteredPhotos.length ? 0 : current));
+  }, [filteredPhotos.length]);
+
+  useEffect(() => {
+    setFocusedIndex(0);
+  }, [currentFolder, currentTag, searchQuery]);
+
+  // Only used to decide whether the podcast-mode toggle is relevant.
+  const hasAudioFiles = useMemo(
+    () => filteredPhotos.some((photo) => AUDIO_EXTENSIONS.has(photo.ext?.toLowerCase() ?? '')),
+    [filteredPhotos],
+  );
 
   // Determine loading state from query hooks
   let loading = false;
@@ -859,6 +844,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
   return (
     <div
       className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4"
+      onKeyDown={handleGridKeyDown}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -937,7 +923,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
               </div>
 
               {/* Podcast Mode Toggle - only show when there are audio files and podcast mode is enabled in settings */}
-              {audioFiles.length > 0 && enablePodcastMode && (
+              {hasAudioFiles && enablePodcastMode && (
                 <button
                   onClick={togglePodcastMode}
                   className={`flex items-center gap-2 px-3 py-2 border ${getConditionalAccentBorder(accentColor)} rounded-lg transition-colors touch-manipulation ${
@@ -1076,7 +1062,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
               <FolderCard
                 key={subfolder.id}
                 subfolder={subfolder}
-                useFolderThumbnails={!!useFolderThumbnails}
+                thumbnail={folderThumbnails[subfolder.id] ?? null}
                 getTotalPhotoCount={getTotalPhotoCount}
                 onClick={() => handleSubfolderClick(subfolder.id)}
               />
@@ -1103,78 +1089,79 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ isMobile = false }) => {
       )}
 
       {loading && !queryError && (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div
-              className={`animate-spin rounded-full h-12 w-12 border-b-2 ${getAccentColor(accentColor)} mx-auto mb-4`}
-            ></div>
-            <p className="text-gray-600 dark:text-gray-400">Loading files...</p>
+        <>
+          <p className="sr-only" role="status" aria-live="polite">
+            Loading files
+          </p>
+          {/* Skeleton tiles reserve the grid's height so the page does not jump
+              and the pagination sentinel does not oscillate. */}
+          <div
+            aria-hidden
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-3"
+          >
+            {Array.from({ length: SKELETON_TILE_COUNT }, (_, index) => (
+              <div
+                key={index}
+                className="aspect-[4/3] animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800"
+              />
+            ))}
           </div>
-        </div>
+        </>
       )}
 
       {/* File Grid - only show when there are files */}
       {!loading && !queryError && filteredPhotos.length > 0 && (
         <>
-          {/* No virtual scrolling */}
-          {false ? (
-            <></>
-          ) : (
-            <>
-              {/* Mobile Two-Column Grid */}
-              {isMobile && currentView.type === 'grid' && (
-                <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full">
-                  {filteredPhotos.map((photo, index) => renderCard(photo, index))}
-                  {isFetchingNextPage && (
-                    <div className="col-span-2 flex items-center justify-center py-8">
-                      <div
-                        className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)}`}
-                      ></div>
-                    </div>
-                  )}
+          {/* Mobile Two-Column Grid */}
+          {isMobile && currentView.type === 'grid' && (
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full">
+              {filteredPhotos.map((photo, index) => renderCard(photo, index))}
+              {isFetchingNextPage && (
+                <div className="col-span-2 flex items-center justify-center py-8">
+                  <div
+                    className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)}`}
+                  ></div>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Desktop File Grid (row-first masonry) */}
-              {!isMobile && currentView.type === 'grid' && (
-                <Masonry
-                  breakpointCols={getMasonryBreakpoints(currentView.thumbnailSize)}
-                  className="my-masonry-grid"
-                  columnClassName="my-masonry-grid_column"
-                >
-                  {filteredPhotos.map((photo, index) => renderCard(photo, index))}
-                  {isFetchingNextPage && (
-                    <div className="col-span-full flex items-center justify-center py-8">
-                      <div
-                        className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)}`}
-                      ></div>
-                    </div>
-                  )}
-                </Masonry>
-              )}
-
-              {/* List View */}
-              {currentView.type === 'list' && (
-                <div className="space-y-2">
-                  {filteredPhotos.map((photo, index) => renderCard(photo, index))}
-                  {isFetchingNextPage && (
-                    <div className="flex items-center justify-center py-8">
-                      <div
-                        className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)}`}
-                      ></div>
-                    </div>
-                  )}
+          {/* Desktop File Grid (row-first masonry) */}
+          {!isMobile && currentView.type === 'grid' && (
+            <Masonry
+              breakpointCols={getMasonryBreakpoints(currentView.thumbnailSize)}
+              className="my-masonry-grid"
+              columnClassName="my-masonry-grid_column"
+            >
+              {filteredPhotos.map((photo, index) => renderCard(photo, index))}
+              {isFetchingNextPage && (
+                <div className="col-span-full flex items-center justify-center py-8">
+                  <div
+                    className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)}`}
+                  ></div>
                 </div>
               )}
-            </>
+            </Masonry>
+          )}
+
+          {/* List View */}
+          {currentView.type === 'list' && (
+            <div className="space-y-2">
+              {filteredPhotos.map((photo, index) => renderCard(photo, index))}
+              {isFetchingNextPage && (
+                <div className="flex items-center justify-center py-8">
+                  <div
+                    className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getAccentColor(accentColor)}`}
+                  ></div>
+                </div>
+              )}
+            </div>
           )}
         </>
       )}
 
       {/* Load more sentinel for pagination */}
       <div ref={loadMoreRef} className="h-1" />
-
-      {/* Manual load more fallback removed per request; rely on sentinel */}
 
       {/* Empty state - only show when no files AND no subfolders */}
       {!loading && !queryError && filteredPhotos.length === 0 && subfolders.length === 0 && (

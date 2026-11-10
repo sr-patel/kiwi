@@ -46,12 +46,27 @@ img {
   user-select: none;
 }
 
-/* Smooth transitions */
-* {
+/*
+ * Theme transitions.
+ *
+ * This used to be `*`, which put a transition on every element in the
+ * document. With a masonry grid of hundreds of cards that forced style
+ * recalculations across the whole tree on every hover and every store update.
+ * Scope it to the page shell and to elements that opt in.
+ */
+body,
+.theme-transition {
   transition:
     background-color 0.2s ease,
     border-color 0.2s ease,
     color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .theme-transition {
+    transition: none;
+  }
 }
 
 /* Focus styles for accessibility */

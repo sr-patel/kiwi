@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { useInRouterContext, useNavigate } from 'react-router-dom';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 interface Props {
@@ -12,6 +13,31 @@ interface State {
   error: Error | null;
   errorInfo: ErrorInfo | null;
 }
+
+const homeButtonClassName =
+  'flex-1 flex items-center justify-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors';
+
+/** Navigates client-side when a router is present, so recovery does not reload the app. */
+const HomeButtonInRouter: React.FC = () => {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate('/')} className={homeButtonClassName}>
+      <Home className="w-4 h-4 mr-2" />
+      Go Home
+    </button>
+  );
+};
+
+const HomeButton: React.FC = () => {
+  const inRouter = useInRouterContext();
+  if (inRouter) return <HomeButtonInRouter />;
+  return (
+    <button type="button" onClick={() => window.location.assign('/')} className={homeButtonClassName}>
+      <Home className="w-4 h-4 mr-2" />
+      Go Home
+    </button>
+  );
+};
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -38,7 +64,7 @@ export class ErrorBoundary extends Component<Props, State> {
     });
 
     // Log error to console in development
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.error('ErrorBoundary caught an error:', error, errorInfo);
     }
 
@@ -57,10 +83,6 @@ export class ErrorBoundary extends Component<Props, State> {
       error: null,
       errorInfo: null,
     });
-  };
-
-  handleGoHome = () => {
-    window.location.href = '/';
   };
 
   render() {
@@ -87,7 +109,7 @@ export class ErrorBoundary extends Component<Props, State> {
               persists.
             </p>
 
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <div className="mb-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
                 <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
                   Error Details (Development Only):
@@ -108,13 +130,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 Try Again
               </button>
 
-              <button
-                onClick={this.handleGoHome}
-                className="flex-1 flex items-center justify-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                <Home className="w-4 h-4 mr-2" />
-                Go Home
-              </button>
+              <HomeButton />
             </div>
           </div>
         </div>

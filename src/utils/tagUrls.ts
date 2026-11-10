@@ -11,7 +11,12 @@ export const generateTagUrl = (tag: string): string => {
  */
 export const parseTagFromUrl = (tagPath: string): string | null => {
   if (!tagPath) return null;
-  return decodeURIComponent(tagPath);
+  try {
+    return decodeURIComponent(tagPath);
+  } catch {
+    // Malformed escape sequences (for example "%") must not crash the route.
+    return null;
+  }
 };
 
 /**

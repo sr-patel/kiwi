@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { HttpError } from '@/services/apiClient';
 
 interface Props {
   children: ReactNode;
@@ -23,12 +24,14 @@ export class ApiErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
+    // Classify on type rather than loose substring matching: treating every
+    // TypeError as a network failure mislabelled ordinary render bugs.
     const isNetworkError =
-      error.message.includes('Failed to fetch') ||
-      error.message.includes('NetworkError') ||
-      error.message.includes('timeout') ||
-      error.message.includes('ENOBUFS') ||
-      error.name === 'TypeError';
+      error instanceof HttpError
+        ? error.status >= 500 || error.status === 408 || error.status === 429
+        : error.name === 'TimeoutError' ||
+          error.name === 'TypeError' ||
+          /Failed to fetch|NetworkError|ENOBUFS/i.test(error.message);
 
     return {
       hasError: true,
@@ -58,7 +61,10 @@ export class ApiErrorBoundary extends Component<Props, State> {
       const { error, isNetworkError } = this.state;
 
       return (
-        <div className="flex flex-col items-center justify-center p-8 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div
+          role="alert"
+          className="flex flex-col items-center justify-center p-8 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+        >
           <div className="flex items-center justify-center w-16 h-16 mb-4 bg-red-100 dark:bg-red-900 rounded-full">
             {isNetworkError ? (
               <WifiOff className="w-8 h-8 text-red-600 dark:text-red-400" />
@@ -77,15 +83,16 @@ export class ApiErrorBoundary extends Component<Props, State> {
               : 'There was an error loading data. Please try again.'}
           </p>
 
-          {process.env.NODE_ENV === 'development' && error && (
+          {import.meta.env.DEV && error && (
             <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-600 dark:text-gray-400 max-w-md">
               <strong>Error:</strong> {error.message}
             </div>
           )}
 
           <button
+            type="button"
             onClick={this.handleRetry}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
           >
             <RefreshCw className="w-4 h-4 mr-2" />
             Try Again

@@ -18,6 +18,11 @@ Back up the complete host `data/` directory. It contains configuration, SQLite d
 
 If an automatic migration must be rolled back, stop Kiwi and replace the database with its `.pre-v2-backup` sibling. Keep the backup until the upgraded library has been checked.
 
+`data/cache/thumbnails/` holds resized WebP thumbnails derived from your Eagle library. It is regenerable
+at any time, so it can be excluded from backups or deleted to reclaim space; Kiwi rebuilds entries on
+demand. Stale entries older than 30 days are pruned automatically. The host `data/` directory must stay
+writable for the cache to work — if it is read-only, Kiwi keeps serving Eagle's original thumbnails.
+
 ## Local development
 
 ```bash

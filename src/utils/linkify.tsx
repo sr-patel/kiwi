@@ -1,10 +1,14 @@
 import React from 'react';
 
 /**
- * URL detection regex pattern
+ * URL detection pattern. Stored as a source string because a single global
+ * RegExp instance cannot be reused: `RegExp.prototype.test` advances
+ * `lastIndex`, which made consecutive `test()` calls alternate between
+ * true/false and silently skipped half of the URLs in a text.
  * Matches http://, https://, ftp://, and www. URLs
  */
-const URL_REGEX = /(https?:\/\/[^\s]+|ftp:\/\/[^\s]+|www\.[^\s]+)/gi;
+const URL_PATTERN_SOURCE = '(https?:\\/\\/[^\\s]+|ftp:\\/\\/[^\\s]+|www\\.[^\\s]+)';
+const URL_MATCHER = new RegExp(`^${URL_PATTERN_SOURCE}$`, 'i');
 
 /**
  * Validates if a URL is properly formatted
@@ -37,11 +41,12 @@ const normalizeUrl = (url: string): string => {
 export const linkifyText = (text: string, className?: string): React.ReactNode => {
   if (!text) return text;
 
-  const parts = text.split(URL_REGEX);
+  // A fresh global regex per call keeps `split` stateless.
+  const parts = text.split(new RegExp(URL_PATTERN_SOURCE, 'gi'));
 
   return parts.map((part, index) => {
-    // Check if this part is a URL
-    if (URL_REGEX.test(part) && isValidUrl(part)) {
+    // Anchored, non-global test: no `lastIndex` state to leak between parts.
+    if (URL_MATCHER.test(part) && isValidUrl(part)) {
       const href = normalizeUrl(part);
       return (
         <a

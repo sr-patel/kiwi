@@ -33,6 +33,10 @@ Known configuration values are validated. Unknown legacy fields are returned and
 - `GET /api/photos/:id/file`, `/thumbnail`, `/preview`
 - `GET /api/folders/counts`, `/counts/recursive`
 - `GET /api/folders/:folderId/count`, `/thumbnail`
+- `GET /api/folders/thumbnails?ids=a,b,c` — batched form of `/thumbnail`, returning
+  `{ "<folderId>": { "id", "name", "ext" } | null }`. Ids are de-duplicated, capped at 200 per request,
+  and validated exactly like the single-folder route. A folder with no images maps to `null`. This exists so
+  a folder view resolves every subfolder thumbnail in one round trip instead of one request per card.
 
 Listing endpoints return:
 
@@ -43,6 +47,23 @@ Listing endpoints return:
 Existing fields remain. Pagination accepts `limit`, `offset`, `orderBy`, `orderDirection`, and optional `randomSeed`; numeric complexity is clamped to safe bounds. Seeded random order is deterministic in SQLite, so later pages remain stable.
 
 Media query parameters remain accepted for URL compatibility, but the server resolves the actual filename and extension from trusted database metadata. Byte range and long-lived cache behavior remain available. Raw library, database-debug, and test routes are disabled in production.
+
+### Thumbnail sizing
+
+`GET /api/photos/:id/thumbnail` accepts an optional `w` width. Requests are snapped to the nearest
+supported step (200, 300, 400, 600, 800, 1200) so `srcset` URLs stay predictable, and the response is
+`image/webp`. For example:
+
+```
+/api/photos/<id>/thumbnail?w=300
+/api/photos/<id>/thumbnail?w=600
+```
+
+Rendered sizes are cached on disk under `<data>/cache/thumbnails/<library-hash>/` and revalidated by
+the source thumbnail's modification time, so an Eagle re-render is picked up automatically. The cache is
+derived data and safe to delete; stale entries are pruned opportunistically after 30 days. Omitting `w`
+keeps the original behaviour and returns Eagle's own thumbnail unchanged, which is the fallback whenever
+resizing is unavailable.
 
 ## Search, tags, and database
 

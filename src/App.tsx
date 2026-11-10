@@ -21,6 +21,7 @@ import { ServerConnectionScreen } from '@/components/SetupWizard/ServerConnectio
 import { useLibrarySyncRefresh } from '@/hooks/useLibrarySyncRefresh';
 import { kiwiApi } from '@/services/kiwiApi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useShallow } from 'zustand/react/shallow';
 import { queryKeys } from '@/hooks/queryKeys';
 import './App.css';
 
@@ -116,6 +117,8 @@ const FolderRoute: React.FC<{ isMobile: boolean }> = ({ isMobile }) => {
 // ─── Main App ───
 
 function App() {
+  // Targeted selectors instead of the whole store: this component used to
+  // re-render on every store write, including the audio clock.
   const {
     sidebarOpen,
     setSidebarOpen,
@@ -130,19 +133,44 @@ function App() {
     setCurrentFolder,
     setCurrentTag,
     setFolderTree,
-    accentColor,
-    audioPlayer,
     closeAudioPlayer,
     playNextAudio,
     playPreviousAudio,
     isMiniPlayer,
-  } = useAppStore();
+    folderTree,
+    audioIsOpen,
+    audioCurrentAudio,
+    audioPlaylist,
+  } = useAppStore(
+    useShallow((state) => ({
+      sidebarOpen: state.sidebarOpen,
+      setSidebarOpen: state.setSidebarOpen,
+      sidebarWidth: state.sidebarWidth,
+      currentLibraryPath: state.currentLibraryPath,
+      setCurrentLibraryPath: state.setCurrentLibraryPath,
+      setIsLoading: state.setIsLoading,
+      theme: state.theme,
+      toggleTheme: state.toggleTheme,
+      isMobile: state.isMobile,
+      setIsMobile: state.setIsMobile,
+      setCurrentFolder: state.setCurrentFolder,
+      setCurrentTag: state.setCurrentTag,
+      setFolderTree: state.setFolderTree,
+      closeAudioPlayer: state.closeAudioPlayer,
+      playNextAudio: state.playNextAudio,
+      playPreviousAudio: state.playPreviousAudio,
+      isMiniPlayer: state.isMiniPlayer,
+      folderTree: state.folderTree,
+      audioIsOpen: state.audioPlayer.isOpen,
+      audioCurrentAudio: state.audioPlayer.currentAudio,
+      audioPlaylist: state.audioPlayer.playlist,
+    })),
+  );
 
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const [showSplash, setShowSplash] = useState(true);
-  const { folderTree } = useAppStore();
   const configQuery = useQuery({
     queryKey: queryKeys.config(),
     queryFn: ({ signal }) => kiwiApi.config.get(signal),
@@ -364,18 +392,15 @@ function App() {
 
             {/* Mobile overlay */}
             {sidebarOpen && isMobile && (
-              <div
-                className="fixed inset-0 bg-black bg-opacity-50 z-40"
-                onClick={() => setSidebarOpen(false)}
-              />
+              <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setSidebarOpen(false)} />
             )}
 
             <DetailedPhotoModal />
             <AudioPlayer
-              isOpen={audioPlayer.isOpen}
+              isOpen={audioIsOpen}
               onClose={closeAudioPlayer}
-              currentAudio={audioPlayer.currentAudio}
-              playlist={audioPlayer.playlist}
+              currentAudio={audioCurrentAudio}
+              playlist={audioPlaylist}
               onNext={playNextAudio}
               onPrevious={playPreviousAudio}
             />

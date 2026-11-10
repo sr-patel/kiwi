@@ -4,6 +4,7 @@ import { useTags } from '@/hooks/useTags';
 import { useTagCounts } from '@/hooks/useTagCounts';
 import { getAccentHex } from '@/utils/accentColors';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { filterTags } from '@/utils/tagSearch';
 
 interface TagSelectorProps {
@@ -21,7 +22,12 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
 }) => {
   const { data: allTags = [], isLoading } = useTags();
   const { data: tagCounts } = useTagCounts();
-  const { accentColor, enableColorIntegration } = useAppStore();
+  const { accentColor, enableColorIntegration } = useAppStore(
+    useShallow((state) => ({
+      accentColor: state.accentColor,
+      enableColorIntegration: state.enableColorIntegration,
+    })),
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);

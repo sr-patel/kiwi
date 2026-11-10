@@ -1,23 +1,22 @@
 import React from 'react';
-import { useFolderThumbnail } from '@/hooks/useFolderThumbnail';
+import type { FolderThumbnail } from '@/hooks/useFolderThumbnails';
 import { libraryService } from '@/services/libraryService';
 import { FolderNode } from '@/types';
 
 interface FolderCardProps {
   subfolder: FolderNode;
-  useFolderThumbnails: boolean;
+  /** Representative photo for this folder, resolved in one batched request. */
+  thumbnail: FolderThumbnail | null;
   getTotalPhotoCount: (folder: FolderNode) => number;
   onClick: () => void;
 }
 
 export const FolderCard: React.FC<FolderCardProps> = ({
   subfolder,
-  useFolderThumbnails,
+  thumbnail,
   getTotalPhotoCount,
   onClick,
 }) => {
-  const { thumbnail } = useFolderThumbnail(subfolder.id, useFolderThumbnails);
-
   return (
     <button
       onClick={onClick}
@@ -27,9 +26,13 @@ export const FolderCard: React.FC<FolderCardProps> = ({
       <div className="flex-1 relative mb-3 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden group-hover:bg-gray-200 dark:group-hover:bg-gray-600 transition-colors min-h-[120px]">
         {thumbnail ? (
           <img
-            src={libraryService.getPhotoThumbnailUrl(thumbnail.id, thumbnail.name)}
+            src={libraryService.getPhotoThumbnailUrl(thumbnail.id, thumbnail.name, 400)}
+            srcSet={libraryService.getPhotoThumbnailSrcSet(thumbnail.id, thumbnail.name, [200, 400])}
+            sizes="(max-width: 600px) 45vw, (max-width: 1200px) 20vw, 12vw"
             alt={thumbnail.name}
             className="w-full h-full object-contain"
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">

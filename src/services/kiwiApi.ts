@@ -8,6 +8,7 @@ import {
   CountMapSchema,
   DashboardStatsSchema,
   FolderThumbnailSchema,
+  FolderThumbnailMapSchema,
   LibraryMetadataSchema,
   PhotoSchema,
   SuccessResponseSchema,
@@ -58,6 +59,11 @@ export const kiwiApi = {
     thumbnail: (folderId: string, signal?: AbortSignal) =>
       apiRequest(`/api/folders/${encodeURIComponent(folderId)}/thumbnail`, {
         schema: FolderThumbnailSchema,
+        signal,
+      }),
+    thumbnails: (folderIds: readonly string[], signal?: AbortSignal) =>
+      apiRequest(`/api/folders/thumbnails?ids=${encodeURIComponent(folderIds.join(','))}`, {
+        schema: FolderThumbnailMapSchema,
         signal,
       }),
   },

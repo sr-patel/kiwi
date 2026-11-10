@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { libraryService } from '@/services/libraryService';
-import { getAccentColor, getAccentHover } from '@/utils/accentColors';
+import { getAccentColor } from '@/utils/accentColors';
 import { shouldUseFileCard, getFileTypeInfo } from '@/utils/fileTypes';
+import { findFolderById } from '@/utils/folderUrls';
 import { renderClickableUrl, linkifyText } from '@/utils/linkify';
 import { FolderNode } from '@/types';
 
@@ -28,21 +29,25 @@ function isExternalUrl(value: string | undefined | null) {
 
 function getFolderNames(folderTree: FolderNode[] | null, folderIds: string[]): string[] {
   if (!folderTree || !folderIds.length) return [];
-
-  const findFolderName = (folders: FolderNode[], folderId: string): string | null => {
-    for (const folder of folders) {
-      if (folder.id === folderId) return folder.name;
-      if (folder.children?.length) {
-        const found = findFolderName(folder.children, folderId);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-
   return folderIds
-    .map((id) => findFolderName(folderTree, id))
-    .filter((name): name is string => name !== null);
+    .map((id) => findFolderById(folderTree, id)?.name)
+    .filter((name): name is string => typeof name === 'string');
+}
+
+/**
+ * Eagle stores `exif_data` as a free-form string. Parsing it inline during
+ * render meant one malformed value blanked the whole viewer, so failures are
+ * contained here and the section is simply skipped.
+ */
+function parseExifEntries(value: unknown): Array<[string, unknown]> {
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+    return Object.entries(parsed as Record<string, unknown>);
+  } catch {
+    return [];
+  }
 }
 
 function InfoRow({
@@ -91,6 +96,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
   const [tagsExpanded, setTagsExpanded] = useState(false);
 
   const tags: string[] = photo.tags ?? [];
+  const exifEntries = React.useMemo(() => parseExifEntries(photo.exif_data), [photo.exif_data]);
   const hiddenTagCount = Math.max(0, tags.length - COLLAPSED_TAG_COUNT);
   const visibleTags = tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT);
 
@@ -189,7 +195,7 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
                         key={folderId}
                         type="button"
                         onClick={() => onFolderClick(folderId)}
-                        className={`rounded-full px-2 py-1 text-sm text-white transition-colors cursor-pointer ${getAccentColor(accentColor)} hover:${getAccentHover(accentColor)}`}
+                        className={`rounded-full px-2 py-1 text-sm text-white transition-opacity cursor-pointer ${getAccentColor(accentColor)} hover:opacity-90`}
                         title={`Go to ${folderName}`}
                       >
                         {folderName}
@@ -280,18 +286,16 @@ export const PhotoInfoBox: React.FC<PhotoInfoBoxProps> = ({
               </InfoRow>
             )}
 
-            {!shouldUseFileCard(photo.ext) && photo.exif_data && (
+            {!shouldUseFileCard(photo.ext) && exifEntries.length > 0 && (
               <div className="text-sm leading-snug text-gray-300">
                 <div className="mb-1 font-medium text-white">EXIF</div>
                 <div className="space-y-1 pl-6">
-                  {Object.entries(JSON.parse(photo.exif_data))
-                    .slice(0, 5)
-                    .map(([key, value]) => (
-                      <div key={key} className="flex flex-col gap-0.5">
-                        <span className="shrink-0 text-gray-400">{key}:</span>
-                        <span className="break-words">{String(value)}</span>
-                      </div>
-                    ))}
+                  {exifEntries.slice(0, 5).map(([key, value]) => (
+                    <div key={key} className="flex flex-col gap-0.5">
+                      <span className="shrink-0 text-gray-400">{key}:</span>
+                      <span className="break-words">{String(value)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

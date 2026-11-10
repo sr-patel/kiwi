@@ -7,6 +7,7 @@ import type { LibraryContextManager } from '../library-context.mjs';
 import type { LegacyDatabase, PhotoRecord, PhotosPageRecord } from '../legacy-types.mjs';
 import { parseInput } from '../validation.mjs';
 import { AppError } from '../errors.mjs';
+import { pruneThumbnailCache, renderThumbnail, snapThumbnailWidth } from '../thumbnail-cache.mjs';
 
 const idSchema = z
   .string()
@@ -49,6 +50,10 @@ const mimeTypes: Record<string, string> = {
 
 const browserRenderableImageTypes = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif', 'svg']);
 
+/** Aggregates for a search result set are stable for every page of that search. */
+const SEARCH_TOTALS_TTL_MS = 60_000;
+const SEARCH_TOTALS_MAX_ENTRIES = 200;
+
 function normalizePage(
   page: PhotosPageRecord,
   offset: number,
@@ -80,6 +85,23 @@ function trustedMediaPath(
   if (!resolved.startsWith(`${directory}${path.sep}`))
     throw new AppError('Unsafe media metadata', 400, 'VALIDATION_ERROR');
   return resolved;
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Optional `w` query parameter, snapped to a supported width step. */
+function requestedWidth(raw: unknown): number | null {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? snapThumbnailWidth(parsed) : null;
 }
 
 function sendMedia(response: Response, filePath: string, contentType: string): void {
@@ -153,26 +175,39 @@ export function createPhotoRouter(context: LibraryContextManager): Router {
   router.get('/:id/thumbnail', async (request, response) => {
     const current = context.requireCurrent();
     const photo = await resolvePhoto(current.database, request.params.id);
+    const extension = photo.ext.toLowerCase();
+    const width = requestedWidth(request.query.w);
+
     const thumbnailPath = trustedMediaPath(current.path, photo, 'thumbnail');
-    try {
-      await access(thumbnailPath);
-      sendMedia(response, thumbnailPath, 'image/png');
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
-    }
+    const thumbnailExists = await pathExists(thumbnailPath);
 
     // Some valid Eagle items do not contain a generated thumbnail. Serve the
     // trusted original for formats browsers can render so grids remain usable.
-    const extension = photo.ext.toLowerCase();
-    if (!browserRenderableImageTypes.has(extension)) {
-      throw new AppError('Thumbnail not found', 404, 'NOT_FOUND');
+    const originalPath = browserRenderableImageTypes.has(extension)
+      ? trustedMediaPath(current.path, photo, 'file')
+      : null;
+
+    const sourcePath = thumbnailExists ? thumbnailPath : originalPath;
+    if (!sourcePath) throw new AppError('Thumbnail not found', 404, 'NOT_FOUND');
+
+    if (width) {
+      const resized = await renderThumbnail({
+        sourcePath,
+        photoId: photo.id,
+        width,
+        libraryPath: current.path,
+      });
+      if (resized) {
+        void pruneThumbnailCache(current.path).catch(() => undefined);
+        sendMedia(response, resized, 'image/webp');
+        return;
+      }
     }
+
     sendMedia(
       response,
-      trustedMediaPath(current.path, photo, 'file'),
-      mimeTypes[extension] ?? 'application/octet-stream',
+      sourcePath,
+      sourcePath === thumbnailPath ? 'image/png' : (mimeTypes[extension] ?? 'application/octet-stream'),
     );
   });
 
@@ -204,16 +239,69 @@ export function createSearchRouter(context: LibraryContextManager): Router {
     tagContext: query.tag ?? null,
   });
 
+  /**
+   * `total` and `totalSize` require their own aggregate scans and are identical
+   * for every page of the same search, but they used to be recomputed on every
+   * paginated request. Cache them per database and result set so scrolling only
+   * pays for the page query.
+   */
+  const totalsCache = new WeakMap<
+    object,
+    Map<string, { total: number; totalSize: number; expiresAt: number }>
+  >();
+
+  const totalsKey = (searchOptions: ReturnType<typeof options>): string =>
+    JSON.stringify([
+      searchOptions.query,
+      searchOptions.type,
+      searchOptions.folderId,
+      searchOptions.tagContext,
+    ]);
+
+  const readTotals = async (
+    database: ReturnType<LibraryContextManager['requireCurrent']>['database'],
+    searchOptions: ReturnType<typeof options>,
+  ): Promise<{ total: number; totalSize: number }> => {
+    const key = totalsKey(searchOptions);
+    const now = Date.now();
+
+    let cache = totalsCache.get(database);
+    if (!cache) {
+      cache = new Map();
+      totalsCache.set(database, cache);
+    }
+
+    const cached = cache.get(key);
+    if (cached && cached.expiresAt > now) return cached;
+
+    const [total, totalSize] = await Promise.all([
+      database.getSearchCount(searchOptions),
+      database.getSearchTotalSize(searchOptions),
+    ]);
+
+    if (cache.size >= SEARCH_TOTALS_MAX_ENTRIES) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey !== undefined) cache.delete(oldestKey);
+    }
+    const entry = { total, totalSize, expiresAt: now + SEARCH_TOTALS_TTL_MS };
+    cache.set(key, entry);
+    return entry;
+  };
+
   router.get('/photos', async (request, response) => {
     const query = parseInput(SearchQuerySchema, request.query);
     const database = context.requireCurrent().database;
     const searchOptions = options(query);
-    const [photos, total, totalSize] = await Promise.all([
+    const [photos, totals] = await Promise.all([
       database.searchPhotos(searchOptions),
-      database.getSearchCount(searchOptions),
-      database.getSearchTotalSize(searchOptions),
+      readTotals(database, searchOptions),
     ]);
-    response.json({ photos, total, totalSize, hasMore: query.offset + photos.length < total });
+    response.json({
+      photos,
+      total: totals.total,
+      totalSize: totals.totalSize,
+      hasMore: query.offset + photos.length < totals.total,
+    });
   });
 
   router.get('/count', async (request, response) => {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '@/store';
 import { libraryService } from '@/services/libraryService';
 
@@ -20,185 +20,293 @@ interface AudioContextType {
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
 
+/**
+ * How often podcast progress is written back to the store.
+ *
+ * `timeupdate` fires roughly four times a second. Persisting on every tick
+ * meant a store write plus a synchronous `localStorage` write four times a
+ * second, and — because most components subscribed to the whole store — a
+ * full application re-render for every one of them.
+ */
+const PROGRESS_SAVE_INTERVAL_MS = 5_000;
+
+const pickShuffledIndex = (length: number, currentIndex: number): number => {
+  if (length <= 1) return 0;
+  let next = currentIndex;
+  while (next === currentIndex) next = Math.floor(Math.random() * length);
+  return next;
+};
+
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const { audioPlayer, setAudioPlayerState, podcastMode, getAudioTime, saveAudioTime } = useAppStore();
+
+  const currentAudio = useAppStore((state) => state.audioPlayer.currentAudio);
+  const playlist = useAppStore((state) => state.audioPlayer.playlist);
+  const currentIndex = useAppStore((state) => state.audioPlayer.currentIndex);
+  const isPlayingRequested = useAppStore((state) => state.audioPlayer.isPlaying);
+  const volume = useAppStore((state) => state.audioPlayer.volume);
+  const isMuted = useAppStore((state) => state.audioPlayer.isMuted);
+  const isLooped = useAppStore((state) => state.audioPlayer.isLooped);
+  const isShuffled = useAppStore((state) => state.audioPlayer.isShuffled);
+  const podcastEnabled = useAppStore((state) => state.podcastMode.enabled);
+  const setAudioPlayerState = useAppStore((state) => state.setAudioPlayerState);
+  const saveAudioTime = useAppStore((state) => state.saveAudioTime);
+  const getAudioTime = useAppStore((state) => state.getAudioTime);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolumeState] = useState(1);
-  const [isMuted, setMutedState] = useState(false);
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyzerRef = useRef<AnalyserNode | null>(null);
   const mediaSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const frequencyBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const lastSavedAtRef = useRef(0);
+  const currentAudioIdRef = useRef<string | null>(null);
 
-  // Setup audio context and analyzer
+  // Setup audio context and analyzer once.
   useEffect(() => {
-    if (!audioRef.current) return;
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (!analyzerRef.current) {
-      analyzerRef.current = audioContextRef.current.createAnalyser();
-      analyzerRef.current.fftSize = 256;
-      analyzerRef.current.smoothingTimeConstant = 0.8;
-    }
-    if (!mediaSourceRef.current) {
-      mediaSourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
-    }
-    // Connect: mediaSource -> analyzer -> destination
-    try {
-      mediaSourceRef.current.disconnect();
-      analyzerRef.current.disconnect();
-    } catch {}
-    mediaSourceRef.current.connect(analyzerRef.current);
-    analyzerRef.current.connect(audioContextRef.current.destination);
-  }, [audioRef.current]);
+    const element = audioRef.current;
+    if (!element) return;
 
-  // Provide a function to get frequency data
-  const getFrequencyData = useCallback(() => {
-    if (!analyzerRef.current) return null;
-    const bufferLength = analyzerRef.current.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    analyzerRef.current.getByteFrequencyData(dataArray);
-    return dataArray;
+    const AudioContextCtor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+    if (AudioContextCtor) {
+      try {
+        const context = new AudioContextCtor();
+        const analyzer = context.createAnalyser();
+        analyzer.fftSize = 256;
+        analyzer.smoothingTimeConstant = 0.8;
+        const source = context.createMediaElementSource(element);
+        source.connect(analyzer);
+        analyzer.connect(context.destination);
+        audioContextRef.current = context;
+        analyzerRef.current = analyzer;
+        mediaSourceRef.current = source;
+      } catch (error) {
+        // The visualizer is optional; playback still works without it.
+        console.warn('Audio visualizer unavailable', error);
+      }
+    }
+
+    return () => {
+      try {
+        mediaSourceRef.current?.disconnect();
+        analyzerRef.current?.disconnect();
+      } catch {
+        // Already torn down.
+      }
+      void audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      analyzerRef.current = null;
+      mediaSourceRef.current = null;
+      frequencyBufferRef.current = null;
+    };
   }, []);
 
-  // Sync state from store
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = audioPlayer.volume;
-      audioRef.current.muted = audioPlayer.isMuted;
+  // Reuse one buffer; allocating per animation frame caused constant GC churn.
+  const getFrequencyData = useCallback(() => {
+    const analyzer = analyzerRef.current;
+    if (!analyzer) return null;
+    const length = analyzer.frequencyBinCount;
+    let buffer = frequencyBufferRef.current;
+    if (!buffer || buffer.length !== length) {
+      buffer = new Uint8Array(length);
+      frequencyBufferRef.current = buffer;
     }
-    setVolumeState(audioPlayer.volume);
-    setMutedState(audioPlayer.isMuted);
-  }, [audioPlayer.volume, audioPlayer.isMuted]);
+    analyzer.getByteFrequencyData(buffer);
+    return buffer;
+  }, []);
 
-  // Load new audio source when currentAudio changes
+  // Apply volume/mute preferences to the element.
   useEffect(() => {
-    if (audioRef.current && audioPlayer.currentAudio) {
-      audioRef.current.src = libraryService.getPhotoFileUrl(
-        audioPlayer.currentAudio.id,
-        audioPlayer.currentAudio.ext,
-        audioPlayer.currentAudio.name,
-      );
-      audioRef.current.load();
+    const element = audioRef.current;
+    if (!element) return;
+    element.volume = volume;
+    element.muted = isMuted;
+  }, [volume, isMuted]);
+
+  // Load a new source when the track changes, saving the outgoing position.
+  useEffect(() => {
+    const element = audioRef.current;
+    if (!element) return;
+
+    const previousId = currentAudioIdRef.current;
+    if (previousId && previousId !== currentAudio?.id && podcastEnabled) {
+      saveAudioTime(previousId, element.currentTime);
+    }
+    currentAudioIdRef.current = currentAudio?.id ?? null;
+    lastSavedAtRef.current = 0;
+
+    if (!currentAudio) {
+      element.removeAttribute('src');
+      element.load();
       setCurrentTime(0);
       setDuration(0);
+      return;
+    }
 
-      // Check if podcast mode is enabled and restore saved time
-      if (podcastMode.enabled && audioPlayer.currentAudio) {
-        const savedTime = getAudioTime(audioPlayer.currentAudio.id);
-        if (savedTime > 0) {
-          // Set the audio element time after it loads
-          const handleLoadedMetadata = () => {
-            if (savedTime < audioRef.current!.duration) {
-              audioRef.current!.currentTime = savedTime;
-              setCurrentTime(savedTime);
-              setAudioPlayerState({ currentTime: savedTime });
-            }
-            audioRef.current!.removeEventListener('loadedmetadata', handleLoadedMetadata);
-          };
-          audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
-        }
+    element.src = libraryService.getPhotoFileUrl(currentAudio.id, currentAudio.ext, currentAudio.name);
+    element.load();
+    setCurrentTime(0);
+    setDuration(0);
+
+    if (!podcastEnabled) return;
+    const savedTime = getAudioTime(currentAudio.id);
+    if (savedTime <= 0) return;
+
+    const restore = () => {
+      if (Number.isFinite(element.duration) && savedTime < element.duration) {
+        element.currentTime = savedTime;
+        setCurrentTime(savedTime);
       }
-    }
-  }, [audioPlayer.currentAudio, podcastMode.enabled, getAudioTime, setAudioPlayerState]);
+      element.removeEventListener('loadedmetadata', restore);
+    };
+    element.addEventListener('loadedmetadata', restore);
+    return () => element.removeEventListener('loadedmetadata', restore);
+  }, [currentAudio, podcastEnabled, getAudioTime, saveAudioTime]);
 
-  // Play/pause from store
+  // Mirror requested play/pause onto the element.
   useEffect(() => {
-    if (!audioRef.current) return;
-    if (audioPlayer.isPlaying) {
-      audioRef.current.play();
-    } else {
-      audioRef.current.pause();
+    const element = audioRef.current;
+    if (!element) return;
+    if (!isPlayingRequested) {
+      element.pause();
+      setIsPlaying(false);
+      return;
     }
-  }, [audioPlayer.isPlaying]);
+    if (!element.getAttribute('src')) return;
 
-  // Audio element event handlers
+    // Autoplay policies can leave the context suspended, which would mute
+    // playback now that the element routes through WebAudio.
+    void audioContextRef.current?.resume().catch(() => undefined);
+    element
+      .play()
+      .then(() => setIsPlaying(true))
+      .catch(() => setIsPlaying(false));
+  }, [isPlayingRequested, currentAudio]);
+
+  // Element events.
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    const element = audioRef.current;
+    if (!element) return;
+
     const onTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-      setAudioPlayerState({ currentTime: audio.currentTime });
+      setCurrentTime(element.currentTime);
+      if (!podcastEnabled) return;
+      const id = currentAudioIdRef.current;
+      if (!id) return;
+      const now = Date.now();
+      if (now - lastSavedAtRef.current < PROGRESS_SAVE_INTERVAL_MS) return;
+      lastSavedAtRef.current = now;
+      saveAudioTime(id, element.currentTime);
+    };
 
-      // Save time for podcast mode if enabled
-      if (podcastMode.enabled && audioPlayer.currentAudio) {
-        saveAudioTime(audioPlayer.currentAudio.id, audio.currentTime);
-      }
-    };
-    const onLoadedMetadata = () => {
-      setDuration(audio.duration);
-    };
+    const onLoadedMetadata = () => setDuration(element.duration);
+
     const onEnded = () => {
+      if (isLooped) {
+        element.currentTime = 0;
+        void element.play().catch(() => setIsPlaying(false));
+        return;
+      }
+      if (playlist.length > 1) {
+        const nextIndex = isShuffled
+          ? pickShuffledIndex(playlist.length, currentIndex)
+          : (currentIndex + 1) % playlist.length;
+        setAudioPlayerState({ currentAudio: playlist[nextIndex], currentIndex: nextIndex });
+        return;
+      }
       setIsPlaying(false);
       setAudioPlayerState({ isPlaying: false });
     };
-    audio.addEventListener('timeupdate', onTimeUpdate);
-    audio.addEventListener('loadedmetadata', onLoadedMetadata);
-    audio.addEventListener('ended', onEnded);
-    return () => {
-      audio.removeEventListener('timeupdate', onTimeUpdate);
-      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
-      audio.removeEventListener('ended', onEnded);
-    };
-  }, [setAudioPlayerState, podcastMode.enabled, audioPlayer.currentAudio, saveAudioTime]);
 
-  // Controls
-  const play = useCallback(() => {
-    setIsPlaying(true);
-    setAudioPlayerState({ isPlaying: true });
-  }, [setAudioPlayerState]);
-  const pause = useCallback(() => {
-    setIsPlaying(false);
-    setAudioPlayerState({ isPlaying: false });
-  }, [setAudioPlayerState]);
+    element.addEventListener('timeupdate', onTimeUpdate);
+    element.addEventListener('loadedmetadata', onLoadedMetadata);
+    element.addEventListener('ended', onEnded);
+    return () => {
+      element.removeEventListener('timeupdate', onTimeUpdate);
+      element.removeEventListener('loadedmetadata', onLoadedMetadata);
+      element.removeEventListener('ended', onEnded);
+    };
+  }, [currentIndex, isLooped, isShuffled, playlist, podcastEnabled, saveAudioTime, setAudioPlayerState]);
+
+  // Flush progress when the tab goes away.
+  useEffect(() => {
+    const flush = () => {
+      const element = audioRef.current;
+      const id = currentAudioIdRef.current;
+      if (!element || !id || !podcastEnabled) return;
+      saveAudioTime(id, element.currentTime);
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+      flush();
+    };
+  }, [podcastEnabled, saveAudioTime]);
+
+  const play = useCallback(() => setAudioPlayerState({ isPlaying: true }), [setAudioPlayerState]);
+
+  const pause = useCallback(() => setAudioPlayerState({ isPlaying: false }), [setAudioPlayerState]);
+
   const seek = useCallback(
     (time: number) => {
-      if (audioRef.current) {
-        audioRef.current.currentTime = time;
-        setCurrentTime(time);
-        setAudioPlayerState({ currentTime: time });
-      }
+      const element = audioRef.current;
+      if (element) element.currentTime = time;
+      setCurrentTime(time);
+      setAudioPlayerState({ currentTime: time });
     },
     [setAudioPlayerState],
   );
+
   const setVolume = useCallback(
-    (v: number) => {
-      if (audioRef.current) audioRef.current.volume = v;
-      setVolumeState(v);
-      setAudioPlayerState({ volume: v });
-    },
+    (nextVolume: number) => setAudioPlayerState({ volume: nextVolume }),
     [setAudioPlayerState],
   );
+
   const setMuted = useCallback(
-    (m: boolean) => {
-      if (audioRef.current) audioRef.current.muted = m;
-      setMutedState(m);
-      setAudioPlayerState({ isMuted: m });
-    },
+    (nextMuted: boolean) => setAudioPlayerState({ isMuted: nextMuted }),
     [setAudioPlayerState],
+  );
+
+  const value = useMemo<AudioContextType>(
+    () => ({
+      audioRef,
+      isPlaying,
+      currentTime,
+      duration,
+      volume,
+      isMuted,
+      play,
+      pause,
+      seek,
+      setVolume,
+      setMuted,
+      analyzerNode: analyzerRef.current,
+      getFrequencyData,
+    }),
+    [
+      currentTime,
+      duration,
+      getFrequencyData,
+      isMuted,
+      isPlaying,
+      pause,
+      play,
+      seek,
+      setMuted,
+      setVolume,
+      volume,
+    ],
   );
 
   return (
-    <AudioContext.Provider
-      value={{
-        audioRef,
-        isPlaying,
-        currentTime,
-        duration,
-        volume,
-        isMuted,
-        play,
-        pause,
-        seek,
-        setVolume,
-        setMuted,
-        analyzerNode: analyzerRef.current,
-        getFrequencyData,
-      }}
-    >
+    <AudioContext.Provider value={value}>
       {children}
       <audio ref={audioRef} hidden />
     </AudioContext.Provider>

@@ -1,7 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store';
 import { FolderTree } from '@/components/FolderTree/FolderTree';
 import { getAccentColor } from '@/utils/accentColors';
+
+const MIN_SIDEBAR_WIDTH = 200;
+const MAX_SIDEBAR_WIDTH = 600;
+
+const clampWidth = (value: number): number => Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value));
 
 export const Sidebar = () => {
   const {
@@ -17,7 +23,22 @@ export const Sidebar = () => {
     isMobile,
     accentColor,
     isMiniPlayer,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      sidebarOpen: state.sidebarOpen,
+      setSidebarOpen: state.setSidebarOpen,
+      sidebarWidth: state.sidebarWidth,
+      setSidebarWidth: state.setSidebarWidth,
+      folderTree: state.folderTree,
+      currentFolder: state.currentFolder,
+      setCurrentFolder: state.setCurrentFolder,
+      currentTag: state.currentTag,
+      setCurrentTag: state.setCurrentTag,
+      isMobile: state.isMobile,
+      accentColor: state.accentColor,
+      isMiniPlayer: state.isMiniPlayer,
+    })),
+  );
 
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
@@ -34,33 +55,42 @@ export const Sidebar = () => {
     if (isMobile) setSidebarOpen(false);
   };
 
-  // Resize functionality
+  // Resize functionality. Width updates are throttled to one per animation
+  // frame: this used to write to the store on every mousemove event.
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
   };
 
   useEffect(() => {
+    if (!isResizing) return;
+
+    let frame = 0;
+    let pendingWidth = sidebarWidth;
+
+    const flush = () => {
+      frame = 0;
+      setSidebarWidth(pendingWidth);
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      const newWidth = e.clientX;
-      if (newWidth >= 200 && newWidth <= 600) {
-        setSidebarWidth(newWidth);
-      }
+      pendingWidth = clampWidth(e.clientX);
+      if (frame) return;
+      frame = requestAnimationFrame(flush);
     };
 
     const handleMouseUp = () => setIsResizing(false);
 
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (frame) cancelAnimationFrame(frame);
+      setSidebarWidth(pendingWidth);
     };
-  }, [isResizing, setSidebarWidth]);
+  }, [isResizing, setSidebarWidth, sidebarWidth]);
 
   if (!sidebarOpen) return null;
 
@@ -118,8 +148,24 @@ export const Sidebar = () => {
       {!isMobile && (
         <div
           ref={resizeRef}
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize transition-colors ${getAccentColor(accentColor)} opacity-0 hover:opacity-100 active:opacity-100`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize navigation"
+          aria-valuenow={sidebarWidth}
+          aria-valuemin={MIN_SIDEBAR_WIDTH}
+          aria-valuemax={MAX_SIDEBAR_WIDTH}
+          tabIndex={0}
+          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize transition-colors ${getAccentColor(accentColor)} opacity-0 hover:opacity-100 focus-visible:opacity-100 active:opacity-100`}
           onMouseDown={handleMouseDown}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft') {
+              event.preventDefault();
+              setSidebarWidth(clampWidth(sidebarWidth - 16));
+            } else if (event.key === 'ArrowRight') {
+              event.preventDefault();
+              setSidebarWidth(clampWidth(sidebarWidth + 16));
+            }
+          }}
         />
       )}
     </div>

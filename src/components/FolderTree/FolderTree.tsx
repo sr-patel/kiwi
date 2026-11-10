@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import { FolderNode } from '@/types';
 import { useAppStore } from '@/store';
-import { getAccentText, getAccentSelected, getAccentHover, getAccentBorder } from '@/utils/accentColors';
+import { useShallow } from 'zustand/react/shallow';
+import { getAccentText, getAccentSelected, getAccentBorder } from '@/utils/accentColors';
 import { useRecursiveFolderCounts, useTotalPhotoCount } from '@/hooks/useInfinitePhotos';
 import { TagSearch } from '@/components/TagSearch/TagSearch';
 import { generateFolderUrl } from '@/utils/folderUrls';
@@ -32,17 +33,20 @@ interface FolderItemProps {
   currentFolderId: string | null;
   onFolderSelect: (folderId: string | null) => void;
   folderCounts: { [folderId: string]: number };
+  /** Full tree, needed to build a folder URL without a store subscription. */
+  folderTree: FolderNode[];
 }
 
-const FolderItem: React.FC<FolderItemProps> = ({
+const FolderItemImpl: React.FC<FolderItemProps> = ({
   folder,
   level,
   currentFolderId,
   onFolderSelect,
   folderCounts,
+  folderTree,
 }) => {
   const [isExpanded, setIsExpanded] = React.useState(false);
-  const { accentColor, folderTree } = useAppStore();
+  const accentColor = useAppStore((state) => state.accentColor);
   const navigate = useNavigate();
   const isSelected = currentFolderId === folder.id;
   const hasChildren = folder.children.length > 0;
@@ -137,6 +141,7 @@ const FolderItem: React.FC<FolderItemProps> = ({
               currentFolderId={currentFolderId}
               onFolderSelect={onFolderSelect}
               folderCounts={folderCounts}
+              folderTree={folderTree}
             />
           ))}
         </div>
@@ -145,6 +150,8 @@ const FolderItem: React.FC<FolderItemProps> = ({
   );
 };
 
+const FolderItem = React.memo(FolderItemImpl);
+
 export const FolderTree: React.FC<FolderTreeProps> = ({
   folders,
   currentFolderId,
@@ -152,7 +159,14 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onFolderSelect,
   onTagSelect,
 }) => {
-  const { accentColor, setCurrentFolder, setCurrentTag, defaultLandingPage } = useAppStore();
+  const { accentColor, setCurrentFolder, setCurrentTag, defaultLandingPage } = useAppStore(
+    useShallow((state) => ({
+      accentColor: state.accentColor,
+      setCurrentFolder: state.setCurrentFolder,
+      setCurrentTag: state.setCurrentTag,
+      defaultLandingPage: state.defaultLandingPage,
+    })),
+  );
   const navigate = useNavigate();
   const location = useLocation();
   const isDashboard = location.pathname === '/dashboard';
@@ -245,6 +259,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
               onFolderSelect(id);
             }}
             folderCounts={folderCounts}
+            folderTree={folders}
           />
         ))}
       </div>

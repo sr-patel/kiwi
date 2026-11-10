@@ -312,6 +312,7 @@ export const DashboardStatsSchema = z.looseObject({
 });
 
 export const FolderThumbnailSchema = z.object({ id: z.string(), name: z.string(), ext: z.string() });
+export const FolderThumbnailMapSchema = z.record(z.string(), FolderThumbnailSchema.nullable());
 export const CountMapSchema = z.record(z.string(), z.coerce.number().int().min(0));
 export const CountResponseSchema = z.object({ count: z.coerce.number().int().min(0) });
 export const TagsSchema = z.array(z.string());

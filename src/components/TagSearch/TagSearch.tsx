@@ -4,6 +4,7 @@ import { Search, Tag, X } from 'lucide-react';
 import { useTags } from '@/hooks/useTags';
 import { useTagCounts } from '@/hooks/useTagCounts';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { getAccentSelected, getAccentBorder, getAccentText } from '@/utils/accentColors';
 import { generateTagUrl } from '@/utils/tagUrls';
 import { filterTags } from '@/utils/tagSearch';
@@ -15,7 +16,12 @@ interface TagSearchProps {
 
 export const TagSearch: React.FC<TagSearchProps> = ({ currentTag, onTagSelect }) => {
   const navigate = useNavigate();
-  const { accentColor, setCurrentFolder } = useAppStore();
+  const { accentColor, setCurrentFolder } = useAppStore(
+    useShallow((state) => ({
+      accentColor: state.accentColor,
+      setCurrentFolder: state.setCurrentFolder,
+    })),
+  );
   const { data: allTags = [], isLoading } = useTags();
   const { data: tagCounts } = useTagCounts();
   const [searchTerm, setSearchTerm] = useState('');

@@ -3,6 +3,29 @@ import { kiwiApi } from '@/services/kiwiApi';
 
 import { needsServerPreview } from '@/utils/imageFormats';
 
+/** Built once; `getFileType` runs for every card on every render. */
+const FILE_TYPE_LABELS: Record<string, string> = {
+  jpg: 'JPEG',
+  jpeg: 'JPEG',
+  png: 'PNG',
+  gif: 'GIF',
+  webp: 'WebP',
+  bmp: 'BMP',
+  tiff: 'TIFF',
+  mp4: 'MP4',
+  avi: 'AVI',
+  mov: 'MOV',
+  mkv: 'MKV',
+  mp3: 'MP3',
+  wav: 'WAV',
+  flac: 'FLAC',
+  pdf: 'PDF',
+  epub: 'EPUB',
+  mobi: 'MOBI',
+};
+
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
+
 class LibraryService {
   private baseUrl = '';
 
@@ -20,41 +43,30 @@ class LibraryService {
     return this.getPhotoFileUrl(photoId, ext, name);
   }
 
-  getPhotoThumbnailUrl(photoId: string, name: string): string {
-    return `${this.baseUrl}/api/photos/${photoId}/thumbnail?name=${encodeURIComponent(name)}`;
+  getPhotoThumbnailUrl(photoId: string, name: string, width?: number): string {
+    const base = `${this.baseUrl}/api/photos/${photoId}/thumbnail?name=${encodeURIComponent(name)}`;
+    return width === undefined ? base : `${base}&w=${width}`;
+  }
+
+  /**
+   * `srcset` for the same thumbnail at several server-rendered widths.
+   * The server snaps each request to a supported step and caches the result.
+   */
+  getPhotoThumbnailSrcSet(photoId: string, name: string, widths: readonly number[]): string {
+    return widths.map((width) => `${this.getPhotoThumbnailUrl(photoId, name, width)} ${width}w`).join(', ');
   }
 
   // ─── Formatting helpers ───
 
   getFileType(ext: string): string {
-    const typeMap: { [key: string]: string } = {
-      jpg: 'JPEG',
-      jpeg: 'JPEG',
-      png: 'PNG',
-      gif: 'GIF',
-      webp: 'WebP',
-      bmp: 'BMP',
-      tiff: 'TIFF',
-      mp4: 'MP4',
-      avi: 'AVI',
-      mov: 'MOV',
-      mkv: 'MKV',
-      mp3: 'MP3',
-      wav: 'WAV',
-      flac: 'FLAC',
-      pdf: 'PDF',
-      epub: 'EPUB',
-      mobi: 'MOBI',
-    };
-    return typeMap[ext.toLowerCase()] || ext.toUpperCase();
+    return FILE_TYPE_LABELS[ext.toLowerCase()] || ext.toUpperCase();
   }
 
   formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 B';
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    const i = Math.min(SIZE_UNITS.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${SIZE_UNITS[i]}`;
   }
 
   formatDate(timestamp: number): string {
